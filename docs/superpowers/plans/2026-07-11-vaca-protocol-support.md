@@ -1558,6 +1558,8 @@ git commit -m "feat: kiosk controller mapping VACA settings/actions to the devic
 
 ### Task 6: AnnouncePlayer
 
+> **Amended after Task 3 review:** HA sends keepalive `ping` on the same persistent connection as announce audio and drops the connection after 5 s without a reply. The VacaServer read loop must therefore NEVER block in audio callbacks. AnnouncePlayer is queue-based: `onAudio*` calls enqueue and return immediately; a dedicated worker coroutine does the (blocking) sink writes.
+
 **Files:**
 - Create: `app/src/main/java/com/rar/echodash/vaca/AnnouncePlayer.kt`
 - Test: `app/src/test/java/com/rar/echodash/vaca/AnnouncePlayerTest.kt`
@@ -1565,9 +1567,9 @@ git commit -m "feat: kiosk controller mapping VACA settings/actions to the devic
 **Interfaces:**
 - Consumes: nothing (wired to VacaServer audio callbacks in Task 9).
 - Produces:
-  - `interface PcmSink { fun start(rateHz: Int, widthBytes: Int, channels: Int); fun write(pcm: ByteArray); fun finish(); fun abort() }` — `finish()` stops playback after buffered audio drains and releases; `abort()` drops immediately.
-  - `class AnnouncePlayer(sink: PcmSink, onPlayed: () -> Unit, setDucking: (Boolean) -> Unit)` with `fun onAudioStart(rate: Int, width: Int, channels: Int)`, `fun onAudioChunk(pcm: ByteArray)`, `fun onAudioStop()`, `fun onDisconnected()`.
-- Contract: `onPlayed` fires exactly once per stream — on normal stop AND on sink failure (HA's announce call must never hang); not on disconnect (HA is gone). Ducking is on from audio-start until played/disconnect.
+  - `interface PcmSink { fun start(rateHz: Int, widthBytes: Int, channels: Int); fun write(pcm: ByteArray); fun finish(); fun abort() }` — `finish()` stops playback after buffered audio drains and releases; `abort()` drops everything now.
+  - `class AnnouncePlayer(scope: CoroutineScope, sink: PcmSink, onPlayed: () -> Unit, setDucking: (Boolean) -> Unit)` with `fun onAudioStart(rate: Int, width: Int, channels: Int)`, `fun onAudioChunk(pcm: ByteArray)`, `fun onAudioStop()`, `fun onDisconnected()`, `fun shutdown()` (test teardown; the app never calls it).
+- Contract: all four `on*` methods are non-blocking (enqueue onto an unbounded channel; the worker coroutine in `scope` performs sink calls). `onPlayed` fires exactly once per stream — on normal stop AND on sink failure (HA's announce call must never hang); not on disconnect. Ducking is on from stream start until played/disconnect. Task 9 passes `AppDeps.scope` (Dispatchers.Default) as the worker scope; blocking `AudioTrack.write` calls land there, never on the server's connection-reader thread.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1576,10 +1578,15 @@ git commit -m "feat: kiosk controller mapping VACA settings/actions to the devic
 ```kotlin
 package com.rar.echodash.vaca
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CoroutineScope
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.io.IOException
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AnnouncePlayerTest {
 
     private class FakeSink(var failOnWrite: Boolean = false) : PcmSink {
@@ -1595,66 +1602,90 @@ class AnnouncePlayerTest {
         override fun abort() { calls += "abort" }
     }
 
-    private class Harness(failOnWrite: Boolean = false) {
+    private class Harness(scope: CoroutineScope, failOnWrite: Boolean = false) {
         val sink = FakeSink(failOnWrite)
         var playedCount = 0
         val ducks = mutableListOf<Boolean>()
-        val player = AnnouncePlayer(sink, onPlayed = { playedCount++ }, setDucking = { ducks += it })
+        val player = AnnouncePlayer(scope, sink, onPlayed = { playedCount++ }, setDucking = { ducks += it })
     }
 
     @Test
-    fun playsStreamThenSendsPlayedAndUnducks() {
-        val h = Harness()
+    fun playsStreamThenSendsPlayedAndUnducks() = runTest {
+        val h = Harness(this)
         h.player.onAudioStart(22050, 2, 1)
         h.player.onAudioChunk(ByteArray(2048))
         h.player.onAudioChunk(ByteArray(1024))
         h.player.onAudioStop()
+        h.player.shutdown()
+        advanceUntilIdle()
         assertEquals(listOf("start:22050/2/1", "write:2048", "write:1024", "finish"), h.sink.calls)
         assertEquals(1, h.playedCount)
         assertEquals(listOf(true, false), h.ducks)
     }
 
     @Test
-    fun sinkFailureStillSendsPlayedExactlyOnce() {
-        val h = Harness(failOnWrite = true)
+    fun enqueueCallsReturnWithoutRunningTheWorker() = runTest {
+        // The server's reader thread must never be blocked: on* methods only
+        // enqueue. Nothing may touch the sink until the worker runs.
+        val h = Harness(this)
+        h.player.onAudioStart(22050, 2, 1)
+        h.player.onAudioChunk(ByteArray(10))
+        assertEquals(0, h.sink.calls.size)
+        assertEquals(0, h.ducks.size)
+        h.player.shutdown()
+        advanceUntilIdle()
+        assertEquals(listOf("start:22050/2/1", "write:10"), h.sink.calls)
+    }
+
+    @Test
+    fun sinkFailureStillSendsPlayedExactlyOnce() = runTest {
+        val h = Harness(this, failOnWrite = true)
         h.player.onAudioStart(22050, 2, 1)
         h.player.onAudioChunk(ByteArray(10))   // fails -> abort + played
         h.player.onAudioChunk(ByteArray(10))   // ignored
         h.player.onAudioStop()                 // ignored, no double played
+        h.player.shutdown()
+        advanceUntilIdle()
         assertEquals(1, h.playedCount)
         assertEquals(listOf(true, false), h.ducks)
         assertEquals(listOf("start:22050/2/1", "abort"), h.sink.calls)
     }
 
     @Test
-    fun disconnectAbortsWithoutPlayed() {
-        val h = Harness()
+    fun disconnectAbortsWithoutPlayed() = runTest {
+        val h = Harness(this)
         h.player.onAudioStart(22050, 2, 1)
         h.player.onAudioChunk(ByteArray(10))
         h.player.onDisconnected()
+        h.player.shutdown()
+        advanceUntilIdle()
         assertEquals(0, h.playedCount)
         assertEquals(listOf(true, false), h.ducks)
         assertEquals("abort", h.sink.calls.last())
     }
 
     @Test
-    fun eventsOutsideAStreamAreIgnored() {
-        val h = Harness()
+    fun eventsOutsideAStreamAreIgnored() = runTest {
+        val h = Harness(this)
         h.player.onAudioChunk(ByteArray(10))
         h.player.onAudioStop()
         h.player.onDisconnected()
+        h.player.shutdown()
+        advanceUntilIdle()
         assertEquals(0, h.playedCount)
         assertEquals(0, h.sink.calls.size)
         assertEquals(0, h.ducks.size)
     }
 
     @Test
-    fun restartMidStreamAbortsPreviousStream() {
-        val h = Harness()
+    fun restartMidStreamAbortsPreviousStream() = runTest {
+        val h = Harness(this)
         h.player.onAudioStart(22050, 2, 1)
         h.player.onAudioStart(22050, 2, 1)
-        assertEquals(listOf("start:22050/2/1", "abort", "start:22050/2/1"), h.sink.calls)
         h.player.onAudioStop()
+        h.player.shutdown()
+        advanceUntilIdle()
+        assertEquals(listOf("start:22050/2/1", "abort", "start:22050/2/1", "finish"), h.sink.calls)
         assertEquals(1, h.playedCount)
     }
 }
@@ -1673,8 +1704,11 @@ Expected: FAIL — unresolved reference `PcmSink` (compile error).
 package com.rar.echodash.vaca
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 
-/** Raw PCM output. [finish] blocks/schedules drain of buffered audio then releases; [abort] drops everything now. */
+/** Raw PCM output. [finish] drains buffered audio then releases; [abort] drops everything now. */
 interface PcmSink {
     fun start(rateHz: Int, widthBytes: Int, channels: Int)
     fun write(pcm: ByteArray)
@@ -1683,56 +1717,95 @@ interface PcmSink {
 }
 
 /**
- * Plays an HA announce stream (audio-start/chunk/stop). Called on the VACA
- * server's connection-reader thread; blocking writes pace the stream.
- * `onPlayed` must fire exactly once per stream, even on failure — otherwise
- * HA's announce service call hangs for the full audio duration.
+ * Plays an HA announce stream (audio-start/chunk/stop). The on* methods are
+ * called from the VACA server's connection-reader thread and must NEVER
+ * block — HA keepalive pings share that connection and time out in 5 s. They
+ * enqueue onto an unbounded channel; a worker coroutine in [scope] performs
+ * the (blocking) sink calls. `onPlayed` fires exactly once per stream, even
+ * on failure — otherwise HA's announce service call hangs for the full audio
+ * duration.
  */
 class AnnouncePlayer(
+    scope: CoroutineScope,
     private val sink: PcmSink,
     private val onPlayed: () -> Unit,
     private val setDucking: (Boolean) -> Unit,
 ) {
-    private var streaming = false
+    private sealed interface Cmd {
+        data class Start(val rate: Int, val width: Int, val channels: Int) : Cmd
+        data class Chunk(val pcm: ByteArray) : Cmd
+        data object Stop : Cmd
+        data object Abort : Cmd
+    }
+
+    private val queue = Channel<Cmd>(Channel.UNLIMITED)
+    private var streaming = false // worker-confined
+
+    @Suppress("unused")
+    private val worker = scope.launch {
+        for (cmd in queue) handle(cmd)
+    }
 
     fun onAudioStart(rate: Int, width: Int, channels: Int) {
-        if (streaming) runCatching { sink.abort() }
-        streaming = true
-        setDucking(true)
-        try {
-            sink.start(rate, width, channels)
-        } catch (e: Exception) {
-            fail(e)
-        }
+        queue.trySend(Cmd.Start(rate, width, channels))
     }
 
     fun onAudioChunk(pcm: ByteArray) {
-        if (!streaming) return
-        try {
-            sink.write(pcm)
-        } catch (e: Exception) {
-            fail(e)
-        }
+        queue.trySend(Cmd.Chunk(pcm))
     }
 
     fun onAudioStop() {
-        if (!streaming) return
-        streaming = false
-        try {
-            sink.finish()
-        } catch (e: Exception) {
-            Log.w(TAG, "finish failed", e)
-            runCatching { sink.abort() }
-        }
-        setDucking(false)
-        onPlayed()
+        queue.trySend(Cmd.Stop)
     }
 
     fun onDisconnected() {
-        if (!streaming) return
-        streaming = false
-        runCatching { sink.abort() }
-        setDucking(false)
+        queue.trySend(Cmd.Abort)
+    }
+
+    /** Closes the queue so the worker exits after draining. Tests only. */
+    fun shutdown() {
+        queue.close()
+    }
+
+    private fun handle(cmd: Cmd) {
+        when (cmd) {
+            is Cmd.Start -> {
+                if (streaming) runCatching { sink.abort() }
+                streaming = true
+                setDucking(true)
+                try {
+                    sink.start(cmd.rate, cmd.width, cmd.channels)
+                } catch (e: Exception) {
+                    fail(e)
+                }
+            }
+            is Cmd.Chunk -> {
+                if (!streaming) return
+                try {
+                    sink.write(cmd.pcm)
+                } catch (e: Exception) {
+                    fail(e)
+                }
+            }
+            Cmd.Stop -> {
+                if (!streaming) return
+                streaming = false
+                try {
+                    sink.finish()
+                } catch (e: Exception) {
+                    Log.w(TAG, "finish failed", e)
+                    runCatching { sink.abort() }
+                }
+                setDucking(false)
+                onPlayed()
+            }
+            Cmd.Abort -> {
+                if (!streaming) return
+                streaming = false
+                runCatching { sink.abort() }
+                setDucking(false)
+            }
+        }
     }
 
     private fun fail(e: Exception) {
@@ -1752,13 +1825,13 @@ class AnnouncePlayer(
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `export JAVA_HOME=/usr/lib/jvm/java-21-amazon-corretto && ./gradlew :app:testDebugUnitTest --tests "com.rar.echodash.vaca.AnnouncePlayerTest"`
-Expected: PASS (5 tests).
+Expected: PASS (6 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add app/src/main/java/com/rar/echodash/vaca/AnnouncePlayer.kt app/src/test/java/com/rar/echodash/vaca/AnnouncePlayerTest.kt
-git commit -m "feat: announce stream player with fail-safe played event"
+git commit -m "feat: queue-based announce player keeping server reads non-blocking"
 ```
 
 ---
@@ -2541,6 +2614,7 @@ class AppDeps(context: Context) {
         scope.launch { vaca.sendStatus(status) }
     }
     val announce = AnnouncePlayer(
+        scope,
         AndroidPcmSink(),
         onPlayed = { scope.launch { vaca.sendPlayed() } },
         setDucking = { media.setDucked(it) },

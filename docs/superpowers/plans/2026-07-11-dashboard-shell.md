@@ -2392,6 +2392,11 @@ git add app/src/main/java/com/rar/echodash/photos/PhotoStore.kt app/src/main/jav
 git commit -m "feat: PhotoStore browse/diff/sync scheduler and Android downloader"
 ```
 
+**Deviations (2026-07-11, review findings):**
+- `AndroidPhotoDownloader.decodeDownsampled`: after the inSampleSize loop, scale the decoded bitmap down with `Bitmap.createScaledBitmap` (preserving aspect ratio) whenever it still exceeds `PhotoConfig.MAX_W`/`MAX_H`, so the cached image always fits the pinned ≤960×480 cap instead of drifting up to 2x that size.
+- `PhotoStore.sync()`: wrapped the sync body in `syncMutex.withLock` (`kotlinx.coroutines.sync.Mutex`) so the connectionState-triggered sync and the 6h periodic sync can't run concurrently against the same cache directory.
+- `AndroidPhotoDownloader.download`: write the compressed JPEG to a `"$cacheKey.tmp"` file and rename to the final cache filename only on success, deleting the temp file on any failure, so an interrupted compress can't leave a corrupt file that `diffPhotos` treats as permanently cached.
+
 ---
 
 ### Task 9: Nunito fonts, EchoTheme, Home view + icon rail (compile-gated)

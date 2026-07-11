@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -61,6 +63,8 @@ interface PhotoDownloader {
 /**
  * Syncs HA's echo-frame media folder into [cacheDir] and publishes the cached files. Open for a test
  * subclass that overrides [sync]. Sync triggers: each CONNECTED transition + every [syncIntervalMs].
+ * [sync] is serialized with a mutex so a reconnect mid-sync can't race the periodic trigger against
+ * the same cache directory.
  */
 open class PhotoStore(
     private val client: HaClient,
@@ -71,6 +75,7 @@ open class PhotoStore(
 ) {
     private val _photos = MutableStateFlow<List<File>>(emptyList())
     val photos: StateFlow<List<File>> = _photos
+    private val syncMutex = Mutex()
 
     init {
         if (!cacheDir.exists()) cacheDir.mkdirs()
@@ -89,12 +94,12 @@ open class PhotoStore(
         }
     }
 
-    open suspend fun sync() {
+    open suspend fun sync() = syncMutex.withLock {
         val browse = runCatching {
             client.request("media_source/browse_media", buildJsonObject {
                 put("media_content_id", JsonPrimitive(PhotoConfig.MEDIA_CONTENT_ID))
             })
-        }.getOrNull() ?: return
+        }.getOrNull() ?: return@withLock
         val remote = parseBrowseChildren(browse)
         val cachedKeys = cacheDir.listFiles()?.map { it.name }?.toSet() ?: emptySet()
         val diff = diffPhotos(cachedKeys, remote)

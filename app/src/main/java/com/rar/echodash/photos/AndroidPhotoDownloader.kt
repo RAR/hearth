@@ -16,7 +16,9 @@ import okhttp3.Request
 
 /**
  * Resolves a media content id to a signed URL, downloads it (no auth header — the authSig query
- * param authenticates), and decodes it downsampled to <=960x480 before caching as JPEG.
+ * param authenticates), and decodes+scales it to fit within <=960x480 (preserving aspect ratio)
+ * before caching as JPEG. Writes to a temp file first and renames on success, so an interrupted
+ * compress never leaves a corrupt file under the final cache name.
  */
 class AndroidPhotoDownloader(
     private val client: HaClient,
@@ -39,12 +41,20 @@ class AndroidPhotoDownloader(
             resp.body?.bytes() ?: return@withContext null
         }
         val bmp = decodeDownsampled(bytes) ?: return@withContext null
+        val tmp = File(cacheDir, "$cacheKey.tmp")
         val out = File(cacheDir, cacheKey)
-        FileOutputStream(out).use { bmp.compress(Bitmap.CompressFormat.JPEG, 88, it) }
+        val wrote = runCatching {
+            FileOutputStream(tmp).use { bmp.compress(Bitmap.CompressFormat.JPEG, 88, it) }
+        }.isSuccess
         bmp.recycle()
+        if (!wrote || !tmp.renameTo(out)) {
+            tmp.delete()
+            return@withContext null
+        }
         out
     }
 
+    /** Decode [bytes] downsampled by a power-of-2 inSampleSize, then scale to fit within MAX_W x MAX_H. */
     private fun decodeDownsampled(bytes: ByteArray): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -53,6 +63,17 @@ class AndroidPhotoDownloader(
             bounds.outHeight / sample > PhotoConfig.MAX_H * 2
         ) sample *= 2
         val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+        val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+        if (decoded.width <= PhotoConfig.MAX_W && decoded.height <= PhotoConfig.MAX_H) return decoded
+        // inSampleSize only guarantees within 2x of the cap; scale precisely down to fit.
+        val scale = minOf(
+            PhotoConfig.MAX_W.toFloat() / decoded.width,
+            PhotoConfig.MAX_H.toFloat() / decoded.height,
+        )
+        val targetW = (decoded.width * scale).toInt().coerceAtLeast(1)
+        val targetH = (decoded.height * scale).toInt().coerceAtLeast(1)
+        val scaled = Bitmap.createScaledBitmap(decoded, targetW, targetH, true)
+        decoded.recycle()
+        return scaled
     }
 }

@@ -2,9 +2,11 @@ package com.rar.echodash.photos
 
 import com.rar.echodash.ha.ConnState
 import com.rar.echodash.ha.HaClient
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -90,6 +92,45 @@ class PhotoStoreTest {
         assertEquals(1, syncs)                                  // start/reconnect trigger
         advanceTimeBy(6 * 60 * 60_000L + 1); runCurrent()
         assertEquals(2, syncs)                                  // 6h periodic
+        cacheDir.deleteRecursively()
+    }
+
+    @Test
+    fun syncSerializesConcurrentInvocations() = runTest {
+        val cacheDir = File.createTempFile("photocache3", "").let { it.delete(); it.mkdirs(); it }
+        // First sync's browse call blocks on this gate until released, so we can observe whether
+        // a concurrently-launched second sync starts its own browse call before the first finishes.
+        val gate = CompletableDeferred<Unit>()
+        var browseCalls = 0
+        val order = mutableListOf<String>()
+        val client = object : HaClient {
+            override val connectionState = MutableStateFlow(ConnState.OFFLINE)
+            override suspend fun request(type: String, fields: JsonObject): JsonElement? {
+                if (type != "media_source/browse_media") return null
+                browseCalls++
+                val n = browseCalls
+                order += "start-$n"
+                if (n == 1) gate.await()
+                order += "end-$n"
+                return browseJson
+            }
+            override suspend fun subscribe(type: String, fields: JsonObject, onEvent: (JsonObject) -> Unit) = 0
+            override suspend fun unsubscribe(subId: Int) {}
+        }
+        val downloader = object : PhotoDownloader {
+            override suspend fun download(contentId: String, cacheKey: String): File? = null
+        }
+        val store = PhotoStore(client, downloader, cacheDir, this)
+        val job1 = launch { store.sync() }
+        runCurrent()
+        val job2 = launch { store.sync() }
+        runCurrent()
+        // second sync must not have started its browse call while the first is still in-flight
+        assertEquals(1, browseCalls)
+        gate.complete(Unit)
+        job1.join()
+        job2.join()
+        assertEquals(listOf("start-1", "end-1", "start-2", "end-2"), order)
         cacheDir.deleteRecursively()
     }
 }

@@ -2,8 +2,11 @@ package com.rar.echodash.ui.panels
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,43 +53,55 @@ fun WeatherPanel(
                 delay(30 * 60_000L)
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(
-                    imageVector = weatherIcon(conditionIcon(weather.state)),
-                    contentDescription = weather.state,
-                    tint = Color.White,
-                    modifier = Modifier.size(96.dp),
-                )
-                Text(weather.state, color = Color.White, fontSize = 22.sp)
-                weather.attrDouble("temperature")?.let {
-                    Text("${it}°", color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Light)
-                }
-                weather.attrDouble("humidity")?.let {
-                    Text("Humidity ${it.toInt()}%", color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp)
+        Column(Modifier.fillMaxSize()) {
+            // current conditions, centered in the space above the forecast strip
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                ) {
+                    Icon(
+                        imageVector = weatherIcon(conditionIcon(weather.state)),
+                        contentDescription = weather.state,
+                        tint = Color.White,
+                        modifier = Modifier.size(110.dp),
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        weather.attrDouble("temperature")?.let {
+                            Text("${it}°", color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Light)
+                        }
+                        Text(weather.state, color = Color.White, fontSize = 24.sp)
+                        weather.attrDouble("humidity")?.let {
+                            Text("Humidity ${it.toInt()}%", color = Color.White.copy(alpha = 0.7f), fontSize = 16.sp)
+                        }
+                    }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                forecast.forEach { day ->
-                    Column(
-                        Modifier
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0xFF1B1F2A))
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text(day.dayOfWeek, color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp)
-                        Icon(
-                            imageVector = weatherIcon(day.icon),
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(28.dp),
-                        )
-                        Text(
-                            "${day.high?.toInt() ?: "-"}° / ${day.low?.toInt() ?: "-"}°",
-                            color = Color.White, fontSize = 13.sp,
-                        )
+            // forecast strip along the bottom, days sharing the full width
+            if (forecast.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    forecast.forEach { day ->
+                        Column(
+                            Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xFF1B1F2A))
+                                .padding(vertical = 14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(day.dayOfWeek, color = Color.White.copy(alpha = 0.8f), fontSize = 16.sp)
+                            Icon(
+                                imageVector = weatherIcon(day.icon),
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(34.dp),
+                            )
+                            Text(
+                                "${day.high?.toInt() ?: "-"}° / ${day.low?.toInt() ?: "-"}°",
+                                color = Color.White, fontSize = 15.sp,
+                            )
+                        }
                     }
                 }
             }

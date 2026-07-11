@@ -6,6 +6,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.boolean
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -38,6 +39,8 @@ class RegistrationClientTest {
             assertEquals("Echo Dashboard", body["device_name"]?.jsonPrimitive?.contentOrNull)
             assertEquals("com.rar.echodash", body["app_id"]?.jsonPrimitive?.contentOrNull)
             assertEquals("Echo Show 5", body["model"]?.jsonPrimitive?.contentOrNull)
+            assertEquals("Echo Dashboard", body["app_name"]?.jsonPrimitive?.contentOrNull)
+            assertEquals(false, body["supports_encryption"]?.jsonPrimitive?.boolean)
         }
     }
 }

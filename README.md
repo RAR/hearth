@@ -61,5 +61,4 @@ MVP items verified 2026-07-11: setup → login → dashboard works on the Echo.
 - Session-scoped pending-request map in `HaWebSocket`
 - `normalizeBaseUrl` hardening (case-insensitive scheme, degenerate `http://` input)
 - Surface OAuth `error_description` and WebView HTTP errors on the Setup screen
-- Re-register lazily when `webhookId` is missing instead of on every login
 - Map non-numeric sensor states (`unavailable`) to `--` on the dashboard

@@ -4,6 +4,7 @@ import com.rar.echodash.data.SettingsStore
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -88,6 +89,11 @@ class HaWebSocket(
                 val token = auth.validAccessToken()
                 socket = openSocket(token, session)
                 session.closed.await()
+            } catch (e: CancellationException) {
+                // start()/stop() cancelled this loop — let finally { failPending() } run,
+                // but skip the OFFLINE write and backoff so we don't clobber the
+                // replacement session's state.
+                throw e
             } catch (e: AuthRevokedException) {
                 _connectionState.value = ConnState.AUTH_FAILED
                 return
@@ -137,7 +143,10 @@ class HaWebSocket(
                         }
                         // Possibly an expired token raced the connect; close and let the
                         // reconnect loop refresh via validAccessToken().
-                        is WsIncoming.AuthInvalid -> webSocket.close(1000, "auth invalid")
+                        is WsIncoming.AuthInvalid -> {
+                            auth.invalidateAccessToken()
+                            webSocket.close(1000, "auth invalid")
+                        }
                         is WsIncoming.EntityUpdate -> {
                             val patch = entityId?.let { msg.states[it] } ?: return
                             val prev = _reading.value
@@ -152,7 +161,8 @@ class HaWebSocket(
                         is WsIncoming.Unknown -> {}
                     }
                 } catch (e: Exception) {
-                    // malformed or unexpected frame — ignore
+                    // malformed or unexpected frame — drop it but leave a breadcrumb
+                    android.util.Log.w("HaWebSocket", "dropped frame", e)
                 }
             }
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {

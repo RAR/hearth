@@ -69,6 +69,27 @@ class AuthManagerTest {
     }
 
     @Test
+    fun invalidateAccessTokenForcesRefresh() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody(
+                """{"access_token":"AT-new","expires_in":1800,"token_type":"Bearer"}"""))
+            server.start()
+            settings.baseUrl = server.url("/").toString().trimEnd('/')
+            // Cached token is fresh — would normally be returned without a network call.
+            settings.accessToken = "AT-cached"
+            settings.accessTokenExpiresAt = now + 1800_000L
+            settings.refreshToken = "RT"
+            val auth = auth()
+            auth.invalidateAccessToken()
+            assertNull(settings.accessToken)
+            assertEquals(0L, settings.accessTokenExpiresAt)
+            assertEquals("AT-new", auth.validAccessToken())
+            assertEquals("AT-new", settings.accessToken)
+            assertTrue(server.takeRequest().body.readUtf8().contains("grant_type=refresh_token"))
+        }
+    }
+
+    @Test
     fun revokedRefreshClearsAuthAndThrows() = runBlocking {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(400).setBody("""{"error":"invalid_grant"}"""))

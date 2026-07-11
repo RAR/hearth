@@ -53,6 +53,12 @@ class AuthManager(
         return refresh()
     }
 
+    /** Drop the cached access token so the next validAccessToken() forces a refresh. */
+    fun invalidateAccessToken() {
+        settings.accessToken = null
+        settings.accessTokenExpiresAt = 0L
+    }
+
     private suspend fun refresh(): String {
         val refreshToken = settings.refreshToken ?: throw AuthRevokedException()
         val tokens = try {

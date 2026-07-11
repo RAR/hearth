@@ -14,6 +14,7 @@ class NsdAdvertiser(context: Context, private val port: Int) {
     private var listener: NsdManager.RegistrationListener? = null
     private var stopped = false
 
+    @Synchronized
     fun register() {
         if (listener != null) return
         stopped = false
@@ -28,8 +29,7 @@ class NsdAdvertiser(context: Context, private val port: Int) {
             }
             override fun onRegistrationFailed(i: NsdServiceInfo, err: Int) {
                 Log.w(TAG, "registration failed: $err (HA manual host:port setup still works)")
-                listener = null
-                if (!stopped) handler.postDelayed({ register() }, RETRY_MS)
+                onFailed()
             }
             override fun onServiceUnregistered(i: NsdServiceInfo) {}
             override fun onUnregistrationFailed(i: NsdServiceInfo, err: Int) {}
@@ -38,6 +38,13 @@ class NsdAdvertiser(context: Context, private val port: Int) {
         nsd.registerService(info, NsdManager.PROTOCOL_DNS_SD, l)
     }
 
+    @Synchronized
+    private fun onFailed() {
+        listener = null
+        if (!stopped) handler.postDelayed({ register() }, RETRY_MS)
+    }
+
+    @Synchronized
     fun unregister() {
         stopped = true
         handler.removeCallbacksAndMessages(null)

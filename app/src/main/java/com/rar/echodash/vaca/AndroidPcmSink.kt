@@ -31,7 +31,8 @@ class AndroidPcmSink : PcmSink {
     }
 
     override fun write(pcm: ByteArray) {
-        track?.write(pcm, 0, pcm.size) // blocking write paces the stream
+        val result = track?.write(pcm, 0, pcm.size) ?: return // blocking write paces the stream
+        if (result < 0) throw java.io.IOException("AudioTrack.write failed: $result")
     }
 
     override fun finish() {

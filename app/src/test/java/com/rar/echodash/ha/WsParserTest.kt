@@ -16,37 +16,19 @@ class WsParserTest {
     }
 
     @Test
-    fun parsesEntityAddEvent() {
+    fun parsesEventCarriesIdAndInnerEvent() {
         val msg = WsParser.parse(
-            """{"id":1,"type":"event","event":{"a":{"sensor.outside_temperature":
-               {"s":"15.6","a":{"unit_of_measurement":"°C","friendly_name":"Outside Temperature","device_class":"temperature"}}}}}"""
-                .replace("\n", "").replace("               ", "")
-        )
-        val update = msg as WsIncoming.EntityUpdate
-        assertEquals(
-            EntityPatch(state = "15.6", unit = "°C", friendlyName = "Outside Temperature"),
-            update.states["sensor.outside_temperature"]
-        )
-    }
-
-    @Test
-    fun parsesEntityChangeEvent() {
-        val msg = WsParser.parse(
-            """{"id":1,"type":"event","event":{"c":{"sensor.outside_temperature":{"+":{"s":"16.0","lc":1720000000}}}}}"""
-        )
-        val update = msg as WsIncoming.EntityUpdate
-        assertEquals(
-            EntityPatch(state = "16.0", unit = null, friendlyName = null),
-            update.states["sensor.outside_temperature"]
-        )
+            """{"id":6,"type":"event","event":{"a":{"light.kitchen":{"s":"on","a":{}}}}}"""
+        ) as WsIncoming.Event
+        assertEquals(6, msg.id)
+        assertTrue(msg.event.containsKey("a"))
     }
 
     @Test
     fun parsesResultMessage() {
-        val msg = WsParser.parse("""{"id":7,"type":"result","success":true,"result":[1,2]}""")
-        val result = msg as WsIncoming.Result
-        assertEquals(7, result.id)
-        assertTrue(result.success)
+        val msg = WsParser.parse("""{"id":7,"type":"result","success":true,"result":[1,2]}""") as WsIncoming.Result
+        assertEquals(7, msg.id)
+        assertTrue(msg.success)
     }
 
     @Test
@@ -62,7 +44,7 @@ class WsParserTest {
         val sensors = WsParser.temperatureSensors(states)
         assertEquals(1, sensors.size)
         assertEquals(
-            EntityState("sensor.outside_temperature", "15.6", "°C", "Outside Temperature"),
+            SensorEntity("sensor.outside_temperature", "15.6", "°C", "Outside Temperature"),
             sensors[0]
         )
     }

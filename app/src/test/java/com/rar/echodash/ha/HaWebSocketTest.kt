@@ -8,11 +8,17 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.putJsonArray
 import okhttp3.OkHttpClient
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -21,6 +27,7 @@ import java.io.IOException
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
@@ -149,6 +156,53 @@ class HaWebSocketTest {
             } finally {
                 ws.stop(); scope.cancel()
             }
+        }
+    }
+
+    @Test
+    fun requestReturnsResultPayload() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().withWebSocketUpgrade(haServerListener()))
+            server.start()
+            val settings = InMemorySettingsStore().apply {
+                baseUrl = server.url("/").toString().trimEnd('/')
+                accessToken = "AT"; accessTokenExpiresAt = Long.MAX_VALUE
+            }
+            val client = OkHttpClient()
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val ws = HaWebSocket(settings, AuthManager(settings, client) { 0L }, client, scope)
+            try {
+                ws.start(null)
+                val result = withTimeout(10_000) { ws.request("get_states") }!!
+                assertEquals("sensor.outside_temperature",
+                    result.jsonArray[0].jsonObject["entity_id"]!!.jsonPrimitive.contentOrNull)
+            } finally { ws.stop(); scope.cancel() }
+        }
+    }
+
+    @Test
+    fun subscribeRoutesEventsByCommandId() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().withWebSocketUpgrade(haServerListener()))
+            server.start()
+            val settings = InMemorySettingsStore().apply {
+                baseUrl = server.url("/").toString().trimEnd('/')
+                accessToken = "AT"; accessTokenExpiresAt = Long.MAX_VALUE
+            }
+            val client = OkHttpClient()
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val ws = HaWebSocket(settings, AuthManager(settings, client) { 0L }, client, scope)
+            try {
+                ws.start(null)
+                val received = CompletableDeferred<JsonObject>()
+                withTimeout(10_000) {
+                    ws.subscribe("subscribe_entities",
+                        buildJsonObject { putJsonArray("entity_ids") { add("sensor.outside_temperature") } }
+                    ) { event -> if (!received.isCompleted) received.complete(event) }
+                }
+                val event = withTimeout(10_000) { received.await() }
+                assertTrue(event.containsKey("a"))
+            } finally { ws.stop(); scope.cancel() }
         }
     }
 }

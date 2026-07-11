@@ -25,7 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.rar.echodash.data.SettingsStore
-import com.rar.echodash.ha.EntityState
+import com.rar.echodash.ha.SensorEntity
 import com.rar.echodash.ha.HaWebSocket
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
@@ -35,7 +35,7 @@ const val DEFAULT_TEMPERATURE_ENTITY = "sensor.outside_temperature"
 
 @Composable
 fun EntityPickerScreen(settings: SettingsStore, ws: HaWebSocket, onPicked: () -> Unit) {
-    var sensors by remember { mutableStateOf<List<EntityState>?>(null) }
+    var sensors by remember { mutableStateOf<List<SensorEntity>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableIntStateOf(0) }
 
@@ -47,7 +47,7 @@ fun EntityPickerScreen(settings: SettingsStore, ws: HaWebSocket, onPicked: () ->
             val fetched = withTimeout(15_000) { ws.fetchTemperatureSensors() }
             // default sensor first, then alphabetical by display name
             sensors = fetched.sortedWith(
-                compareByDescending<EntityState> { it.entityId == DEFAULT_TEMPERATURE_ENTITY }
+                compareByDescending<SensorEntity> { it.entityId == DEFAULT_TEMPERATURE_ENTITY }
                     .thenBy { it.friendlyName ?: it.entityId }
             )
         } catch (e: TimeoutCancellationException) {

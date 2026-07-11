@@ -90,6 +90,50 @@ class WyomingCodecTest {
     }
 
     @Test
+    fun throwsOnNonStringType() {
+        try {
+            WyomingCodec.read(ByteArrayInputStream("""{"type":{"x":1}}
+""".toByteArray()))
+            fail("expected IOException")
+        } catch (e: IOException) {
+            // expected
+        }
+    }
+
+    @Test
+    fun throwsOnNonNumericDataLength() {
+        try {
+            WyomingCodec.read(ByteArrayInputStream("""{"type":"x","data_length":"abc"}
+""".toByteArray()))
+            fail("expected IOException")
+        } catch (e: IOException) {
+            // expected
+        }
+    }
+
+    @Test
+    fun throwsOnNegativeDataLength() {
+        try {
+            WyomingCodec.read(ByteArrayInputStream("""{"type":"x","data_length":-1}
+""".toByteArray()))
+            fail("expected IOException")
+        } catch (e: IOException) {
+            // expected
+        }
+    }
+
+    @Test
+    fun throwsOnOversizedDataLength() {
+        try {
+            WyomingCodec.read(ByteArrayInputStream("""{"type":"x","data_length":2000000}
+""".toByteArray()))
+            fail("expected IOException")
+        } catch (e: IOException) {
+            // expected
+        }
+    }
+
+    @Test
     fun throwsOnTruncatedPayload() {
         val full = bytesOf(WyomingEvent("audio-chunk",
             buildJsonObject { put("rate", 22050); put("width", 2); put("channels", 1) },

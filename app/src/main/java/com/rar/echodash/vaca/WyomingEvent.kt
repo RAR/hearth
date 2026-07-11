@@ -30,6 +30,8 @@ object WyomingCodec {
     private val json = Json { ignoreUnknownKeys = true }
     const val WYOMING_VERSION = "1.7.1"
     private const val MAX_HEADER_BYTES = 1 shl 20
+    private const val MAX_DATA_LENGTH = 1 shl 20 // 1 MiB
+    private const val MAX_PAYLOAD_LENGTH = 10 shl 20 // 10 MiB
 
     fun write(event: WyomingEvent, out: OutputStream) {
         val dataBytes: ByteArray? = if (event.data.isNotEmpty()) {
@@ -58,10 +60,27 @@ object WyomingCodec {
         } catch (e: Exception) {
             throw IOException("malformed wyoming header", e)
         }
-        val type = (header["type"] ?: throw IOException("wyoming header missing type"))
-            .jsonPrimitive.content
-        var data = header["data"] as? JsonObject ?: JsonObject(emptyMap())
-        val dataLength = header["data_length"]?.jsonPrimitive?.int ?: 0
+        val type: String
+        val dataLength: Int
+        val payloadLength: Int
+        var data: JsonObject
+        try {
+            type = (header["type"] ?: throw IOException("wyoming header missing type"))
+                .jsonPrimitive.content
+            data = header["data"] as? JsonObject ?: JsonObject(emptyMap())
+            dataLength = header["data_length"]?.jsonPrimitive?.int ?: 0
+            payloadLength = header["payload_length"]?.jsonPrimitive?.int ?: 0
+        } catch (e: IOException) {
+            throw e
+        } catch (e: Exception) {
+            throw IOException("malformed wyoming header", e)
+        }
+        if (dataLength < 0 || dataLength > MAX_DATA_LENGTH) {
+            throw IOException("wyoming data_length out of range: $dataLength")
+        }
+        if (payloadLength < 0 || payloadLength > MAX_PAYLOAD_LENGTH) {
+            throw IOException("wyoming payload_length out of range: $payloadLength")
+        }
         if (dataLength > 0) {
             val block = try {
                 json.parseToJsonElement(
@@ -74,7 +93,6 @@ object WyomingCodec {
             }
             data = JsonObject(data + block)
         }
-        val payloadLength = header["payload_length"]?.jsonPrimitive?.int ?: 0
         val payload = if (payloadLength > 0) readExactly(input, payloadLength) else ByteArray(0)
         return WyomingEvent(type, data, payload)
     }

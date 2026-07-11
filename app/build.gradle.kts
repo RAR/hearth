@@ -15,7 +15,10 @@ android {
         versionCode = 1
         versionName = "0.1"
     }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -36,6 +39,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
     testImplementation(composeBom)
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")

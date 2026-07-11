@@ -190,12 +190,12 @@ fun EchoDashApp(deps: AppDeps) {
                     var view by remember { mutableStateOf(DashView.HOME) }
                     val uiScope = rememberCoroutineScope()
                     val idleTimer = remember { IdleReturnTimer(uiScope) { view = DashView.HOME } }
+                    LaunchedEffect(view) { idleTimer.onViewChanged(view == DashView.HOME) }
 
                     DashboardShell(
                         current = view,
                         onSelect = { v ->
                             view = v
-                            idleTimer.onViewChanged(v == DashView.HOME)
                             deps.kiosk.onUserInteraction()
                         },
                         entities = entities,

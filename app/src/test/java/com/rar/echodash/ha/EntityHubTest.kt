@@ -144,6 +144,19 @@ class EntityHubTest {
     }
 
     @Test
+    fun secondStartIsNoOp() = runTest {
+        val fake = FakeHaClient()
+        fake.results.add(Json.parseToJsonElement(registryJson))
+        val hub = EntityHub(fake, backgroundScope) { 0L }
+        hub.start()
+        hub.start() // re-entering the dashboard screen must not stack a second collector
+        fake.state.value = ConnState.CONNECTED
+        runCurrent()
+
+        assertEquals(1, fake.subscribed.count { it.first == "subscribe_entities" })
+    }
+
+    @Test
     fun callServiceBuildsCommand() = runTest {
         val fake = FakeHaClient()
         val hub = EntityHub(fake, this) { 0L }

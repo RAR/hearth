@@ -32,8 +32,11 @@ class EntityHub(
 
     private var entitiesSubId: Int? = null
     private var matched: List<String> = emptyList()
+    private var started = false
 
     fun start() {
+        if (started) return
+        started = true
         scope.launch {
             client.connectionState.collect { st ->
                 if (st == ConnState.CONNECTED) resync()
@@ -53,6 +56,7 @@ class EntityHub(
             }
         } catch (e: IOException) {
             // socket dropped mid-resync; the next CONNECTED transition retries from scratch
+            android.util.Log.w("EntityHub", "resync failed", e)
         }
     }
 
@@ -68,6 +72,7 @@ class EntityHub(
                 openEntitiesSubscription()
             } catch (e: IOException) {
                 // socket dropped mid-update; the next CONNECTED transition resyncs from scratch
+                android.util.Log.w("EntityHub", "onRegistryUpdated failed", e)
             }
         }
     }

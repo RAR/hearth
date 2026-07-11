@@ -96,6 +96,24 @@ class PhotoStoreTest {
     }
 
     @Test
+    fun secondStartIsNoOp() = runTest {
+        val cacheDir = File.createTempFile("photocache4", "").let { it.delete(); it.mkdirs(); it }
+        var syncs = 0
+        val downloader = object : PhotoDownloader {
+            override suspend fun download(contentId: String, cacheKey: String): File? = null
+        }
+        val conn = MutableStateFlow(ConnState.OFFLINE)
+        val store = object : PhotoStore(FakeHaClient(browseJson), downloader, cacheDir, backgroundScope) {
+            override suspend fun sync() { syncs++ }
+        }
+        store.start(conn)
+        store.start(conn) // re-entering the dashboard screen must not stack a second collector/loop
+        conn.value = ConnState.CONNECTED; runCurrent()
+        assertEquals(1, syncs) // a duplicate collector would trigger a second sync here
+        cacheDir.deleteRecursively()
+    }
+
+    @Test
     fun syncSerializesConcurrentInvocations() = runTest {
         val cacheDir = File.createTempFile("photocache3", "").let { it.delete(); it.mkdirs(); it }
         // First sync's browse call blocks on this gate until released, so we can observe whether

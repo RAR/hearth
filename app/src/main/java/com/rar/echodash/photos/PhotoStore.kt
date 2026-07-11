@@ -76,6 +76,7 @@ open class PhotoStore(
     private val _photos = MutableStateFlow<List<File>>(emptyList())
     val photos: StateFlow<List<File>> = _photos
     private val syncMutex = Mutex()
+    private var started = false
 
     init {
         if (!cacheDir.exists()) cacheDir.mkdirs()
@@ -83,6 +84,8 @@ open class PhotoStore(
     }
 
     fun start(connectionState: StateFlow<ConnState>) {
+        if (started) return
+        started = true
         scope.launch {
             connectionState.collect { if (it == ConnState.CONNECTED) sync() }
         }

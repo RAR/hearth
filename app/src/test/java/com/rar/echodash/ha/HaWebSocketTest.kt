@@ -17,9 +17,11 @@ import okhttp3.OkHttpClient
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import java.io.IOException
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.fail
 import org.junit.Test
 
 class HaWebSocketTest {
@@ -105,6 +107,45 @@ class HaWebSocketTest {
                 val sensors = withTimeout(10_000) { ws.fetchTemperatureSensors() }
                 assertEquals(1, sensors.size)
                 assertEquals("sensor.outside_temperature", sensors[0].entityId)
+            } finally {
+                ws.stop(); scope.cancel()
+            }
+        }
+    }
+
+    @Test
+    fun failsPendingRequestWhenSocketDropsBeforeResult() = runBlocking {
+        MockWebServer().use { server ->
+            // Server auths OK but closes the socket on get_states without ever sending a result.
+            server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: Response) {
+                    webSocket.send("""{"type":"auth_required","ha_version":"2025.1.0"}""")
+                }
+                override fun onMessage(webSocket: WebSocket, text: String) {
+                    val obj = Json.parseToJsonElement(text).jsonObject
+                    when (obj["type"]?.jsonPrimitive?.contentOrNull) {
+                        "auth" -> webSocket.send("""{"type":"auth_ok","ha_version":"2025.1.0"}""")
+                        "get_states" -> webSocket.close(1000, null)
+                    }
+                }
+            }))
+            server.start()
+            val settings = InMemorySettingsStore().apply {
+                baseUrl = server.url("/").toString().trimEnd('/')
+                accessToken = "AT"
+                accessTokenExpiresAt = Long.MAX_VALUE
+            }
+            val client = OkHttpClient()
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val ws = HaWebSocket(settings, AuthManager(settings, client) { 0L }, client, scope)
+            try {
+                ws.start(null)
+                try {
+                    withTimeout(10_000) { ws.fetchTemperatureSensors() }
+                    fail("expected fetchTemperatureSensors to fail when socket drops")
+                } catch (e: IOException) {
+                    // expected: pending request failed on disconnect
+                }
             } finally {
                 ws.stop(); scope.cancel()
             }

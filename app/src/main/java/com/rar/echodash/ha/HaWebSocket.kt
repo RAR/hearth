@@ -1,6 +1,7 @@
 package com.rar.echodash.ha
 
 import com.rar.echodash.data.SettingsStore
+import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
@@ -70,7 +71,11 @@ class HaWebSocket(
         pending[id] = deferred
         socket?.send("""{"id":$id,"type":"get_states"}""")
             ?: run { pending.remove(id); return emptyList() }
-        val result = deferred.await() ?: return emptyList()
+        val result = try {
+            deferred.await()
+        } finally {
+            pending.remove(id)
+        } ?: return emptyList()
         return WsParser.temperatureSensors(result)
     }
 
@@ -88,10 +93,22 @@ class HaWebSocket(
                 return
             } catch (e: Exception) {
                 // network error before/at connect — fall through to backoff
+            } finally {
+                failPending()
             }
             _connectionState.value = ConnState.OFFLINE
             attempt = if (session.sawAuthOk) 0 else attempt + 1
             delay(backoffMs(attempt))
+        }
+    }
+
+    /** Fail and clear all in-flight requests; called whenever a session ends. */
+    private fun failPending() {
+        val it = pending.entries.iterator()
+        while (it.hasNext()) {
+            val entry = it.next()
+            it.remove()
+            entry.value.completeExceptionally(IOException("websocket closed"))
         }
     }
 

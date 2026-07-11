@@ -2,7 +2,7 @@
 
 A native Android kiosk dashboard for an Amazon Echo Show 5 running LineageOS. Logs into Home Assistant via OAuth2 (HA's own login page) and shows a fullscreen dashboard: dusk-gradient background, minute clock, and a live temperature over a reconnecting WebSocket. Speaks the [VACA](https://github.com/msp1974/ViewAssist_Companion_App) device protocol, so the VACA HACS integration gives HA full control of the device — screen, brightness, screensaver, toasts, TTS announcements, and a media player — with native rendering instead of VACA's WebView.
 
-Built with Kotlin + Jetpack Compose, minSdk 28 / targetSdk 34. 25 plain-JVM unit tests.
+Built with Kotlin + Jetpack Compose, minSdk 28 / targetSdk 34. 74 plain-JVM unit tests.
 
 ## Build
 

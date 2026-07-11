@@ -79,7 +79,7 @@ class AppDeps(context: Context) {
         scope,
         AndroidPcmSink(),
         onPlayed = { scope.launch { vaca.sendPlayed() } },
-        setDucking = { media.setDucked(it) },
+        setDucking = { ducked -> mainScope.launch { media.setDucked(ducked) } },
     )
     val lightSensor = LightSensorReporter(appContext) { lux ->
         mainScope.launch { kiosk.onLightLevel(lux) }
@@ -99,6 +99,11 @@ class AppDeps(context: Context) {
         },
         listener = object : VacaServer.Listener {
             override fun onSessionStarted() {
+                // A new session can be adopted while the old connection is still
+                // half-open, so the previous onSessionEnded may never fire. Reset
+                // announce state first — a brand-new session cannot have an
+                // in-flight announce stream, so this only clears stale ducking/track.
+                announce.onDisconnected()
                 mainScope.launch {
                     vaca.sendSettingsFeedback(kiosk.currentSettings())
                     vaca.sendStatus(statusSnapshot())

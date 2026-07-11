@@ -23,7 +23,8 @@ import java.net.Socket
  * short-lived probe connection (describe/capabilities) plus a persistent
  * satellite session that begins with run-satellite. Handshake and ping/pong
  * are handled here; settings/actions/audio are routed to [listener] on IO
- * threads (audio callbacks may block — that paces the announce stream).
+ * threads (audio callbacks must NEVER block — HA keepalive pings share this
+ * connection and time out in 5 s; AnnouncePlayer enqueues and returns).
  */
 class VacaServer(
     private val scope: CoroutineScope,

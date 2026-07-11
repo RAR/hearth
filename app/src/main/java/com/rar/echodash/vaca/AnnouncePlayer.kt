@@ -40,7 +40,18 @@ class AnnouncePlayer(
 
     @Suppress("unused")
     private val worker = scope.launch {
-        for (cmd in queue) handle(cmd)
+        // Last-resort backstop: handle() has its own per-command handling, but a
+        // non-Exception Throwable would otherwise kill the worker permanently.
+        for (cmd in queue) {
+            try {
+                handle(cmd)
+            } catch (t: Throwable) {
+                Log.w(TAG, "announce worker error", t)
+                streaming = false
+                runCatching { sink.abort() }
+                setDucking(false)
+            }
+        }
     }
 
     fun onAudioStart(rate: Int, width: Int, channels: Int) {

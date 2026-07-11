@@ -36,4 +36,12 @@ class SettingsStoreTest {
         assertEquals("http://ha.local:8123", s.baseUrl)
         assertEquals("sensor.x", s.temperatureEntityId)
     }
+
+    @Test
+    fun vacaSettingsSurviveClearAuth() {
+        val s: SettingsStore = InMemorySettingsStore()
+        s.vacaSettingsJson = """{"screen_brightness":40}"""
+        s.clearAuth()
+        assertEquals("""{"screen_brightness":40}""", s.vacaSettingsJson)
+    }
 }

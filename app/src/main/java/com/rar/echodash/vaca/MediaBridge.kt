@@ -1,5 +1,8 @@
 package com.rar.echodash.vaca
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -20,6 +23,13 @@ interface MediaEngine {
     var onPlayingChanged: ((Boolean) -> Unit)?
 }
 
+/** Read-side snapshot of the on-device player for the Media panel. */
+data class MediaUiState(
+    val playing: Boolean = false,
+    val nowPlaying: String = "Nothing playing",
+    val volume: Int = 90,
+)
+
 /**
  * Drives the HA media_player entity: play-media/play/pause/stop/set-volume
  * actions, music_volume + ducking_volume settings, playing-state status.
@@ -32,8 +42,12 @@ class MediaBridge(
     private var duckingVolume = 1  // 1..10 scale, integration default
     private var ducked = false
 
+    private val _ui = MutableStateFlow(MediaUiState(volume = volumePercent))
+    val ui: StateFlow<MediaUiState> = _ui
+
     init {
         engine.onPlayingChanged = { playing ->
+            _ui.update { it.copy(playing = playing) }
             sendStatus(buildJsonObject {
                 putJsonObject("media_player") { put("playing", playing) }
             })
@@ -45,19 +59,31 @@ class MediaBridge(
         "play-media" -> {
             payloadVolume(payload)?.let { volumePercent = it }
             applyVolume()
-            payloadUrl(payload)?.let { engine.play(it) }
+            val url = payloadUrl(payload)
+            if (url != null) {
+                engine.play(url)
+                _ui.update { it.copy(nowPlaying = url, volume = volumePercent) }
+            } else {
+                _ui.update { it.copy(volume = volumePercent) }
+            }
             true
         }
         "play" -> {
             payloadVolume(payload)?.let { volumePercent = it }
             applyVolume()
             engine.resume()
+            _ui.update { it.copy(volume = volumePercent) }
             true
         }
         "pause" -> { engine.pause(); true }
-        "stop" -> { engine.stop(); true }
+        "stop" -> {
+            engine.stop()
+            _ui.update { it.copy(playing = false, nowPlaying = "Nothing playing") }
+            true
+        }
         "set-volume" -> {
             payloadVolume(payload)?.let { volumePercent = it; applyVolume() }
+            _ui.update { it.copy(volume = volumePercent) }
             true
         }
         else -> false
@@ -73,7 +99,7 @@ class MediaBridge(
             duckingVolume = it.coerceIn(0, 10)
             changed = true
         }
-        if (changed) applyVolume()
+        if (changed) { applyVolume(); _ui.update { it.copy(volume = volumePercent) } }
     }
 
     fun setDucked(ducked: Boolean) {

@@ -93,4 +93,18 @@ class MediaBridgeTest {
         assertFalse(bridge.handleAction("toast-message", null))
         assertEquals(0, engine.calls.size)
     }
+
+    @Test
+    fun uiStateTracksPlayNowPlayingVolumeAndStop() {
+        val engine = FakeEngine()
+        val bridge = MediaBridge(engine) {}
+        bridge.handleAction("play-media", json("""{"url":"http://radio/stream.mp3","volume":80}"""))
+        assertEquals("http://radio/stream.mp3", bridge.ui.value.nowPlaying)
+        assertEquals(80, bridge.ui.value.volume)
+        engine.onPlayingChanged!!.invoke(true)
+        assertTrue(bridge.ui.value.playing)
+        bridge.handleAction("stop", null)
+        assertFalse(bridge.ui.value.playing)
+        assertEquals("Nothing playing", bridge.ui.value.nowPlaying)
+    }
 }

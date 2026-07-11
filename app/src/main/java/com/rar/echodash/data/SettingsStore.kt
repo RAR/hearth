@@ -10,7 +10,6 @@ interface SettingsStore {
     var accessToken: String?
     var accessTokenExpiresAt: Long
     var refreshToken: String?
-    var webhookId: String?
     var temperatureEntityId: String?
     fun clearAuth()
 }
@@ -20,14 +19,12 @@ class InMemorySettingsStore : SettingsStore {
     override var accessToken: String? = null
     override var accessTokenExpiresAt: Long = 0L
     override var refreshToken: String? = null
-    override var webhookId: String? = null
     override var temperatureEntityId: String? = null
 
     override fun clearAuth() {
         accessToken = null
         accessTokenExpiresAt = 0L
         refreshToken = null
-        webhookId = null
     }
 }
 
@@ -53,8 +50,6 @@ class PrefsSettingsStore(context: Context) : SettingsStore {
         set(v) = prefs.edit().putLong("access_token_expires_at", v).apply()
     override var refreshToken: String?
         get() = string("refresh_token"); set(v) = put("refresh_token", v)
-    override var webhookId: String?
-        get() = string("webhook_id"); set(v) = put("webhook_id", v)
     override var temperatureEntityId: String?
         get() = string("temperature_entity_id"); set(v) = put("temperature_entity_id", v)
 
@@ -63,7 +58,6 @@ class PrefsSettingsStore(context: Context) : SettingsStore {
             .remove("access_token")
             .remove("access_token_expires_at")
             .remove("refresh_token")
-            .remove("webhook_id")
             .apply()
     }
 }

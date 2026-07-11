@@ -2,7 +2,6 @@ package com.rar.echodash.ui
 
 import android.annotation.SuppressLint
 import android.net.Uri
-import android.os.Build
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -32,8 +31,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.rar.echodash.data.SettingsStore
 import com.rar.echodash.ha.AuthManager
-import com.rar.echodash.ha.DeviceInfo
-import com.rar.echodash.ha.RegistrationClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -56,7 +53,6 @@ private sealed interface SetupPhase {
 fun SetupScreen(
     settings: SettingsStore,
     auth: AuthManager,
-    registration: RegistrationClient,
     onDone: () -> Unit,
 ) {
     var phase by remember { mutableStateOf<SetupPhase>(SetupPhase.EnterUrl) }
@@ -100,14 +96,6 @@ fun SetupScreen(
                     loginJob = scope.launch {
                         try {
                             auth.exchangeCode(code)
-                            registration.register(
-                                DeviceInfo(
-                                    deviceName = "Echo Dashboard",
-                                    manufacturer = Build.MANUFACTURER,
-                                    model = Build.MODEL,
-                                    osVersion = Build.VERSION.RELEASE ?: "?",
-                                )
-                            )
                             onDone()
                         } catch (e: CancellationException) {
                             throw e

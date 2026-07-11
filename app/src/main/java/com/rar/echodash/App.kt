@@ -15,7 +15,6 @@ import com.rar.echodash.data.SettingsStore
 import com.rar.echodash.ha.AuthManager
 import com.rar.echodash.ha.ConnState
 import com.rar.echodash.ha.HaWebSocket
-import com.rar.echodash.ha.RegistrationClient
 import com.rar.echodash.ui.DashboardScreen
 import com.rar.echodash.ui.EntityPickerScreen
 import com.rar.echodash.ui.SetupScreen
@@ -28,7 +27,6 @@ class AppDeps(context: Context) {
     val settings: SettingsStore = PrefsSettingsStore(context.applicationContext)
     val client = OkHttpClient()
     val auth = AuthManager(settings, client)
-    val registration = RegistrationClient(settings, auth, client)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val ws = HaWebSocket(settings, auth, client, scope)
 }
@@ -59,7 +57,7 @@ fun EchoDashApp(deps: AppDeps) {
 
     MaterialTheme(colorScheme = darkColorScheme()) {
         when (screen) {
-            Screen.Setup -> SetupScreen(deps.settings, deps.auth, deps.registration) {
+            Screen.Setup -> SetupScreen(deps.settings, deps.auth) {
                 screen = Screen.Picker
             }
             Screen.Picker -> EntityPickerScreen(deps.settings, deps.ws) {

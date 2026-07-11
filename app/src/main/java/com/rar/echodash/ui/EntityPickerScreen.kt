@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import com.rar.echodash.data.SettingsStore
 import com.rar.echodash.ha.EntityState
 import com.rar.echodash.ha.HaWebSocket
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 
 const val DEFAULT_TEMPERATURE_ENTITY = "sensor.outside_temperature"
@@ -48,8 +50,12 @@ fun EntityPickerScreen(settings: SettingsStore, ws: HaWebSocket, onPicked: () ->
                 compareByDescending<EntityState> { it.entityId == DEFAULT_TEMPERATURE_ENTITY }
                     .thenBy { it.friendlyName ?: it.entityId }
             )
+        } catch (e: TimeoutCancellationException) {
+            error = "Couldn't load sensors: timed out"
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            error = "Couldn't load sensors: ${e.message}"
+            error = "Couldn't load sensors: ${e.message ?: e.javaClass.simpleName}"
         }
     }
 

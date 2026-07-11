@@ -71,56 +71,6 @@ class HaWebSocketTest {
     }
 
     @Test
-    fun connectsAuthenticatesSubscribesAndReceivesReading() = runBlocking {
-        MockWebServer().use { server ->
-            server.enqueue(MockResponse().withWebSocketUpgrade(haServerListener()))
-            server.start()
-            val settings = InMemorySettingsStore().apply {
-                baseUrl = server.url("/").toString().trimEnd('/')
-                accessToken = "AT"
-                accessTokenExpiresAt = Long.MAX_VALUE
-            }
-            val client = OkHttpClient()
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-            val ws = HaWebSocket(settings, AuthManager(settings, client) { 0L }, client, scope) { 42L }
-            try {
-                ws.start("sensor.outside_temperature")
-                val reading = withTimeout(10_000) { ws.reading.first { it != null } }!!
-                assertEquals("15.6", reading.value)
-                assertEquals("°C", reading.unit)
-                assertEquals(42L, reading.updatedAtMs)
-                assertEquals(ConnState.CONNECTED, ws.connectionState.value)
-            } finally {
-                ws.stop(); scope.cancel()
-            }
-        }
-    }
-
-    @Test
-    fun fetchesTemperatureSensorsViaGetStates() = runBlocking {
-        MockWebServer().use { server ->
-            server.enqueue(MockResponse().withWebSocketUpgrade(haServerListener()))
-            server.start()
-            val settings = InMemorySettingsStore().apply {
-                baseUrl = server.url("/").toString().trimEnd('/')
-                accessToken = "AT"
-                accessTokenExpiresAt = Long.MAX_VALUE
-            }
-            val client = OkHttpClient()
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-            val ws = HaWebSocket(settings, AuthManager(settings, client) { 0L }, client, scope)
-            try {
-                ws.start(null)
-                val sensors = withTimeout(10_000) { ws.fetchTemperatureSensors() }
-                assertEquals(1, sensors.size)
-                assertEquals("sensor.outside_temperature", sensors[0].entityId)
-            } finally {
-                ws.stop(); scope.cancel()
-            }
-        }
-    }
-
-    @Test
     fun failsPendingRequestWhenSocketDropsBeforeResult() = runBlocking {
         MockWebServer().use { server ->
             // Server auths OK but closes the socket on get_states without ever sending a result.
@@ -146,10 +96,10 @@ class HaWebSocketTest {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             val ws = HaWebSocket(settings, AuthManager(settings, client) { 0L }, client, scope)
             try {
-                ws.start(null)
+                ws.start()
                 try {
-                    withTimeout(10_000) { ws.fetchTemperatureSensors() }
-                    fail("expected fetchTemperatureSensors to fail when socket drops")
+                    withTimeout(10_000) { ws.request("get_states") }
+                    fail("expected request to fail when socket drops")
                 } catch (e: IOException) {
                     // expected: pending request failed on disconnect
                 }
@@ -172,7 +122,7 @@ class HaWebSocketTest {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             val ws = HaWebSocket(settings, AuthManager(settings, client) { 0L }, client, scope)
             try {
-                ws.start(null)
+                ws.start()
                 val result = withTimeout(10_000) { ws.request("get_states") }!!
                 assertEquals("sensor.outside_temperature",
                     result.jsonArray[0].jsonObject["entity_id"]!!.jsonPrimitive.contentOrNull)
@@ -193,7 +143,7 @@ class HaWebSocketTest {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             val ws = HaWebSocket(settings, AuthManager(settings, client) { 0L }, client, scope)
             try {
-                ws.start(null)
+                ws.start()
                 val received = CompletableDeferred<JsonObject>()
                 withTimeout(10_000) {
                     ws.subscribe("subscribe_entities",

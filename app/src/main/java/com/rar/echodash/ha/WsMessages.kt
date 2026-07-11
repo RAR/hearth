@@ -6,7 +6,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -19,14 +18,6 @@ sealed interface WsIncoming {
     data class Result(val id: Int, val success: Boolean, val result: JsonElement?) : WsIncoming
     data class Unknown(val type: String) : WsIncoming
 }
-
-/** Full entity state from get_states (temperature picker path only; removed with that path). */
-data class SensorEntity(
-    val entityId: String,
-    val state: String,
-    val unit: String?,
-    val friendlyName: String?,
-)
 
 object WsParser {
     private val json = Json { ignoreUnknownKeys = true }
@@ -51,19 +42,4 @@ object WsParser {
             else -> WsIncoming.Unknown(type ?: "?")
         }
     }
-
-    fun temperatureSensors(result: JsonElement): List<SensorEntity> =
-        result.jsonArray.mapNotNull { el ->
-            val obj = el.jsonObject
-            val id = obj["entity_id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-            if (!id.startsWith("sensor.")) return@mapNotNull null
-            val attrs = obj["attributes"]?.jsonObject ?: return@mapNotNull null
-            if (attrs["device_class"]?.jsonPrimitive?.contentOrNull != "temperature") return@mapNotNull null
-            SensorEntity(
-                entityId = id,
-                state = obj["state"]?.jsonPrimitive?.contentOrNull ?: "?",
-                unit = attrs["unit_of_measurement"]?.jsonPrimitive?.contentOrNull,
-                friendlyName = attrs["friendly_name"]?.jsonPrimitive?.contentOrNull,
-            )
-        }
 }

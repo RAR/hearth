@@ -19,8 +19,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -28,8 +27,6 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 
 enum class ConnState { CONNECTING, CONNECTED, OFFLINE, AUTH_FAILED }
-
-data class TempReading(val value: String, val unit: String?, val updatedAtMs: Long)
 
 fun wsUrl(baseUrl: String): String = baseUrl.replaceFirst("http", "ws") + "/api/websocket"
 
@@ -39,15 +36,12 @@ fun backoffMs(attempt: Int): Long =
 /** General Home Assistant WebSocket client: request/reply + id-routed subscriptions. */
 interface HaClient {
     val connectionState: StateFlow<ConnState>
-    /** Send a command and await its "result" payload. Throws [IOException] if the socket drops first. */
     suspend fun request(type: String, fields: JsonObject = JsonObject(emptyMap())): JsonElement?
-    /** Subscribe; [onEvent] receives each event's inner "event" object. Returns the subscription id. */
     suspend fun subscribe(
         type: String,
         fields: JsonObject = JsonObject(emptyMap()),
         onEvent: (JsonObject) -> Unit,
     ): Int
-    /** Cancel a subscription created by [subscribe]. */
     suspend fun unsubscribe(subId: Int)
 }
 
@@ -56,15 +50,9 @@ class HaWebSocket(
     private val auth: AuthManager,
     private val client: OkHttpClient,
     private val scope: CoroutineScope,
-    private val clock: () -> Long = System::currentTimeMillis,
 ) : HaClient {
     private val _connectionState = MutableStateFlow(ConnState.OFFLINE)
     override val connectionState: StateFlow<ConnState> = _connectionState
-
-    // --- legacy single-temperature path (removed in Task 11) ---
-    private val _reading = MutableStateFlow<TempReading?>(null)
-    val reading: StateFlow<TempReading?> = _reading
-    @Volatile private var entityId: String? = null
 
     private var job: Job? = null
     @Volatile private var socket: WebSocket? = null
@@ -72,8 +60,7 @@ class HaWebSocket(
     private val pending = ConcurrentHashMap<Int, CompletableDeferred<JsonElement?>>()
     private val subscriptions = ConcurrentHashMap<Int, (JsonObject) -> Unit>()
 
-    fun start(entityId: String?) {
-        this.entityId = entityId
+    fun start() {
         job?.cancel()
         socket?.cancel()
         job = scope.launch { runLoop() }
@@ -92,12 +79,7 @@ class HaWebSocket(
         val id = idCounter.getAndIncrement()
         val deferred = CompletableDeferred<JsonElement?>()
         pending[id] = deferred
-        val command = buildJsonObject {
-            put("id", JsonPrimitive(id))
-            put("type", JsonPrimitive(type))
-            fields.forEach { (k, v) -> put(k, v) }
-        }
-        socket?.send(command.toString()) ?: run { pending.remove(id); throw IOException("websocket closed") }
+        socket?.send(command(id, type, fields)) ?: run { pending.remove(id); throw IOException("websocket closed") }
         return try {
             deferred.await()
         } finally {
@@ -105,26 +87,17 @@ class HaWebSocket(
         }
     }
 
-    override suspend fun subscribe(
-        type: String,
-        fields: JsonObject,
-        onEvent: (JsonObject) -> Unit,
-    ): Int {
+    override suspend fun subscribe(type: String, fields: JsonObject, onEvent: (JsonObject) -> Unit): Int {
         connectionState.first { it == ConnState.CONNECTED }
         val id = idCounter.getAndIncrement()
         subscriptions[id] = onEvent
         val deferred = CompletableDeferred<JsonElement?>()
         pending[id] = deferred
-        val command = buildJsonObject {
-            put("id", JsonPrimitive(id))
-            put("type", JsonPrimitive(type))
-            fields.forEach { (k, v) -> put(k, v) }
-        }
-        socket?.send(command.toString()) ?: run {
+        socket?.send(command(id, type, fields)) ?: run {
             pending.remove(id); subscriptions.remove(id); throw IOException("websocket closed")
         }
         try {
-            deferred.await() // wait for the subscribe result ack; events follow on the same id
+            deferred.await()
         } finally {
             pending.remove(id)
         }
@@ -138,11 +111,12 @@ class HaWebSocket(
         }
     }
 
-    /** Fetch temperature sensors (legacy picker path; removed in Task 11). */
-    suspend fun fetchTemperatureSensors(): List<SensorEntity> {
-        val result = request("get_states") ?: return emptyList()
-        return WsParser.temperatureSensors(result)
-    }
+    private fun command(id: Int, type: String, fields: JsonObject): String =
+        buildJsonObject {
+            put("id", JsonPrimitive(id))
+            put("type", JsonPrimitive(type))
+            fields.forEach { (k, v) -> put(k, v) }
+        }.toString()
 
     private suspend fun runLoop() {
         var attempt = 0
@@ -196,7 +170,6 @@ class HaWebSocket(
                         is WsIncoming.AuthOk -> {
                             session.sawAuthOk = true
                             _connectionState.value = ConnState.CONNECTED
-                            entityId?.let { id -> subscribeTemp(webSocket, id) }
                         }
                         is WsIncoming.AuthInvalid -> {
                             auth.invalidateAccessToken()
@@ -220,24 +193,5 @@ class HaWebSocket(
                 session.closed.complete(Unit)
             }
         })
-    }
-
-    /** Legacy: subscribe one temp sensor and push [_reading]. Removed in Task 11. */
-    private fun subscribeTemp(webSocket: WebSocket, id: String) {
-        val subId = idCounter.getAndIncrement()
-        subscriptions[subId] = { event -> applyTempEvent(event, id) }
-        webSocket.send("""{"id":$subId,"type":"subscribe_entities","entity_ids":["$id"]}""")
-    }
-
-    private fun applyTempEvent(event: JsonObject, id: String) {
-        val patch = (event["a"] as? JsonObject)?.get(id)?.jsonObject
-            ?: (event["c"] as? JsonObject)?.get(id)?.jsonObject?.get("+")?.jsonObject
-            ?: return
-        val prev = _reading.value
-        val state = (patch["s"] as? JsonPrimitive)?.contentOrNull ?: prev?.value ?: return
-        val unit = (patch["a"] as? JsonObject)?.get("unit_of_measurement")?.let {
-            (it as? JsonPrimitive)?.contentOrNull
-        } ?: prev?.unit
-        _reading.value = TempReading(value = state, unit = unit, updatedAtMs = clock())
     }
 }

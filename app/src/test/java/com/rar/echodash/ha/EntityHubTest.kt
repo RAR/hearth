@@ -28,12 +28,18 @@ class EntityHubTest {
         val handlers = mutableMapOf<Int, (JsonObject) -> Unit>()
         val unsubscribed = mutableListOf<Int>()
         private var nextId = 100
+        /** Number of subsequent subscribe() calls that should throw IOException instead of succeeding. */
+        var subscribeFailures = 0
 
         override suspend fun request(type: String, fields: JsonObject): JsonElement? {
             requests += type to fields
             return if (results.isEmpty()) null else results.removeFirst()
         }
         override suspend fun subscribe(type: String, fields: JsonObject, onEvent: (JsonObject) -> Unit): Int {
+            if (subscribeFailures > 0) {
+                subscribeFailures--
+                throw java.io.IOException("socket dropped mid-subscribe")
+            }
             subscribed += type to fields
             val id = nextId++
             handlers[id] = onEvent
@@ -88,6 +94,53 @@ class EntityHubTest {
         // a second subscribe_entities was opened (the first is index 0; subscribe_events is index 1)
         assertEquals(2, fake.subscribed.count { it.first == "subscribe_entities" })
         assertEquals(listOf("light.kitchen", "light.lamp"), hub.registry.value.allEntityIds)
+    }
+
+    @Test
+    fun reconnectReSubscribesAfterOfflineThenConnected() = runTest {
+        val fake = FakeHaClient()
+        fake.results.add(Json.parseToJsonElement(registryJson))
+        val hub = EntityHub(fake, backgroundScope) { 0L }
+        hub.start()
+        fake.state.value = ConnState.CONNECTED
+        runCurrent()
+        assertEquals(1, fake.subscribed.count { it.first == "subscribe_entities" })
+
+        // socket drops, then reconnects
+        fake.state.value = ConnState.OFFLINE
+        runCurrent()
+        fake.results.add(Json.parseToJsonElement(registryJson))
+        fake.state.value = ConnState.CONNECTED
+        runCurrent()
+
+        // a second subscribe_entities subscription was opened on the reconnect
+        assertEquals(2, fake.subscribed.count { it.first == "subscribe_entities" })
+    }
+
+    @Test
+    fun collectorSurvivesIOExceptionDuringResyncAndRetriesOnNextConnected() = runTest {
+        val fake = FakeHaClient()
+        fake.results.add(Json.parseToJsonElement(registryJson))
+        // simulate the socket dropping mid-resync: the subscribe_entities call throws IOException
+        fake.subscribeFailures = 1
+        val hub = EntityHub(fake, backgroundScope) { 0L }
+        hub.start()
+        fake.state.value = ConnState.CONNECTED
+        runCurrent()
+
+        // the failed resync must not kill the connectionState collector, and must not have
+        // recorded a subscription
+        assertEquals(0, fake.subscribed.count { it.first == "subscribe_entities" })
+
+        // next CONNECTED transition retries and this time succeeds, proving the collector
+        // coroutine survived the uncaught IOException from the prior resync attempt
+        fake.state.value = ConnState.OFFLINE
+        runCurrent()
+        fake.results.add(Json.parseToJsonElement(registryJson))
+        fake.state.value = ConnState.CONNECTED
+        runCurrent()
+
+        assertEquals(1, fake.subscribed.count { it.first == "subscribe_entities" })
     }
 
     @Test

@@ -1121,6 +1121,11 @@ git add app/src/main/java/com/rar/echodash/ha/EntityHub.kt app/src/test/java/com
 git commit -m "feat: EntityHub orchestrator with label resolution and re-subscribe"
 ```
 
+**Deviation (2026-07-11, review finding):** `resync()`/`onRegistryUpdated()` guarded against a
+mid-cycle `IOException` (socket drop during `subscribe`) so the reconnect collector survives —
+previously an uncaught `IOException` would kill the `connectionState.collect` coroutine
+permanently. Code no longer matches Step 3 verbatim.
+
 ---
 
 ### Task 4: Lights + Solar panel models (pure)

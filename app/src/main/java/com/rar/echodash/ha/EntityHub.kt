@@ -1,5 +1,6 @@
 package com.rar.echodash.ha
 
+import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,9 +46,13 @@ class EntityHub(
         _registry.value = reg
         matched = reg.allEntityIds
         _entities.value = emptyMap()
-        openEntitiesSubscription()
-        client.subscribe("subscribe_events", buildJsonObject { put("event_type", "entity_registry_updated") }) {
-            scope.launch { onRegistryUpdated() }
+        try {
+            openEntitiesSubscription()
+            client.subscribe("subscribe_events", buildJsonObject { put("event_type", "entity_registry_updated") }) {
+                scope.launch { onRegistryUpdated() }
+            }
+        } catch (e: IOException) {
+            // socket dropped mid-resync; the next CONNECTED transition retries from scratch
         }
     }
 
@@ -56,10 +61,14 @@ class EntityHub(
         _registry.value = reg
         val newMatched = reg.allEntityIds
         if (newMatched.toSet() != matched.toSet()) {
-            entitiesSubId?.let { client.unsubscribe(it) }
-            matched = newMatched
-            _entities.value = emptyMap()
-            openEntitiesSubscription()
+            try {
+                entitiesSubId?.let { client.unsubscribe(it) }
+                matched = newMatched
+                _entities.value = emptyMap()
+                openEntitiesSubscription()
+            } catch (e: IOException) {
+                // socket dropped mid-update; the next CONNECTED transition resyncs from scratch
+            }
         }
     }
 

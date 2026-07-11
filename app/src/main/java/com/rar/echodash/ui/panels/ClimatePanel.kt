@@ -3,12 +3,12 @@ package com.rar.echodash.ui.panels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -42,7 +42,9 @@ fun ClimatePanel(
             return@PanelSurface
         }
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            thermostats.forEach { t -> Thermostat(t, connected, onSetTemperature, onSetHvacMode) }
+            thermostats.forEach { t ->
+                Thermostat(t, connected, onSetTemperature, onSetHvacMode, Modifier.weight(1f))
+            }
         }
     }
 }
@@ -53,6 +55,7 @@ private fun Thermostat(
     connected: Boolean,
     onSetTemperature: (String, Double) -> Unit,
     onSetHvacMode: (String, String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
     var shown by remember(t.entityId) { mutableDoubleStateOf(t.target ?: t.minTemp) }
@@ -64,8 +67,7 @@ private fun Thermostat(
     val enabled = connected && t.available
 
     Column(
-        Modifier
-            .width(280.dp)
+        modifier
             .fillMaxHeight()
             .clip(RoundedCornerShape(20.dp))
             .background(Color(0xFF1B1F2A))
@@ -102,16 +104,15 @@ private fun Thermostat(
 
 @Composable
 private fun StepButton(label: String, enabled: Boolean, onClick: () -> Unit) {
-    Text(
-        label,
-        color = Color.White,
-        fontSize = 28.sp,
+    Box(
+        contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(56.dp)
             .clip(CircleShape)
             .background(Color(0xFF2A2F3C))
             .alpha(if (enabled) 1f else 0.4f)
-            .clickable(enabled = enabled) { onClick() }
-            .padding(top = 8.dp),
-    )
+            .clickable(enabled = enabled) { onClick() },
+    ) {
+        Text(label, color = Color.White, fontSize = 28.sp)
+    }
 }

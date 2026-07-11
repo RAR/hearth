@@ -35,7 +35,7 @@ Once the VACA integration connects, the device exposes in HA: screen on/off, bri
 
 ## Label scheme
 
-Tag entities with these labels in Home Assistant (Settings → Areas & Labels → Labels, then assign on each entity). Matching is by label id, case-insensitive.
+Tag entities with these labels in Home Assistant (Settings → Areas & Labels → Labels, then assign on each entity). Matching is by label id, case-insensitive. HA internally slugifies a label's display name to an underscore id (e.g. "Echo Climate" → `echo_climate`); the app normalizes underscores to hyphens, so naming the label `echo-climate` (or "Echo Climate") in the HA UI is correct as documented below.
 
 | Label | Role |
 |---|---|

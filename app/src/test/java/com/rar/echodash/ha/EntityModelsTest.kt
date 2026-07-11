@@ -25,6 +25,18 @@ class EntityModelsTest {
     }
 
     @Test
+    fun normalizesUnderscoreSlugifiedLabelIdsToHyphenated() {
+        val reg = parseEntityRegistry(json(
+            """[
+              {"entity_id":"climate.hall","labels":["echo_climate"],"name":null,"original_name":"Hall"},
+              {"entity_id":"light.lamp","labels":["echo_lights_living_room"],"name":null,"original_name":"Lamp"}
+            ]"""
+        ))
+        assertEquals(listOf("climate.hall"), reg.labelToEntities["echo-climate"])
+        assertEquals(listOf("light.lamp"), reg.labelToEntities["echo-lights-living-room"])
+    }
+
+    @Test
     fun displayNamePrefersRegistryNameThenFriendlyThenId() {
         val reg = parseEntityRegistry(json(
             """[

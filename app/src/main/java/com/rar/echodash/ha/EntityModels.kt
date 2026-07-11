@@ -45,7 +45,7 @@ fun parseEntityRegistry(result: JsonElement): RegistryIndex {
         val obj = el.jsonObject
         val id = (obj["entity_id"] as? JsonPrimitive)?.contentOrNull ?: continue
         val labels = (obj["labels"] as? JsonArray)
-            ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.lowercase() }
+            ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.lowercase()?.replace('_', '-') }
             ?.filter { it.startsWith("echo-") }
             .orEmpty()
         if (labels.isEmpty()) continue

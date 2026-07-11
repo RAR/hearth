@@ -35,7 +35,7 @@ Layered bottom-up:
 
 ## Label scheme & EntityHub
 
-Labels the user creates in HA (matched by label **id/slug**, case-insensitive):
+Labels the user creates in HA (matched by label **id/slug**, case-insensitive). (2026-07-11: HA slugifies label names to underscore ids internally — e.g. `echo_climate` — so the app normalizes underscores to hyphens before matching against the hyphenated `echo-*` constants below.)
 
 | Label | Role |
 |---|---|

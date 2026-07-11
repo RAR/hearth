@@ -7,8 +7,12 @@ import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.rar.echodash.vaca.AndroidKioskDevice
 
 class MainActivity : ComponentActivity() {
+    private lateinit var deps: AppDeps
+    private var attachedHooks: AndroidKioskDevice.WindowHooks? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -18,7 +22,39 @@ class MainActivity : ComponentActivity() {
             systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
-        val deps = AppDeps(applicationContext)
+        deps = (application as EchoDashApplication).deps
+        val hooks = object : AndroidKioskDevice.WindowHooks {
+            override fun setWindowBrightness(percent: Int) {
+                window.attributes = window.attributes.apply {
+                    screenBrightness = if (percent < 0) {
+                        WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                    } else {
+                        (percent.coerceIn(0, 100) / 100f).coerceAtLeast(0.01f)
+                    }
+                }
+            }
+
+            override fun setKeepScreenOn(on: Boolean) {
+                if (on) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
+        }
+        attachedHooks = hooks
+        deps.kioskDevice.attach(hooks)
+        deps.kiosk.pushToDevice()
         setContent { EchoDashApp(deps) }
+    }
+
+    override fun onDestroy() {
+        attachedHooks?.let { deps.kioskDevice.detach(it) }
+        super.onDestroy()
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        deps.kiosk.onUserInteraction()
     }
 }

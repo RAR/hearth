@@ -18,6 +18,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +33,8 @@ import com.rar.echodash.data.SettingsStore
 import com.rar.echodash.ha.AuthManager
 import com.rar.echodash.ha.DeviceInfo
 import com.rar.echodash.ha.RegistrationClient
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 fun normalizeBaseUrl(input: String): String? {
@@ -58,6 +61,7 @@ fun SetupScreen(
     var phase by remember { mutableStateOf<SetupPhase>(SetupPhase.EnterUrl) }
     var error by remember { mutableStateOf<String?>(null) }
     var urlText by remember { mutableStateOf(settings.baseUrl ?: "") }
+    var loginJob by remember { mutableStateOf<Job?>(null) }
     val scope = rememberCoroutineScope()
 
     when (val p = phase) {
@@ -87,36 +91,53 @@ fun SetupScreen(
             }) { Text("Connect") }
         }
 
-        is SetupPhase.Login -> AuthWebView(
-            authorizeUrl = p.authorizeUrl,
-            onCode = { code ->
-                phase = SetupPhase.Working
-                scope.launch {
-                    try {
-                        auth.exchangeCode(code)
-                        registration.register(
-                            DeviceInfo(
-                                deviceName = "Echo Dashboard",
-                                manufacturer = Build.MANUFACTURER,
-                                model = Build.MODEL,
-                                osVersion = Build.VERSION.RELEASE ?: "?",
+        is SetupPhase.Login -> Box(Modifier.fillMaxSize()) {
+            AuthWebView(
+                authorizeUrl = p.authorizeUrl,
+                onCode = { code ->
+                    phase = SetupPhase.Working
+                    loginJob = scope.launch {
+                        try {
+                            auth.exchangeCode(code)
+                            registration.register(
+                                DeviceInfo(
+                                    deviceName = "Echo Dashboard",
+                                    manufacturer = Build.MANUFACTURER,
+                                    model = Build.MODEL,
+                                    osVersion = Build.VERSION.RELEASE ?: "?",
+                                )
                             )
-                        )
-                        onDone()
-                    } catch (e: Exception) {
-                        error = "Login failed: ${e.message}"
-                        phase = SetupPhase.EnterUrl
+                            onDone()
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            error = "Login failed: ${e.message}"
+                            phase = SetupPhase.EnterUrl
+                        }
                     }
-                }
-            },
-            onError = { msg ->
-                error = "Can't reach Home Assistant: $msg"
-                phase = SetupPhase.EnterUrl
-            },
-        )
+                },
+                onError = { msg ->
+                    error = "Can't reach Home Assistant: $msg"
+                    phase = SetupPhase.EnterUrl
+                },
+            )
+            TextButton(
+                onClick = { phase = SetupPhase.EnterUrl },
+                modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+            ) { Text("Cancel") }
+        }
 
-        SetupPhase.Working -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        SetupPhase.Working -> Column(
+            Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             CircularProgressIndicator()
+            TextButton(onClick = {
+                loginJob?.cancel()
+                loginJob = null
+                phase = SetupPhase.EnterUrl
+            }) { Text("Cancel") }
         }
     }
 }

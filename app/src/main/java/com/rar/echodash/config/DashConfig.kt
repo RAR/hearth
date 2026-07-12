@@ -79,6 +79,9 @@ data class PanelOptions(
     val doorbellPopupSeconds: Int = 30,
 )
 
+@Serializable
+data class VoiceSettings(val enabled: Boolean = false)
+
 /** The whole device configuration; one versioned document persisted at filesDir/config.json. */
 @Serializable
 data class DashConfig(
@@ -87,6 +90,7 @@ data class DashConfig(
     val entities: Entities = Entities(),
     val home: HomeSettings = HomeSettings(),
     val panelOptions: PanelOptions = PanelOptions(),
+    val voice: VoiceSettings = VoiceSettings(),
 ) {
     /** Every entity id referenced anywhere, first-seen order, de-duplicated (EntityHub watched set). */
     fun referencedEntityIds(): List<String> = buildList {

@@ -204,4 +204,25 @@ class DashConfigTest {
         )
         assertEquals(listOf("sensor.t", "camera.fd", "binary_sensor.v"), cfg.referencedEntityIds())
     }
+
+    @Test
+    fun voiceDefaultsOff() {
+        assertEquals(false, DashConfig().voice.enabled)
+        // absent from JSON -> default off, unknown-key tolerant
+        val cfg = decodeConfig("""{"version":1}""")
+        assertEquals(false, cfg.voice.enabled)
+    }
+
+    @Test
+    fun voiceRoundTrips() {
+        val cfg = DashConfig(voice = VoiceSettings(enabled = true))
+        val text = ConfigJson.json.encodeToString(DashConfig.serializer(), cfg)
+        assertEquals(cfg, decodeConfig(text))
+        assertEquals(true, decodeConfig(text).voice.enabled)
+    }
+
+    @Test
+    fun voiceSurvivesClamped() {
+        assertEquals(true, DashConfig(voice = VoiceSettings(enabled = true)).clamped().voice.enabled)
+    }
 }

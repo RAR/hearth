@@ -54,6 +54,7 @@ import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
@@ -274,8 +275,19 @@ fun EchoDashApp(deps: AppDeps) {
                         )
                         if (cmd is PopupCommand.Show) {
                             doorbellPopup = DoorbellPopup(cmd.cameraName, cmd.untilMs)
-                            deps.kiosk.onUserInteraction() // force the screen on for the ring
-                            idleTimer.onInteraction()      // popup counts as activity; don't race idle-return
+                        }
+                    }
+
+                    // While a popup is visible, keep re-arming the screen/idle timeouts so the
+                    // backlight can't blank mid-ring even when the configured timeout is shorter
+                    // than the popup duration. Cancels on dismissal, so the prior state resumes.
+                    LaunchedEffect(doorbellPopup) {
+                        if (doorbellPopup != null) {
+                            while (true) {
+                                deps.kiosk.onUserInteraction()
+                                idleTimer.onInteraction()
+                                delay(5000L)
+                            }
                         }
                     }
 

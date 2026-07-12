@@ -1,6 +1,5 @@
 package com.rar.echodash.camera
 
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -87,6 +86,7 @@ fun CameraPlayer(
             }
         },
         update = { it.player = player },
+        onRelease = { it.player = null },
     )
 }
 

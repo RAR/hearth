@@ -157,4 +157,19 @@ class MediaBridgeTest {
         assertEquals(null, v.title)
         assertEquals("Nothing playing", bridge.ui.value.nowPlaying)
     }
+
+    @Test
+    fun playingCallbackReactivatesAfterStaleEnded() {
+        val engine = FakeEngine()
+        val store = NowPlayingStore()
+        val bridge = MediaBridge(engine, store) {}
+        bridge.handleAction("play-media", json("""{"url":"http://a.mp3","volume":70}"""))
+        // Track A ends just as a new play-media was handled: stale onEnded fires after activate.
+        engine.onEnded!!.invoke()
+        assertFalse(store.state.value.active)
+        // The new track's playback start must restore active.
+        engine.onPlayingChanged!!.invoke(true)
+        assertTrue(store.state.value.active)
+        assertTrue(store.state.value.playing)
+    }
 }

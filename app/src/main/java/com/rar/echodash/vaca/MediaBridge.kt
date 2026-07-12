@@ -46,11 +46,14 @@ class MediaBridge(
     private val nowPlaying: NowPlayingStore,
     private val sendStatus: (JsonObject) -> Unit,
 ) {
-    private var volumePercent = 90 // HA media player default volume_level 0.9
+    // active/playing/volumePercent are written from both the VACA server thread
+    // (handleAction) and the Android main thread (engine callbacks); @Volatile
+    // gives cross-thread visibility without needing a lock for these simple flags.
+    @Volatile private var volumePercent = 90 // HA media player default volume_level 0.9
     private var duckingVolume = 1  // 1..10 scale, integration default
     private var ducked = false
-    private var active = false   // engine has media loaded (play-media until stop/error)
-    private var playing = false  // mirrors the engine isPlaying callback
+    @Volatile private var active = false   // engine has media loaded (play-media until stop/error)
+    @Volatile private var playing = false  // mirrors the engine isPlaying callback
 
     /** Push the current engine snapshot into the NowPlayingStore. */
     private fun pushEngine() = nowPlaying.onEngine(active, playing, volumePercent)
@@ -61,6 +64,11 @@ class MediaBridge(
     init {
         engine.onPlayingChanged = { isPlaying ->
             playing = isPlaying
+            // A stale onEnded for a just-finished track can race a new play-media on the
+            // VACA thread and clear `active` after it was set for the new session. Engine
+            // callbacks are serialized on the main thread, so this later onPlayingChanged(true)
+            // for the new track corrects that: actually playing always implies media is loaded.
+            if (isPlaying) active = true
             _ui.update { it.copy(playing = isPlaying) }
             sendStatus(buildJsonObject {
                 putJsonObject("media_player") { put("playing", isPlaying) }

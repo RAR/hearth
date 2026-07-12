@@ -35,7 +35,7 @@ class DashConfigTest {
     @Test
     fun clampsOutOfRangeNumbers() {
         val cfg = DashConfig(
-            home = HomeSettings(idleReturnSeconds = 5, photoCacheCap = 999),
+            home = HomeSettings(idleReturnSeconds = 5, photoCacheCap = 999, slideshowSeconds = 9999),
             panelOptions = PanelOptions(thermostatStep = 12.0, forecastDays = 9, sensorDecimals = 8),
         ).clamped()
         assertEquals(15, cfg.home.idleReturnSeconds)   // floor 15
@@ -43,9 +43,10 @@ class DashConfigTest {
         assertEquals(5.0, cfg.panelOptions.thermostatStep, 0.0) // ceil 5.0
         assertEquals(5, cfg.panelOptions.forecastDays)  // ceil 5
         assertEquals(3, cfg.panelOptions.sensorDecimals) // ceil 3
+        assertEquals(3600, cfg.home.slideshowSeconds)   // ceil 3600
 
         val low = DashConfig(
-            home = HomeSettings(idleReturnSeconds = 9000, photoCacheCap = 1),
+            home = HomeSettings(idleReturnSeconds = 9000, photoCacheCap = 1, slideshowSeconds = 1),
             panelOptions = PanelOptions(thermostatStep = 0.0, forecastDays = 0, sensorDecimals = -1),
         ).clamped()
         assertEquals(3600, low.home.idleReturnSeconds)
@@ -53,6 +54,7 @@ class DashConfigTest {
         assertEquals(0.1, low.panelOptions.thermostatStep, 0.0001)
         assertEquals(1, low.panelOptions.forecastDays)
         assertEquals(0, low.panelOptions.sensorDecimals)
+        assertEquals(10, low.home.slideshowSeconds)     // floor 10
     }
 
     @Test

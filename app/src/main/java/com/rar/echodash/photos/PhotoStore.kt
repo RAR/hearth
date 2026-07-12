@@ -24,7 +24,6 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 
 object PhotoConfig {
-    const val CYCLE_MS = 5 * 60_000L
     const val SYNC_INTERVAL_MS = 6 * 60 * 60_000L
     const val MAX_W = 960
     const val MAX_H = 480

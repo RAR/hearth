@@ -82,6 +82,7 @@ fun DashboardShell(
                     }
                     HomeView(
                         photos = if (config.home.slideshowEnabled) photos else emptyList(),
+                        slideshowSeconds = config.home.slideshowSeconds,
                         pill = pill,
                         aqi = aqi,
                         clockFormat = config.home.clockFormat,

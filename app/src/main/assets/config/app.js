@@ -409,11 +409,12 @@ function renderHome() {
   const slide = el("input"); slide.type = "checkbox"; slide.checked = h.slideshowEnabled;
   slide.addEventListener("change", () => h.slideshowEnabled = slide.checked);
   host.appendChild(labeledRow("Photo slideshow", slide));
+  host.appendChild(labeledRow("Photo interval (s)", numberInput(h.slideshowSeconds, v => h.slideshowSeconds = Math.round(v))));
   const folder = el("input"); folder.value = h.photoFolder;
   folder.addEventListener("change", () => h.photoFolder = folder.value.trim());
   host.appendChild(labeledRow("Photo folder", folder));
   host.appendChild(labeledRow("Photo cache cap", numberInput(h.photoCacheCap, v => h.photoCacheCap = Math.round(v))));
-  host.appendChild(el("div", "muted", "Idle 15–3600 s, cap 5–500 (clamped on save)."));
+  host.appendChild(el("div", "muted", "Idle 15–3600 s, interval 10–3600 s, cap 5–500 (clamped on save)."));
 }
 
 function renderOptions() {

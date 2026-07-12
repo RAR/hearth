@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,11 +50,11 @@ import com.rar.echodash.config.ClockFormat
 import com.rar.echodash.ha.ConnState
 import com.rar.echodash.ui.model.AqiPill
 import com.rar.echodash.ui.model.WeatherPill
-import com.rar.echodash.photos.PhotoConfig
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.random.Random
 import kotlinx.coroutines.delay
 
@@ -91,21 +92,13 @@ private fun DuskBackground() {
     }
 }
 
-/** Photo slideshow backdrop; cycles shuffled cached photos every 5 min with a crossfade, else dusk. */
+/** Crossfading photo backdrop for the current slideshow [file]; dusk gradient when null/undecodable. */
 @Composable
-private fun PhotoBackdrop(photos: List<File>) {
-    if (photos.isEmpty()) { DuskBackground(); return }
-    val order = remember(photos) { photos.shuffled() }
-    var index by remember(order) { mutableIntStateOf(0) }
-    LaunchedEffect(order) {
-        while (true) {
-            delay(PhotoConfig.CYCLE_MS)
-            index = (index + 1) % order.size
-        }
-    }
-    Crossfade(targetState = order[index % order.size], animationSpec = tween(1000), label = "photo") { file ->
-        val bitmap = remember(file) {
-            runCatching { BitmapFactory.decodeFile(file.path)?.asImageBitmap() }.getOrNull()
+private fun PhotoBackdrop(file: File?) {
+    if (file == null) { DuskBackground(); return }
+    Crossfade(targetState = file, animationSpec = tween(1000), label = "photo") { f ->
+        val bitmap = remember(f) {
+            runCatching { BitmapFactory.decodeFile(f.path)?.asImageBitmap() }.getOrNull()
         }
         if (bitmap != null) {
             Image(bitmap, contentDescription = null, modifier = Modifier.fillMaxSize(),
@@ -120,6 +113,7 @@ private fun PhotoBackdrop(photos: List<File>) {
 @Composable
 fun HomeView(
     photos: List<File>,
+    slideshowSeconds: Int,
     pill: WeatherPill?,
     aqi: AqiPill?,
     clockFormat: ClockFormat,
@@ -133,12 +127,33 @@ fun HomeView(
     var menuOpen by remember { mutableStateOf(false) }
     val now by rememberMinuteTicker()
 
+    val order = remember(photos) { photos.shuffled() }
+    var photoIndex by remember(order) { mutableIntStateOf(0) }
+    // Keying on photoIndex re-arms the countdown, so a manual swipe restarts the timer.
+    LaunchedEffect(order, photoIndex, slideshowSeconds) {
+        if (order.size > 1) {
+            delay(slideshowSeconds * 1000L)
+            photoIndex += 1
+        }
+    }
+
     Box(
         modifier
             .fillMaxSize()
             .pointerInput(Unit) { detectTapGestures(onLongPress = { menuOpen = true }) }
+            .pointerInput(order) {
+                var dx = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { dx = 0f },
+                    onDragEnd = {
+                        if (order.size > 1 && abs(dx) > 60.dp.toPx()) {
+                            photoIndex += if (dx < 0) 1 else -1
+                        }
+                    },
+                ) { _, dragAmount -> dx += dragAmount }
+            }
     ) {
-        PhotoBackdrop(photos)
+        PhotoBackdrop(order.getOrNull(Math.floorMod(photoIndex, maxOf(order.size, 1))))
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
 
         Column(Modifier.align(Alignment.BottomStart).padding(start = 28.dp, bottom = 20.dp)) {

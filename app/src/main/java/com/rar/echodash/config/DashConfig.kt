@@ -49,6 +49,7 @@ data class HomeSettings(
     val slideshowEnabled: Boolean = true,
     val photoFolder: String = "echo-frame",
     val photoCacheCap: Int = 50,
+    val slideshowSeconds: Int = 300,
 )
 
 @Serializable
@@ -102,6 +103,7 @@ data class DashConfig(
         home = home.copy(
             idleReturnSeconds = home.idleReturnSeconds.coerceIn(15, 3600),
             photoCacheCap = home.photoCacheCap.coerceIn(5, 500),
+            slideshowSeconds = home.slideshowSeconds.coerceIn(10, 3600),
         ),
         panelOptions = panelOptions.copy(
             thermostatStep = panelOptions.thermostatStep.coerceIn(0.1, 5.0),

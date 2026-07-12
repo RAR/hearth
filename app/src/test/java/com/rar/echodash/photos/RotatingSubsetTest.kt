@@ -54,4 +54,28 @@ class RotatingSubsetTest {
         assertEquals(10, evicted)                                // ceil(50 * 0.20) = 10
         assertEquals(10, plan.toDownload.size)                   // refill back to 50
     }
+
+    @Test
+    fun shrunkCapConvergesInOnePass() {
+        // 100 cached keys, all still listed remotely, but the user lowered the cap to 50.
+        val listing = (1..100).map { photo("p$it.jpg") }
+        val cached = (1..100).map { keyOf("p$it.jpg") }.toSet()
+        val plan = rotatingSubset(listing, cached, cap = 50, random = Random(4))
+        val evicted = plan.toDeleteKeys.count { it in cached }
+        val kept = 100 - evicted
+        assertEquals(50, kept + plan.toDownload.size)
+        assertEquals(50, kept)                                   // result never exceeds cap
+    }
+
+    @Test
+    fun evictionNeverExceedsReplacements() {
+        // cap 50, 50 surviving cached keys, but only 1 never-cached remote item is available.
+        val listing = (1..50).map { photo("p$it.jpg") } + photo("new.jpg")
+        val cached = (1..50).map { keyOf("p$it.jpg") }.toSet()
+        val plan = rotatingSubset(listing, cached, cap = 50, random = Random(5))
+        val evicted = plan.toDeleteKeys.count { it in cached }
+        assertEquals(1, evicted)                                 // can't evict more than the 1 replacement
+        assertEquals(1, plan.toDownload.size)
+        assertEquals(50, (50 - evicted) + plan.toDownload.size)  // final cache size stays at cap
+    }
 }

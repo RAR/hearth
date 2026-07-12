@@ -888,6 +888,8 @@ git add app/src/main/java/com/rar/echodash/photos/RotatingSubset.kt app/src/test
 git commit -m "feat: rotating-subset selection for bounded photo cache"
 ```
 
+**Deviation note (per task review):** the plan's original over-cap arithmetic (`evictCount = ceil(survivors * 0.20)`, refill to cap) could leave the result above `cap` when `cachedKeys` reflected a previously larger cap, and could evict more survivors than there were never-cached items to replace them. The shipped algorithm adds an availability clamp (`rotationEvict = min(ceil(survivors * 0.20), neverCached.size)`) and an over-cap convergence term (`overCapEvict = max(0, survivors - rotationEvict - cap)`) so the result never exceeds `cap` and rotation never evicts beyond what it can refill.
+
 ---
 
 ### Task 5: PhotoStore — config-driven folder/cap/enabled + rotating subset

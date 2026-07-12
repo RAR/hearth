@@ -1,11 +1,16 @@
 package com.rar.echodash.photos
 
+import com.rar.echodash.config.DashConfig
 import com.rar.echodash.ha.ConnState
 import com.rar.echodash.ha.HaClient
 import java.io.File
+import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -19,12 +24,12 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 
 object PhotoConfig {
-    const val FOLDER = "echo-frame"
-    const val MEDIA_CONTENT_ID = "media-source://media_source/local/echo-frame"
     const val CYCLE_MS = 5 * 60_000L
     const val SYNC_INTERVAL_MS = 6 * 60 * 60_000L
     const val MAX_W = 960
     const val MAX_H = 480
+    /** media-source content id for a folder relative to HA's media/ root. */
+    fun contentId(folder: String): String = "media-source://media_source/local/$folder"
 }
 
 data class RemotePhoto(val contentId: String, val title: String)
@@ -41,16 +46,6 @@ fun parseBrowseChildren(result: JsonElement?): List<RemotePhoto> {
     }
 }
 
-data class PhotoDiff(val toDownload: List<RemotePhoto>, val toDeleteKeys: List<String>)
-
-/** Compare cached keys against remote; new photos to fetch, cached keys no longer remote to delete. */
-fun diffPhotos(cachedKeys: Set<String>, remote: List<RemotePhoto>): PhotoDiff {
-    val remoteKeys = remote.associateBy { cacheKey(it.contentId) }
-    val toDownload = remote.filter { cacheKey(it.contentId) !in cachedKeys }
-    val toDelete = cachedKeys.filter { it !in remoteKeys.keys }
-    return PhotoDiff(toDownload, toDelete)
-}
-
 /** Filesystem-safe cache filename derived from a media content id. */
 fun cacheKey(contentId: String): String =
     contentId.replace(Regex("[^A-Za-z0-9]"), "_").takeLast(120)
@@ -61,17 +56,21 @@ interface PhotoDownloader {
 }
 
 /**
- * Syncs HA's echo-frame media folder into [cacheDir] and publishes the cached files. Open for a test
- * subclass that overrides [sync]. Sync triggers: each CONNECTED transition + every [syncIntervalMs].
- * [sync] is serialized with a mutex so a reconnect mid-sync can't race the periodic trigger against
- * the same cache directory.
+ * Syncs a HA media folder into [cacheDir] and publishes the cached files. The folder, the cache cap,
+ * and the slideshow-enabled flag come from [config]. Sync triggers: each CONNECTED transition, every
+ * [syncIntervalMs], and every change to the (folder, cap) pair. Large folders are kept as a bounded
+ * rotating subset via [rotatingSubset]; folders within the cap sync fully. [sync] is serialized with
+ * a mutex so a reconnect mid-sync can't race a config-change or periodic trigger over the same cache.
+ * Open for a test subclass that overrides [sync].
  */
 open class PhotoStore(
     private val client: HaClient,
     private val downloader: PhotoDownloader,
     private val cacheDir: File,
     private val scope: CoroutineScope,
+    private val config: StateFlow<DashConfig>,
     private val syncIntervalMs: Long = PhotoConfig.SYNC_INTERVAL_MS,
+    private val random: Random = Random.Default,
 ) {
     private val _photos = MutableStateFlow<List<File>>(emptyList())
     val photos: StateFlow<List<File>> = _photos
@@ -90,6 +89,16 @@ open class PhotoStore(
             connectionState.collect { if (it == ConnState.CONNECTED) sync() }
         }
         scope.launch {
+            // Resync when the folder or cap changes (ignore other config edits). The initial
+            // replayed value on subscribe is dropped — that config state is already covered by
+            // the CONNECTED-trigger sync above; only later changes should force a resync.
+            config
+                .map { it.home.photoFolder to it.home.photoCacheCap }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { sync() }
+        }
+        scope.launch {
             while (isActive) {
                 delay(syncIntervalMs)
                 sync()
@@ -98,16 +107,18 @@ open class PhotoStore(
     }
 
     open suspend fun sync() = syncMutex.withLock {
+        val home = config.value.home
+        if (!home.slideshowEnabled) return@withLock
         val browse = runCatching {
             client.request("media_source/browse_media", buildJsonObject {
-                put("media_content_id", JsonPrimitive(PhotoConfig.MEDIA_CONTENT_ID))
+                put("media_content_id", JsonPrimitive(PhotoConfig.contentId(home.photoFolder)))
             })
         }.getOrNull() ?: return@withLock
         val remote = parseBrowseChildren(browse)
         val cachedKeys = cacheDir.listFiles()?.map { it.name }?.toSet() ?: emptySet()
-        val diff = diffPhotos(cachedKeys, remote)
-        diff.toDeleteKeys.forEach { File(cacheDir, it).delete() }
-        diff.toDownload.forEach { photo ->
+        val plan = rotatingSubset(remote, cachedKeys, home.photoCacheCap, random)
+        plan.toDeleteKeys.forEach { File(cacheDir, it).delete() }
+        plan.toDownload.forEach { photo ->
             runCatching { downloader.download(photo.contentId, cacheKey(photo.contentId)) }
         }
         _photos.value = cacheDir.listFiles()?.sortedBy { it.name } ?: emptyList()

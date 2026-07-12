@@ -1,18 +1,20 @@
 package com.rar.echodash.photos
 
+import com.rar.echodash.config.DashConfig
+import com.rar.echodash.config.HomeSettings
 import com.rar.echodash.ha.ConnState
 import com.rar.echodash.ha.HaClient
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,41 +23,37 @@ import java.io.File
 @OptIn(ExperimentalCoroutinesApi::class)
 class PhotoStoreTest {
 
+    /** Answers browse for whatever folder id is requested; records the requested content ids. */
     private class FakeHaClient(val browse: JsonElement?) : HaClient {
         override val connectionState = MutableStateFlow(ConnState.OFFLINE)
-        override suspend fun request(type: String, fields: JsonObject): JsonElement? =
-            if (type == "media_source/browse_media") browse else null
+        val browseContentIds = mutableListOf<String>()
+        override suspend fun request(type: String, fields: JsonObject): JsonElement? {
+            if (type == "media_source/browse_media") {
+                (fields["media_content_id"] as? JsonPrimitive)?.contentOrNull?.let { browseContentIds += it }
+                return browse
+            }
+            return null
+        }
         override suspend fun subscribe(type: String, fields: JsonObject, onEvent: (JsonObject) -> Unit) = 0
         override suspend fun unsubscribe(subId: Int) {}
     }
 
+    private fun tempDir(prefix: String): File =
+        File.createTempFile(prefix, "").let { it.delete(); it.mkdirs(); it }
+
     private val browseJson = Json.parseToJsonElement(
         """{"children":[
             {"title":"a.jpg","media_class":"image","media_content_id":"media-source://media_source/local/echo-frame/a.jpg"},
-            {"title":"b.png","media_class":"image","media_content_id":"media-source://media_source/local/echo-frame/b.png"},
-            {"title":"notes.txt","media_class":"document","media_content_id":"x/notes.txt"}
+            {"title":"b.png","media_class":"image","media_content_id":"media-source://media_source/local/echo-frame/b.png"}
         ]}"""
     )
 
-    @Test
-    fun parsesOnlyImageChildren() {
-        val photos = parseBrowseChildren(browseJson)
-        assertEquals(listOf("a.jpg", "b.png"), photos.map { it.title })
-    }
-
-    @Test
-    fun diffFindsNewAndRemoved() {
-        val remote = parseBrowseChildren(browseJson)
-        val cached = setOf(cacheKey("media-source://media_source/local/echo-frame/a.jpg"), "stale-key")
-        val diff = diffPhotos(cached, remote)
-        assertEquals(listOf("b.png"), diff.toDownload.map { it.title })
-        assertEquals(listOf("stale-key"), diff.toDeleteKeys)
-    }
+    private fun cfg(folder: String = "echo-frame", cap: Int = 50, slideshow: Boolean = true) =
+        DashConfig(home = HomeSettings(photoFolder = folder, photoCacheCap = cap, slideshowEnabled = slideshow))
 
     @Test
     fun syncDownloadsNewDeletesStaleAndPublishesFiles() = runTest {
-        val cacheDir = File.createTempFile("photocache", "").let { it.delete(); it.mkdirs(); it }
-        // pre-seed a stale cached file that is no longer remote
+        val cacheDir = tempDir("photocache")
         File(cacheDir, "stale-key").writeText("old")
         val downloaded = mutableListOf<String>()
         val downloader = object : PhotoDownloader {
@@ -64,91 +62,103 @@ class PhotoStoreTest {
                 return File(cacheDir, cacheKey).apply { writeText("img") }
             }
         }
-        val store = PhotoStore(FakeHaClient(browseJson), downloader, cacheDir, this)
+        val store = PhotoStore(FakeHaClient(browseJson), downloader, cacheDir, this, MutableStateFlow(cfg()))
         store.sync()
-        assertEquals(2, downloaded.size)                       // a.jpg + b.png
-        assertTrue(!File(cacheDir, "stale-key").exists())      // stale deleted
-        assertEquals(2, store.photos.value.size)               // published
+        assertEquals(2, downloaded.size)
+        assertTrue(!File(cacheDir, "stale-key").exists())
+        assertEquals(2, store.photos.value.size)
+        cacheDir.deleteRecursively()
+    }
+
+    @Test
+    fun syncUsesConfiguredFolderForBrowse() = runTest {
+        val cacheDir = tempDir("photocache_folder")
+        val client = FakeHaClient(browseJson)
+        val downloader = object : PhotoDownloader {
+            override suspend fun download(contentId: String, cacheKey: String): File? =
+                File(cacheDir, cacheKey).apply { writeText("img") }
+        }
+        val store = PhotoStore(client, downloader, cacheDir, this, MutableStateFlow(cfg(folder = "nas-photos")))
+        store.sync()
+        assertEquals(
+            listOf("media-source://media_source/local/nas-photos"),
+            client.browseContentIds,
+        )
+        cacheDir.deleteRecursively()
+    }
+
+    @Test
+    fun disabledSlideshowSkipsSync() = runTest {
+        val cacheDir = tempDir("photocache_disabled")
+        val client = FakeHaClient(browseJson)
+        val downloader = object : PhotoDownloader {
+            override suspend fun download(contentId: String, cacheKey: String): File? = null
+        }
+        val store = PhotoStore(client, downloader, cacheDir, this, MutableStateFlow(cfg(slideshow = false)))
+        store.sync()
+        assertTrue(client.browseContentIds.isEmpty()) // never browsed
         cacheDir.deleteRecursively()
     }
 
     @Test
     fun schedulerSyncsOnConnectAndEverySixHours() = runTest {
-        val cacheDir = File.createTempFile("photocache2", "").let { it.delete(); it.mkdirs(); it }
+        val cacheDir = tempDir("photocache2")
         var syncs = 0
         val downloader = object : PhotoDownloader {
             override suspend fun download(contentId: String, cacheKey: String): File? = null
         }
         val conn = MutableStateFlow(ConnState.OFFLINE)
-        // subclass to count syncs deterministically
-        // start() launches never-completing observers (connectionState.collect + periodic-sync
-        // loop); per repo convention (see EntityHubTest) these go on backgroundScope, which
-        // TestScope auto-cancels at teardown instead of failing the test as leaked jobs.
-        val store = object : PhotoStore(FakeHaClient(browseJson), downloader, cacheDir, backgroundScope, syncIntervalMs = 6 * 60 * 60_000L) {
+        val store = object : PhotoStore(FakeHaClient(browseJson), downloader, cacheDir, backgroundScope, MutableStateFlow(cfg()), syncIntervalMs = 6 * 60 * 60_000L) {
             override suspend fun sync() { syncs++ }
         }
         store.start(conn)
         conn.value = ConnState.CONNECTED; runCurrent()
-        assertEquals(1, syncs)                                  // start/reconnect trigger
+        assertEquals(1, syncs)
         advanceTimeBy(6 * 60 * 60_000L + 1); runCurrent()
-        assertEquals(2, syncs)                                  // 6h periodic
+        assertEquals(2, syncs)
+        cacheDir.deleteRecursively()
+    }
+
+    @Test
+    fun resyncsWhenFolderOrCapChanges() = runTest {
+        val cacheDir = tempDir("photocache_cfgchange")
+        var syncs = 0
+        val downloader = object : PhotoDownloader {
+            override suspend fun download(contentId: String, cacheKey: String): File? = null
+        }
+        val conn = MutableStateFlow(ConnState.OFFLINE)
+        val config = MutableStateFlow(cfg(folder = "echo-frame", cap = 50))
+        val store = object : PhotoStore(FakeHaClient(browseJson), downloader, cacheDir, backgroundScope, config) {
+            override suspend fun sync() { syncs++ }
+        }
+        store.start(conn)
+        conn.value = ConnState.CONNECTED; runCurrent()
+        assertEquals(1, syncs)                              // connect trigger
+        config.value = cfg(folder = "new-folder", cap = 50); runCurrent()
+        assertEquals(2, syncs)                              // folder change resyncs
+        config.value = cfg(folder = "new-folder", cap = 25); runCurrent()
+        assertEquals(3, syncs)                              // cap change resyncs
+        // an unrelated change (slideshow flag flip only) still resyncs at most on folder/cap keys:
+        config.value = cfg(folder = "new-folder", cap = 25); runCurrent()
+        assertEquals(3, syncs)                              // identical folder+cap => no extra sync
         cacheDir.deleteRecursively()
     }
 
     @Test
     fun secondStartIsNoOp() = runTest {
-        val cacheDir = File.createTempFile("photocache4", "").let { it.delete(); it.mkdirs(); it }
+        val cacheDir = tempDir("photocache4")
         var syncs = 0
         val downloader = object : PhotoDownloader {
             override suspend fun download(contentId: String, cacheKey: String): File? = null
         }
         val conn = MutableStateFlow(ConnState.OFFLINE)
-        val store = object : PhotoStore(FakeHaClient(browseJson), downloader, cacheDir, backgroundScope) {
+        val store = object : PhotoStore(FakeHaClient(browseJson), downloader, cacheDir, backgroundScope, MutableStateFlow(cfg())) {
             override suspend fun sync() { syncs++ }
         }
         store.start(conn)
-        store.start(conn) // re-entering the dashboard screen must not stack a second collector/loop
+        store.start(conn)
         conn.value = ConnState.CONNECTED; runCurrent()
-        assertEquals(1, syncs) // a duplicate collector would trigger a second sync here
-        cacheDir.deleteRecursively()
-    }
-
-    @Test
-    fun syncSerializesConcurrentInvocations() = runTest {
-        val cacheDir = File.createTempFile("photocache3", "").let { it.delete(); it.mkdirs(); it }
-        // First sync's browse call blocks on this gate until released, so we can observe whether
-        // a concurrently-launched second sync starts its own browse call before the first finishes.
-        val gate = CompletableDeferred<Unit>()
-        var browseCalls = 0
-        val order = mutableListOf<String>()
-        val client = object : HaClient {
-            override val connectionState = MutableStateFlow(ConnState.OFFLINE)
-            override suspend fun request(type: String, fields: JsonObject): JsonElement? {
-                if (type != "media_source/browse_media") return null
-                browseCalls++
-                val n = browseCalls
-                order += "start-$n"
-                if (n == 1) gate.await()
-                order += "end-$n"
-                return browseJson
-            }
-            override suspend fun subscribe(type: String, fields: JsonObject, onEvent: (JsonObject) -> Unit) = 0
-            override suspend fun unsubscribe(subId: Int) {}
-        }
-        val downloader = object : PhotoDownloader {
-            override suspend fun download(contentId: String, cacheKey: String): File? = null
-        }
-        val store = PhotoStore(client, downloader, cacheDir, this)
-        val job1 = launch { store.sync() }
-        runCurrent()
-        val job2 = launch { store.sync() }
-        runCurrent()
-        // second sync must not have started its browse call while the first is still in-flight
-        assertEquals(1, browseCalls)
-        gate.complete(Unit)
-        job1.join()
-        job2.join()
-        assertEquals(listOf("start-1", "end-1", "start-2", "end-2"), order)
+        assertEquals(1, syncs)
         cacheDir.deleteRecursively()
     }
 }

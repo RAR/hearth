@@ -64,7 +64,7 @@ class AppDeps(context: Context) {
 
     private val photoCacheDir = File(appContext.cacheDir, "photos")
     private val photoDownloader = AndroidPhotoDownloader(ws, client, { settings.baseUrl }, photoCacheDir)
-    val photoStore = PhotoStore(ws, photoDownloader, photoCacheDir, scope)
+    val photoStore = PhotoStore(ws, photoDownloader, photoCacheDir, scope, configStore.config)
 
     // --- VACA ---
     val kioskUi = KioskUiState()

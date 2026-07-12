@@ -126,4 +126,82 @@ class DashConfigTest {
             cfg.referencedEntityIds(),
         )
     }
+
+    @Test
+    fun roundTripsCamerasAndDoorbells() {
+        val cfg = DashConfig(
+            entities = Entities(
+                cameras = listOf(
+                    CameraConfig(name = "Front Door", entity = "camera.front_door_fluent",
+                        rtspUrl = "rtsp://frigate:8554/front_door_bell"),
+                    CameraConfig(name = "Printer", entity = "camera.p1s"),
+                ),
+                doorbells = listOf(DoorbellConfig(trigger = "binary_sensor.front_door_visitor", camera = "Front Door")),
+            ),
+            panelOptions = PanelOptions(doorbellPopupSeconds = 45),
+        )
+        val text = ConfigJson.json.encodeToString(DashConfig.serializer(), cfg)
+        assertEquals(cfg, decodeConfig(text))
+    }
+
+    @Test
+    fun camerasPanelDefaultsDisabledAtOrderSix() {
+        val cfg = DashConfig()
+        assertEquals(false, cfg.panels.cameras.enabled)
+        assertEquals(6, cfg.panels.cameras.order)
+        assertEquals(30, cfg.panelOptions.doorbellPopupSeconds) // default
+    }
+
+    @Test
+    fun clampedNormalizesCameras() {
+        val cfg = DashConfig(
+            entities = Entities(
+                cameras = listOf(
+                    CameraConfig(name = "  Front Door  ", entity = "  camera.fd  ", rtspUrl = "  "),
+                    CameraConfig(name = "RtspOnly", entity = null, rtspUrl = " rtsp://h/x "),
+                    CameraConfig(name = "  ", entity = "camera.blankname"), // blank name -> dropped
+                    CameraConfig(name = "NoStream", entity = "", rtspUrl = ""), // no entity/url -> dropped
+                ),
+            ),
+        ).clamped()
+        assertEquals(2, cfg.entities.cameras.size)
+        assertEquals(CameraConfig("Front Door", "camera.fd", null), cfg.entities.cameras[0])
+        assertEquals(CameraConfig("RtspOnly", null, "rtsp://h/x"), cfg.entities.cameras[1])
+    }
+
+    @Test
+    fun clampedDropsDoorbellsWithBlankTriggerOrUnknownCamera() {
+        val cfg = DashConfig(
+            entities = Entities(
+                cameras = listOf(CameraConfig(name = "Front Door", rtspUrl = "rtsp://h/fd")),
+                doorbells = listOf(
+                    DoorbellConfig(trigger = " binary_sensor.v ", camera = " Front Door "), // trimmed, kept
+                    DoorbellConfig(trigger = "  ", camera = "Front Door"),                   // blank trigger -> dropped
+                    DoorbellConfig(trigger = "binary_sensor.x", camera = "Ghost"),           // unknown camera -> dropped
+                ),
+            ),
+        ).clamped()
+        assertEquals(listOf(DoorbellConfig("binary_sensor.v", "Front Door")), cfg.entities.doorbells)
+    }
+
+    @Test
+    fun clampedCoercesDoorbellPopupSeconds() {
+        assertEquals(120, DashConfig(panelOptions = PanelOptions(doorbellPopupSeconds = 999)).clamped().panelOptions.doorbellPopupSeconds)
+        assertEquals(5, DashConfig(panelOptions = PanelOptions(doorbellPopupSeconds = 1)).clamped().panelOptions.doorbellPopupSeconds)
+    }
+
+    @Test
+    fun referencedEntityIdsIncludesCameraEntitiesAndDoorbellTriggers() {
+        val cfg = DashConfig(
+            entities = Entities(
+                tempSensor = "sensor.t",
+                cameras = listOf(
+                    CameraConfig(name = "Front Door", entity = "camera.fd", rtspUrl = "rtsp://h/fd"),
+                    CameraConfig(name = "RtspOnly", rtspUrl = "rtsp://h/x"), // no entity -> contributes nothing
+                ),
+                doorbells = listOf(DoorbellConfig(trigger = "binary_sensor.v", camera = "Front Door")),
+            ),
+        )
+        assertEquals(listOf("sensor.t", "camera.fd", "binary_sensor.v"), cfg.referencedEntityIds())
+    }
 }

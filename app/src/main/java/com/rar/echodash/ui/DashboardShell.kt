@@ -16,6 +16,7 @@ import com.rar.echodash.config.DashConfig
 import com.rar.echodash.ha.ConnState
 import com.rar.echodash.ha.EntityState
 import com.rar.echodash.ha.RegistryIndex
+import com.rar.echodash.ui.model.aqiPill
 import com.rar.echodash.ui.model.lightSections
 import com.rar.echodash.ui.model.solarFlow
 import com.rar.echodash.ui.model.thermostats
@@ -75,9 +76,13 @@ fun DashboardShell(
                     val pill = remember(entities, config.entities) {
                         weatherPill(config.entities.tempSensor, config.entities.weather, entities, System.currentTimeMillis())
                     }
+                    val aqi = remember(entities, config.entities) {
+                        aqiPill(config.entities.aqiSensor, entities, System.currentTimeMillis())
+                    }
                     HomeView(
                         photos = if (config.home.slideshowEnabled) photos else emptyList(),
                         pill = pill,
+                        aqi = aqi,
                         clockFormat = config.home.clockFormat,
                         connState = connState,
                         configUrl = configUrl,

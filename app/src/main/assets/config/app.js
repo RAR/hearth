@@ -313,6 +313,8 @@ function renderEntities() {
     entityPicker(["sensor"], e.tempSensor, v => e.tempSensor = v)));
   host.appendChild(labeledRow("Weather",
     entityPicker(["weather"], e.weather, v => e.weather = v)));
+  host.appendChild(labeledRow("Air quality (AQI)",
+    entityPicker(["sensor"], e.aqiSensor, v => e.aqiSensor = v)));
 
   // climate list
   host.appendChild(subhead("climate", "Thermostats"));

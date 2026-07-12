@@ -2,9 +2,11 @@ package com.rar.echodash.photos
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import com.rar.echodash.ha.HaClient
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
@@ -40,7 +42,7 @@ class AndroidPhotoDownloader(
             if (!resp.isSuccessful) return@withContext null
             resp.body?.bytes() ?: return@withContext null
         }
-        val bmp = decodeDownsampled(bytes) ?: return@withContext null
+        val bmp = decodeOriented(bytes) ?: return@withContext null
         val tmp = File(cacheDir, "$cacheKey.tmp")
         val out = File(cacheDir, cacheKey)
         val wrote = runCatching {
@@ -53,6 +55,32 @@ class AndroidPhotoDownloader(
         }
         out
     }
+
+    /**
+     * Decode [bytes] scaled to fit within MAX_W x MAX_H with orientation applied. BitmapFactory
+     * ignores orientation metadata — EXIF and the HEIF container rotation iPhone HEICs carry — so
+     * photos came out sideways/upside-down and got baked that way into the JPEG cache. ImageDecoder
+     * applies both forms during decode. Falls back to the orientation-blind BitmapFactory path only
+     * if ImageDecoder rejects the bytes outright.
+     */
+    private fun decodeOriented(bytes: ByteArray): Bitmap? =
+        runCatching {
+            ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { decoder, info, _ ->
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE // hardware bitmaps can't be compressed
+                val w = info.size.width
+                val h = info.size.height
+                if (w > PhotoConfig.MAX_W || h > PhotoConfig.MAX_H) {
+                    val scale = minOf(
+                        PhotoConfig.MAX_W.toFloat() / w,
+                        PhotoConfig.MAX_H.toFloat() / h,
+                    )
+                    decoder.setTargetSize(
+                        (w * scale).toInt().coerceAtLeast(1),
+                        (h * scale).toInt().coerceAtLeast(1),
+                    )
+                }
+            }
+        }.getOrNull() ?: decodeDownsampled(bytes)
 
     /** Decode [bytes] downsampled by a power-of-2 inSampleSize, then scale to fit within MAX_W x MAX_H. */
     private fun decodeDownsampled(bytes: ByteArray): Bitmap? {

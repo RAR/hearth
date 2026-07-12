@@ -18,16 +18,21 @@ class MicStreamer(
     private val onError: () -> Unit,
 ) {
     @Volatile private var running = false
-    private var worker: Thread? = null
+    @Volatile private var generation = 0
 
     @SuppressLint("MissingPermission") // caller ensures RECORD_AUDIO is granted; failure -> onError
     @Synchronized
     fun start() {
         if (running) return
         running = true
-        worker = thread(name = "MicStreamer", isDaemon = true) {
+        generation++
+        val gen = generation
+        thread(name = "MicStreamer", isDaemon = true) {
             val minBuf = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-            if (minBuf <= 0) { running = false; onError(); return@thread }
+            if (minBuf <= 0) {
+                if (running && gen == generation) { running = false; onError() }
+                return@thread
+            }
             val record = try {
                 AudioRecord(
                     MediaRecorder.AudioSource.VOICE_RECOGNITION,
@@ -37,26 +42,35 @@ class MicStreamer(
                     maxOf(minBuf, CHUNK_BYTES * 4),
                 )
             } catch (e: Exception) {
-                Log.w(TAG, "AudioRecord init failed", e); running = false; onError(); return@thread
+                Log.w(TAG, "AudioRecord init failed", e)
+                if (running && gen == generation) { running = false; onError() }
+                return@thread
             }
             if (record.state != AudioRecord.STATE_INITIALIZED) {
                 Log.w(TAG, "AudioRecord not initialized (permission?)")
-                runCatching { record.release() }; running = false; onError(); return@thread
+                runCatching { record.release() }
+                if (running && gen == generation) { running = false; onError() }
+                return@thread
+            }
+            if (!running || gen != generation) {
+                runCatching { record.release() }
+                return@thread
             }
             try {
                 record.startRecording()
                 val buf = ByteArray(CHUNK_BYTES)
-                while (running) {
+                while (running && gen == generation) {
                     val n = record.read(buf, 0, buf.size)
-                    if (n <= 0) {
-                        if (n == AudioRecord.ERROR_INVALID_OPERATION || n == AudioRecord.ERROR_BAD_VALUE) break
-                        continue
+                    if (n < 0) {
+                        if (running && gen == generation) { running = false; onError() }
+                        break
                     }
+                    if (n == 0) continue
                     onChunk(if (n == buf.size) buf.copyOf() else buf.copyOf(n))
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "recording failed", e)
-                if (running) { running = false; onError() }
+                if (running && gen == generation) { running = false; onError() }
             } finally {
                 runCatching { record.stop() }
                 runCatching { record.release() }
@@ -67,7 +81,7 @@ class MicStreamer(
     @Synchronized
     fun stop() {
         running = false
-        worker = null
+        generation++
     }
 
     private companion object {

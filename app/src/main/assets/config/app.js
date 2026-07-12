@@ -270,6 +270,7 @@ function reorderButtons(canUp, canDown, onUp, onDown) {
 function render() {
   renderPanels();
   renderEntities();
+  renderMedia();
   renderHome();
   renderOptions();
   renderVoice();
@@ -375,6 +376,18 @@ function renderEntities() {
   addDb.type = "button";
   addDb.addEventListener("click", () => { e.doorbells.push({ trigger: null, camera: "" }); renderEntities(); });
   host.appendChild(addDb);
+}
+
+function renderMedia() {
+  const host = document.getElementById("media");
+  clear(host);
+  if (!config.media) config.media = { companionEntity: null };
+  const m = config.media;
+  // Same populated picker pattern as the AQI sensor: a shared media_player datalist; blank -> null.
+  host.appendChild(labeledRow("Companion media player",
+    entityPicker(["media_player"], m.companionEntity, v => m.companionEntity = v)));
+  host.appendChild(el("div", "muted",
+    "The HA media player entity that mirrors this device (pick your Music Assistant player for the Echo) — enables album art, track info, and next/previous."));
 }
 
 function renderLightGroup(g, gi) {

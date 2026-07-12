@@ -263,4 +263,37 @@ class DashConfigTest {
         assertEquals(0, DashConfig(voice = VoiceSettings(timerVolume = -5)).clamped().voice.timerVolume)
         assertEquals(45, DashConfig(voice = VoiceSettings(timerVolume = 45)).clamped().voice.timerVolume)
     }
+
+    @Test
+    fun mediaDefaultsToNoCompanion() {
+        assertEquals(null, DashConfig().media.companionEntity)
+        // absent from JSON -> default, unknown-key tolerant
+        val cfg = decodeConfig("""{"version":1}""")
+        assertEquals(null, cfg.media.companionEntity)
+    }
+
+    @Test
+    fun mediaRoundTrips() {
+        val cfg = DashConfig(media = MediaSettings(companionEntity = "media_player.ma_echo"))
+        val text = ConfigJson.json.encodeToString(DashConfig.serializer(), cfg)
+        assertEquals(cfg, decodeConfig(text))
+        assertEquals("media_player.ma_echo", decodeConfig(text).media.companionEntity)
+    }
+
+    @Test
+    fun clampedTrimsBlankCompanionToNull() {
+        assertEquals(null, DashConfig(media = MediaSettings(companionEntity = "  ")).clamped().media.companionEntity)
+        assertEquals(null, DashConfig(media = MediaSettings(companionEntity = "")).clamped().media.companionEntity)
+        assertEquals("media_player.x",
+            DashConfig(media = MediaSettings(companionEntity = "  media_player.x  ")).clamped().media.companionEntity)
+    }
+
+    @Test
+    fun referencedEntityIdsIncludesCompanionMediaPlayer() {
+        val cfg = DashConfig(
+            entities = Entities(tempSensor = "sensor.t"),
+            media = MediaSettings(companionEntity = "media_player.ma_echo"),
+        )
+        assertEquals(listOf("sensor.t", "media_player.ma_echo"), cfg.referencedEntityIds())
+    }
 }

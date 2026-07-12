@@ -98,6 +98,14 @@ data class VoiceSettings(
     }
 }
 
+@Serializable
+data class MediaSettings(
+    val companionEntity: String? = null,
+) {
+    /** Trim the companion entity id; blank -> null (unconfigured). */
+    fun clamped(): MediaSettings = copy(companionEntity = companionEntity?.trim()?.ifBlank { null })
+}
+
 /** The whole device configuration; one versioned document persisted at filesDir/config.json. */
 @Serializable
 data class DashConfig(
@@ -107,6 +115,7 @@ data class DashConfig(
     val home: HomeSettings = HomeSettings(),
     val panelOptions: PanelOptions = PanelOptions(),
     val voice: VoiceSettings = VoiceSettings(),
+    val media: MediaSettings = MediaSettings(),
 ) {
     /** Every entity id referenced anywhere, first-seen order, de-duplicated (EntityHub watched set). */
     fun referencedEntityIds(): List<String> = buildList {
@@ -118,6 +127,7 @@ data class DashConfig(
         entities.lightGroups.forEach { addAll(it.entities) }
         entities.cameras.forEach { c -> c.entity?.let { add(it) } }
         entities.doorbells.forEach { d -> d.trigger?.let { add(it) } }
+        media.companionEntity?.let { add(it) }
     }.distinct()
 
     /**
@@ -170,6 +180,7 @@ data class DashConfig(
                 doorbellPopupSeconds = panelOptions.doorbellPopupSeconds.coerceIn(5, 120),
             ),
             voice = voice.clamped(),
+            media = media.clamped(),
         )
     }
 }

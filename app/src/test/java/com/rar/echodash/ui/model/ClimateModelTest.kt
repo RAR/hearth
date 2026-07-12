@@ -28,8 +28,12 @@ class ClimateModelTest {
         assertEquals("Hall", t.name)
         assertEquals(19.5, t.current!!, 0.001)
         assertEquals(21.0, t.target!!, 0.001)
+        assertEquals(7.0, t.minTemp, 0.001)
+        assertEquals(30.0, t.maxTemp, 0.001)
         assertEquals(1.0, t.step, 0.001)          // from config
+        assertEquals("heating", t.hvacAction)
         assertEquals(listOf("off", "heat", "cool"), t.hvacModes)
+        assertEquals("heat", t.mode)
         assertEquals(true, t.available)
     }
 

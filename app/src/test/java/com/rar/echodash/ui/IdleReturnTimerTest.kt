@@ -47,4 +47,27 @@ class IdleReturnTimerTest {
         assertEquals(0, returns)
         timer.cancel()
     }
+
+    @Test
+    fun replacedTimerCancelledBeforeFiringDoesNotRun() = runTest {
+        // Simulates a mid-session config change: the old timer is armed, then replaced.
+        // Its cancel() must be called (as the Compose DisposableEffect does on key change)
+        // so its pending job never fires, even once the original timeout has elapsed.
+        var oldReturns = 0
+        val oldTimer = IdleReturnTimer(this, timeoutMs = 60_000) { oldReturns++ }
+        oldTimer.onViewChanged(isHome = false)
+        advanceTimeBy(30_000); runCurrent()
+
+        oldTimer.cancel() // replacement timer takes over; old one is disposed
+
+        var newReturns = 0
+        val newTimer = IdleReturnTimer(this, timeoutMs = 15_000) { newReturns++ }
+        newTimer.onViewChanged(isHome = false)
+
+        advanceTimeBy(60_000); runCurrent() // well past the old timer's original 60s timeout
+        assertEquals(0, oldReturns)         // old timer's pending fire never ran
+        assertEquals(1, newReturns)         // new timer fired on its own (shorter) timeout
+
+        newTimer.cancel()
+    }
 }

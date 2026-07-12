@@ -22,7 +22,7 @@ import com.rar.echodash.ui.model.SolarNode
 fun SolarPanel(flow: SolarFlow) {
     PanelSurface {
         if (flow.pv == null && flow.home == null) {
-            EmptyHint("Label solar sensors with `echo-solar-pv` / `echo-solar-load` in Home Assistant")
+            EmptyHint("Assign solar sensors in the web config")
             return@PanelSurface
         }
         Column(verticalArrangement = Arrangement.spacedBy(28.dp)) {

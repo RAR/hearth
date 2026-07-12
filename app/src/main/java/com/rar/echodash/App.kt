@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -196,7 +197,8 @@ fun EchoDashApp(deps: AppDeps) {
                     val idleTimer = remember(idleSeconds) {
                         IdleReturnTimer(uiScope, timeoutMs = idleSeconds * 1000L) { view = DashView.HOME }
                     }
-                    LaunchedEffect(view) { idleTimer.onViewChanged(view == DashView.HOME) }
+                    DisposableEffect(idleTimer) { onDispose { idleTimer.cancel() } }
+                    LaunchedEffect(idleTimer, view) { idleTimer.onViewChanged(view == DashView.HOME) }
 
                     DashboardShell(
                         current = view,

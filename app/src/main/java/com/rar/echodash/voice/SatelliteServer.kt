@@ -17,8 +17,10 @@ import java.net.Socket
 /**
  * Wyoming TCP server for the voice satellite (port 10600). HA connects inbound.
  * Newest connection wins. Reader runs off the lock; the active [SatelliteSession]
- * and all socket writes are serialized on [lock] so pongs are never starved by
- * blocking playback (playback is offloaded to an AnnouncePlayer via [out]).
+ * and all socket writes are serialized on [lock], so pongs are never starved by
+ * blocking playback (playback is offloaded to an AnnouncePlayer via [out]). Note:
+ * outbound mic-chunk writes share the same socket and can still stall pongs under
+ * TCP back-pressure (e.g. a stalled HA); this is bounded and self-heals via disconnect.
  */
 class SatelliteServer(
     private val scope: CoroutineScope,
@@ -84,7 +86,7 @@ class SatelliteServer(
             }
         }
         // Runs regardless of connection state so timers keep counting down while HA is away.
-        tickJob = scope.launch {
+        tickJob = scope.launch(Dispatchers.IO) {
             while (isActive) {
                 delay(TICK_MS)
                 synchronized(lock) { dispatch(active, session.onTick(System.currentTimeMillis())) }

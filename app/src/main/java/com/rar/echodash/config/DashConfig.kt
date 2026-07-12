@@ -80,7 +80,23 @@ data class PanelOptions(
 )
 
 @Serializable
-data class VoiceSettings(val enabled: Boolean = false)
+data class VoiceSettings(
+    val enabled: Boolean = false,
+    val timerTone: String = "twotone",
+    val timerVolume: Int = 80,
+) {
+    /** Normalize the timer-alarm fields: trim + unknown/blank tone falls to "twotone",
+     *  volume coerced into 0..100. Shared by DashConfig.clamped and the preview endpoint. */
+    fun clamped(): VoiceSettings = copy(
+        timerTone = timerTone.trim().let { if (it in TONES) it else "twotone" },
+        timerVolume = timerVolume.coerceIn(0, 100),
+    )
+
+    companion object {
+        /** The four recognized preset ids. */
+        val TONES: Set<String> = setOf("twotone", "beeps", "chime", "trill")
+    }
+}
 
 /** The whole device configuration; one versioned document persisted at filesDir/config.json. */
 @Serializable
@@ -153,6 +169,7 @@ data class DashConfig(
                 sensorDecimals = panelOptions.sensorDecimals.coerceIn(0, 3),
                 doorbellPopupSeconds = panelOptions.doorbellPopupSeconds.coerceIn(5, 120),
             ),
+            voice = voice.clamped(),
         )
     }
 }

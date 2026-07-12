@@ -225,4 +225,42 @@ class DashConfigTest {
     fun voiceSurvivesClamped() {
         assertEquals(true, DashConfig(voice = VoiceSettings(enabled = true)).clamped().voice.enabled)
     }
+
+    @Test
+    fun voiceTimerDefaults() {
+        val v = DashConfig().voice
+        assertEquals("twotone", v.timerTone)
+        assertEquals(80, v.timerVolume)
+        // absent from JSON -> defaults, unknown-key tolerant
+        val cfg = decodeConfig("""{"version":1,"voice":{"enabled":true}}""")
+        assertEquals("twotone", cfg.voice.timerTone)
+        assertEquals(80, cfg.voice.timerVolume)
+    }
+
+    @Test
+    fun voiceTimerRoundTrips() {
+        val cfg = DashConfig(voice = VoiceSettings(enabled = true, timerTone = "chime", timerVolume = 45))
+        val text = ConfigJson.json.encodeToString(DashConfig.serializer(), cfg)
+        assertEquals(cfg, decodeConfig(text))
+        assertEquals("chime", decodeConfig(text).voice.timerTone)
+        assertEquals(45, decodeConfig(text).voice.timerVolume)
+    }
+
+    @Test
+    fun clampedNormalizesUnknownToneToTwotone() {
+        assertEquals("twotone",
+            DashConfig(voice = VoiceSettings(timerTone = "wobble")).clamped().voice.timerTone)
+        assertEquals("twotone",
+            DashConfig(voice = VoiceSettings(timerTone = "   ")).clamped().voice.timerTone)
+        // a known tone survives (trimmed)
+        assertEquals("trill",
+            DashConfig(voice = VoiceSettings(timerTone = "  trill  ")).clamped().voice.timerTone)
+    }
+
+    @Test
+    fun clampedCoercesTimerVolume() {
+        assertEquals(100, DashConfig(voice = VoiceSettings(timerVolume = 250)).clamped().voice.timerVolume)
+        assertEquals(0, DashConfig(voice = VoiceSettings(timerVolume = -5)).clamped().voice.timerVolume)
+        assertEquals(45, DashConfig(voice = VoiceSettings(timerVolume = 45)).clamped().voice.timerVolume)
+    }
 }

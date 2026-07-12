@@ -23,6 +23,7 @@ class MainActivity : ComponentActivity() {
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
         deps = (application as EchoDashApplication).deps
+        deps.startConfigServer()
         val hooks = object : AndroidKioskDevice.WindowHooks {
             override fun setWindowBrightness(percent: Int) {
                 window.attributes = window.attributes.apply {

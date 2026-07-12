@@ -33,13 +33,18 @@ async function api(method, path, body) {
 }
 
 async function tryLoad() {
-  const r = await api("GET", "/api/config");
-  if (r.status === 401) { showLogin(); return; }
-  config = await r.json();
-  const er = await api("GET", "/api/entities");
-  entities = er.ok ? await er.json() : [];
-  showApp();
-  render();
+  try {
+    const r = await api("GET", "/api/config");
+    if (r.status === 401) { showLogin(); return; }
+    config = await r.json();
+    const er = await api("GET", "/api/entities");
+    entities = er.ok ? await er.json() : [];
+    showApp();
+    render();
+  } catch (e) {
+    showLogin();
+    document.getElementById("login-error").textContent = "Can't reach the device — is it on and connected?";
+  }
 }
 
 function showLogin() {
@@ -56,28 +61,36 @@ async function doLogin(ev) {
   const pin = document.getElementById("pin").value.trim();
   const errBox = document.getElementById("login-error");
   errBox.textContent = "";
-  const r = await api("POST", "/api/login", { pin });
-  if (r.ok) { await tryLoad(); return; }
-  if (r.status === 429) {
-    const b = await r.json().catch(() => ({}));
-    errBox.textContent = "Too many attempts. Try again in " + (b.retryAfter || 60) + "s.";
-  } else {
-    errBox.textContent = "Wrong PIN.";
+  try {
+    const r = await api("POST", "/api/login", { pin });
+    if (r.ok) { await tryLoad(); return; }
+    if (r.status === 429) {
+      const b = await r.json().catch(() => ({}));
+      errBox.textContent = "Too many attempts. Try again in " + (b.retryAfter || 60) + "s.";
+    } else {
+      errBox.textContent = "Wrong PIN.";
+    }
+  } catch (e) {
+    errBox.textContent = "Can't reach the device — is it on and connected?";
   }
 }
 
 async function save() {
   setStatus("Saving…", true);
-  const r = await api("PUT", "/api/config", config);
-  if (r.ok) {
-    config = await r.json();  // adopt the server's clamped copy
-    render();
-    setStatus("Saved.", true);
-  } else if (r.status === 401) {
-    showLogin();
-  } else {
-    const b = await r.json().catch(() => ({}));
-    setStatus("Error: " + (b.error || r.status), false);
+  try {
+    const r = await api("PUT", "/api/config", config);
+    if (r.ok) {
+      config = await r.json();  // adopt the server's clamped copy
+      render();
+      setStatus("Saved.", true);
+    } else if (r.status === 401) {
+      showLogin();
+    } else {
+      const b = await r.json().catch(() => ({}));
+      setStatus("Error: " + (b.error || r.status), false);
+    }
+  } catch (e) {
+    setStatus("Can't reach the device — changes not saved.", false);
   }
 }
 

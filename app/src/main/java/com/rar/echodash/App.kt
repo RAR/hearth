@@ -94,6 +94,15 @@ class AppDeps(context: Context) {
     /** The config page URL to show the user (best-effort LAN IP). */
     fun configUrl(): String = "http://${localIpAddress() ?: "device-ip"}:8080"
 
+    /** Start the embedded config web server. Runs for the app's lifetime, independent of HA auth. */
+    fun startConfigServer() {
+        if (!serverStarted) {
+            serverStarted = runCatching { configServer.start() }
+                .onFailure { android.util.Log.w("AppDeps", "config server failed to start (port 8080 in use?)", it) }
+                .isSuccess
+        }
+    }
+
     /** Stop the config server (on logout). */
     fun stopConfigServer() {
         if (serverStarted) { configServer.stop(); serverStarted = false }
@@ -169,7 +178,7 @@ class AppDeps(context: Context) {
         kiosk.sendFeedback = { s -> scope.launch { vaca.sendSettingsFeedback(s) } }
     }
 
-    /** Start the HA connection, entity hub, photo sync, config seeding, and config server. */
+    /** Start the HA connection, entity hub, photo sync, and config seeding. */
     fun startDashboard() {
         entityHub.start()
         photoStore.start(ws.connectionState)
@@ -180,11 +189,6 @@ class AppDeps(context: Context) {
                     if (configStore.needsSeed() && reg.allEntities.isNotEmpty()) configStore.seedFrom(reg)
                 }
             }
-        }
-        if (!serverStarted) {
-            serverStarted = runCatching { configServer.start() }
-                .onFailure { android.util.Log.w("AppDeps", "config server failed to start (port 8080 in use?)", it) }
-                .isSuccess
         }
         ws.start()
     }
@@ -286,7 +290,6 @@ fun EchoDashApp(deps: AppDeps) {
                         configUrl = configUrl,
                         configPin = configPinValue,
                         onLogout = {
-                            deps.stopConfigServer()
                             deps.ws.stop()
                             deps.settings.clearAuth()
                             screen = Screen.Setup

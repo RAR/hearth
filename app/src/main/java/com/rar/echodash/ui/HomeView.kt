@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rar.echodash.config.ClockFormat
 import com.rar.echodash.ha.ConnState
+import com.rar.echodash.ui.model.AqiPill
 import com.rar.echodash.ui.model.WeatherPill
 import com.rar.echodash.photos.PhotoConfig
 import java.io.File
@@ -119,6 +120,7 @@ private fun PhotoBackdrop(photos: List<File>) {
 fun HomeView(
     photos: List<File>,
     pill: WeatherPill?,
+    aqi: AqiPill?,
     clockFormat: ClockFormat,
     connState: ConnState,
     configUrl: String,
@@ -138,34 +140,67 @@ fun HomeView(
         PhotoBackdrop(photos)
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
 
-        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-            val pattern = clockPattern(clockFormat, DateFormat.is24HourFormat(context))
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 28.dp, bottom = 20.dp)) {
+            val is24 = clockIs24(clockFormat, DateFormat.is24HourFormat(context))
             Text(
-                SimpleDateFormat(pattern, Locale.getDefault()).format(Date(now)),
-                color = Color.White, fontSize = 96.sp, fontWeight = FontWeight.Light,
+                dateLine(now),
+                color = Color.White.copy(alpha = 0.9f), fontSize = 22.sp,
             )
-            Text(
-                SimpleDateFormat("EEEE d MMMM", Locale.getDefault()).format(Date(now)),
-                color = Color.White.copy(alpha = 0.9f), fontSize = 24.sp,
-            )
-            if (pill != null) {
+            Row {
+                Text(
+                    SimpleDateFormat(if (is24) "HH:mm" else "h:mm", Locale.getDefault()).format(Date(now)),
+                    color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.Light,
+                    modifier = Modifier.alignByBaseline(),
+                )
+                if (!is24) {
+                    Text(
+                        SimpleDateFormat("a", Locale.getDefault()).format(Date(now)),
+                        color = Color.White.copy(alpha = 0.9f), fontSize = 22.sp,
+                        modifier = Modifier.alignByBaseline().padding(start = 8.dp),
+                    )
+                }
+            }
+            if (pill != null || aqi != null) {
                 Row(
-                    Modifier
-                        .padding(top = 12.dp)
-                        .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    Modifier.padding(top = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    val dim = if (pill.stale) 0.4f else 0.95f
-                    Icon(
-                        imageVector = weatherIcon(pill.icon),
-                        contentDescription = null,
-                        tint = Color.White.copy(alpha = dim),
-                        modifier = Modifier.size(22.dp),
-                    )
-                    val text = listOfNotNull(pill.conditionText, pill.temperature).joinToString(" · ")
-                    Text(text, color = Color.White.copy(alpha = dim), fontSize = 18.sp)
+                    if (pill != null) {
+                        Row(
+                            Modifier
+                                .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            val dim = if (pill.stale) 0.4f else 0.95f
+                            Icon(
+                                imageVector = weatherIcon(pill.icon),
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = dim),
+                                modifier = Modifier.size(22.dp),
+                            )
+                            val text = listOfNotNull(pill.conditionText, pill.temperature).joinToString(" · ")
+                            Text(text, color = Color.White.copy(alpha = dim), fontSize = 18.sp)
+                        }
+                    }
+                    if (aqi != null) {
+                        Row(
+                            Modifier
+                                .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            val dim = if (aqi.stale) 0.4f else 1f
+                            Text("AQI", color = Color.White.copy(alpha = 0.7f * dim), fontSize = 18.sp)
+                            Text(
+                                aqi.value.toString(),
+                                color = Color(aqi.band.colorArgb).copy(alpha = dim),
+                                fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
                 }
             }
         }

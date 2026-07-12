@@ -20,6 +20,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.rar.echodash.config.ClockFormat
 import com.rar.echodash.config.Panels
 import com.rar.echodash.ui.model.WeatherIcon
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 /** The six rail destinations, top-to-bottom. */
 enum class DashView { HOME, LIGHTS, CLIMATE, MEDIA, WEATHER, SOLAR }
@@ -60,12 +64,23 @@ fun railViews(panels: Panels): List<DashView> {
     return listOf(DashView.HOME) + configured
 }
 
-/** SimpleDateFormat time pattern for the configured clock format (AUTO follows the system setting). */
-fun clockPattern(format: ClockFormat, systemIs24: Boolean): String {
-    val is24 = when (format) {
-        ClockFormat.AUTO -> systemIs24
-        ClockFormat.H12 -> false
-        ClockFormat.H24 -> true
-    }
-    return if (is24) "HH:mm" else "h:mm a"
+/** True when the clock should use 24-hour time (AUTO follows the system setting). */
+fun clockIs24(format: ClockFormat, systemIs24: Boolean): Boolean = when (format) {
+    ClockFormat.AUTO -> systemIs24
+    ClockFormat.H12 -> false
+    ClockFormat.H24 -> true
+}
+
+/** Home-screen date line, e.g. "Sunday, July 12th". */
+fun dateLine(millis: Long, locale: Locale = Locale.getDefault()): String {
+    val day = Calendar.getInstance(locale).apply { timeInMillis = millis }.get(Calendar.DAY_OF_MONTH)
+    return SimpleDateFormat("EEEE, MMMM", locale).format(Date(millis)) + " $day${ordinalSuffix(day)}"
+}
+
+internal fun ordinalSuffix(day: Int): String = when {
+    day in 11..13 -> "th"
+    day % 10 == 1 -> "st"
+    day % 10 == 2 -> "nd"
+    day % 10 == 3 -> "rd"
+    else -> "th"
 }

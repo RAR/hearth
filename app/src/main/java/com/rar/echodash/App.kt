@@ -13,6 +13,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rar.echodash.camera.DoorbellCoordinator
+import com.rar.echodash.camera.DoorbellPopup
+import com.rar.echodash.camera.PopupCommand
 import com.rar.echodash.camera.StreamResolver
 import com.rar.echodash.config.ConfigStore
 import com.rar.echodash.data.PrefsSettingsStore
@@ -25,6 +28,7 @@ import com.rar.echodash.photos.AndroidPhotoDownloader
 import com.rar.echodash.photos.PhotoStore
 import com.rar.echodash.ui.DashView
 import com.rar.echodash.ui.DashboardShell
+import com.rar.echodash.ui.DoorbellPopupView
 import com.rar.echodash.ui.IdleReturnTimer
 import com.rar.echodash.ui.KioskOverlays
 import com.rar.echodash.ui.KioskUiState
@@ -259,6 +263,22 @@ fun EchoDashApp(deps: AppDeps) {
                     DisposableEffect(idleTimer) { onDispose { idleTimer.cancel() } }
                     LaunchedEffect(idleTimer, view) { idleTimer.onViewChanged(view == DashView.HOME) }
 
+                    val doorbellCoordinator = remember { DoorbellCoordinator() }
+                    var doorbellPopup by remember { mutableStateOf<DoorbellPopup?>(null) }
+                    LaunchedEffect(entities, config.entities.doorbells, config.panelOptions.doorbellPopupSeconds) {
+                        val cmd = doorbellCoordinator.onStates(
+                            config.entities.doorbells,
+                            entities,
+                            config.panelOptions.doorbellPopupSeconds,
+                            System.currentTimeMillis(),
+                        )
+                        if (cmd is PopupCommand.Show) {
+                            doorbellPopup = DoorbellPopup(cmd.cameraName, cmd.untilMs)
+                            deps.kiosk.onUserInteraction() // force the screen on for the ring
+                            idleTimer.onInteraction()      // popup counts as activity; don't race idle-return
+                        }
+                    }
+
                     DashboardShell(
                         current = view,
                         onSelect = { v ->
@@ -308,6 +328,15 @@ fun EchoDashApp(deps: AppDeps) {
                         },
                         streamResolver = deps.streamResolver,
                     )
+
+                    doorbellPopup?.let { popup ->
+                        DoorbellPopupView(
+                            popup = popup,
+                            camera = config.entities.cameras.find { it.name == popup.cameraName },
+                            resolver = deps.streamResolver,
+                            onDismiss = { doorbellPopup = null },
+                        )
+                    }
                 }
             }
             KioskOverlays(deps.kioskUi, onWakeTouch = { deps.kiosk.onUserInteraction() })

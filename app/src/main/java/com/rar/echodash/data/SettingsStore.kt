@@ -11,6 +11,7 @@ interface SettingsStore {
     var accessTokenExpiresAt: Long
     var refreshToken: String?
     var vacaSettingsJson: String?
+    var configPin: String?
     fun clearAuth()
 }
 
@@ -20,6 +21,7 @@ class InMemorySettingsStore : SettingsStore {
     override var accessTokenExpiresAt: Long = 0L
     override var refreshToken: String? = null
     override var vacaSettingsJson: String? = null
+    override var configPin: String? = null
 
     override fun clearAuth() {
         accessToken = null
@@ -52,6 +54,8 @@ class PrefsSettingsStore(context: Context) : SettingsStore {
         get() = string("refresh_token"); set(v) = put("refresh_token", v)
     override var vacaSettingsJson: String?
         get() = string("vaca_settings"); set(v) = put("vaca_settings", v)
+    override var configPin: String?
+        get() = string("config_pin"); set(v) = put("config_pin", v)
 
     override fun clearAuth() {
         prefs.edit()

@@ -39,6 +39,11 @@ import com.rar.echodash.vaca.MediaBridge
 import com.rar.echodash.vaca.NsdAdvertiser
 import com.rar.echodash.vaca.VacaOutgoing
 import com.rar.echodash.vaca.VacaServer
+import com.rar.echodash.web.ConfigServer
+import com.rar.echodash.web.SessionManager
+import com.rar.echodash.web.buildEntityListJson
+import com.rar.echodash.web.generatePin
+import com.rar.echodash.web.localIpAddress
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -66,6 +71,33 @@ class AppDeps(context: Context) {
     private val photoCacheDir = File(appContext.cacheDir, "photos")
     private val photoDownloader = AndroidPhotoDownloader(ws, client, { settings.baseUrl }, photoCacheDir)
     val photoStore = PhotoStore(ws, photoDownloader, photoCacheDir, scope, configStore.config)
+
+    val sessions = SessionManager()
+    private val ensuredPin: String by lazy {
+        settings.configPin ?: generatePin().also { settings.configPin = it }
+    }
+    val configServer = ConfigServer(
+        store = configStore,
+        sessions = sessions,
+        pin = { configPin() },
+        entitiesJson = { buildEntityListJson(entityHub.registry.value, entityHub.entities.value) },
+        assetReader = { path ->
+            runCatching { appContext.assets.open("config/$path").readBytes() }.getOrNull()
+        },
+    )
+    private var seedStarted = false
+    private var serverStarted = false
+
+    /** The 6-digit config PIN (generated once, persisted). */
+    fun configPin(): String = ensuredPin
+
+    /** The config page URL to show the user (best-effort LAN IP). */
+    fun configUrl(): String = "http://${localIpAddress() ?: "device-ip"}:8080"
+
+    /** Stop the config server (on logout). */
+    fun stopConfigServer() {
+        if (serverStarted) { configServer.stop(); serverStarted = false }
+    }
 
     // --- VACA ---
     val kioskUi = KioskUiState()
@@ -137,10 +169,23 @@ class AppDeps(context: Context) {
         kiosk.sendFeedback = { s -> scope.launch { vaca.sendSettingsFeedback(s) } }
     }
 
-    /** Start the HA connection, entity hub, and photo sync for the dashboard. */
+    /** Start the HA connection, entity hub, photo sync, config seeding, and config server. */
     fun startDashboard() {
         entityHub.start()
         photoStore.start(ws.connectionState)
+        if (!seedStarted) {
+            seedStarted = true
+            scope.launch {
+                entityHub.registry.collect { reg ->
+                    if (configStore.needsSeed() && reg.allEntities.isNotEmpty()) configStore.seedFrom(reg)
+                }
+            }
+        }
+        if (!serverStarted) {
+            serverStarted = runCatching { configServer.start() }
+                .onFailure { android.util.Log.w("AppDeps", "config server failed to start (port 8080 in use?)", it) }
+                .isSuccess
+        }
         ws.start()
     }
 
@@ -191,6 +236,8 @@ fun EchoDashApp(deps: AppDeps) {
                     val photos by deps.photoStore.photos.collectAsStateWithLifecycle()
                     val mediaUi by deps.media.ui.collectAsStateWithLifecycle()
                     val config by deps.configStore.config.collectAsStateWithLifecycle()
+                    val configUrl = remember { deps.configUrl() }
+                    val configPinValue = remember { deps.configPin() }
                     var view by remember { mutableStateOf(DashView.HOME) }
                     val uiScope = rememberCoroutineScope()
                     val idleSeconds = config.home.idleReturnSeconds
@@ -236,9 +283,10 @@ fun EchoDashApp(deps: AppDeps) {
                             }
                         },
                         fetchForecast = { id -> deps.entityHub.getForecasts(id) },
-                        configUrl = "",
-                        configPin = "",
+                        configUrl = configUrl,
+                        configPin = configPinValue,
                         onLogout = {
+                            deps.stopConfigServer()
                             deps.ws.stop()
                             deps.settings.clearAuth()
                             screen = Screen.Setup

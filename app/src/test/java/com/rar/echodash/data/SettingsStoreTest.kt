@@ -40,4 +40,14 @@ class SettingsStoreTest {
         s.clearAuth()
         assertEquals("""{"screen_brightness":40}""", s.vacaSettingsJson)
     }
+
+    @Test
+    fun configPinPersistsAcrossClearAuth() {
+        val s: SettingsStore = InMemorySettingsStore()
+        s.configPin = "042100"
+        assertEquals("042100", s.configPin)
+        s.accessToken = "at"; s.refreshToken = "rt"
+        s.clearAuth()
+        assertEquals("042100", s.configPin) // the PIN is not auth; it survives logout
+    }
 }

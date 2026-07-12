@@ -35,6 +35,16 @@ class TimerChime {
                 Log.w(TAG, "chime init failed", e); playing = false; return@thread
             }
             try {
+                // Prime one full cycle BEFORE play(): this device's HAL renders a track that
+                // was started on an empty buffer silently until further writes arrive, which
+                // swallowed the first alarm cycle. The buffer holds exactly one cycle, so this
+                // write fills it while stopped; subsequent loop writes block-and-pace as before.
+                var primed = 0
+                while (playing && primed < cycle.size) {
+                    val n = track.write(cycle, primed, cycle.size - primed)
+                    if (n <= 0) break
+                    primed += n
+                }
                 track.play()
                 // The gap is baked into the rendered cycle, so each loop iteration is one write.
                 while (playing) {
@@ -78,9 +88,18 @@ class TimerChime {
                 Log.w(TAG, "preview init failed", e); return@thread
             }
             try {
-                track.play()
+                // Prime the full cycle into the buffer BEFORE play(): starting a MODE_STREAM
+                // track on an empty buffer leaves this device's HAL rendering silently (the
+                // mixer consumes frames in real time but no sound reaches the speaker unless
+                // writes keep arriving, as the looping alarm path does). Write-then-play is the
+                // canonical one-shot recipe and never starts in underrun.
                 var off = 0
-                while (off < cycle.size) off += track.write(cycle, off, cycle.size - off)
+                while (off < cycle.size) {
+                    val n = track.write(cycle, off, cycle.size - off)
+                    if (n <= 0) break
+                    off += n
+                }
+                track.play()
                 // MODE_STREAM: write() returns as soon as data is queued, not once it has
                 // rendered, so we must wait for the hardware playback head to reach the frames
                 // we wrote before releasing — otherwise the native track is destroyed with the

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -142,10 +143,11 @@ fun HomeView(
 
         Column(Modifier.align(Alignment.BottomStart).padding(start = 28.dp, bottom = 20.dp)) {
             val is24 = clockIs24(clockFormat, DateFormat.is24HourFormat(context))
-            Row {
+            // Nudged down to tuck the time against the date line below it.
+            Row(Modifier.offset(y = 6.dp)) {
                 Text(
                     SimpleDateFormat(if (is24) "HH:mm" else "h:mm", Locale.getDefault()).format(Date(now)),
-                    color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.Light,
+                    color = Color.White, fontSize = 58.sp, fontWeight = FontWeight.Light,
                     modifier = Modifier.alignByBaseline(),
                 )
                 if (!is24) {

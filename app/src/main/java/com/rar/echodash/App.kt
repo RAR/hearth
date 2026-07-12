@@ -189,9 +189,13 @@ fun EchoDashApp(deps: AppDeps) {
                     val registry by deps.entityHub.registry.collectAsStateWithLifecycle()
                     val photos by deps.photoStore.photos.collectAsStateWithLifecycle()
                     val mediaUi by deps.media.ui.collectAsStateWithLifecycle()
+                    val config by deps.configStore.config.collectAsStateWithLifecycle()
                     var view by remember { mutableStateOf(DashView.HOME) }
                     val uiScope = rememberCoroutineScope()
-                    val idleTimer = remember { IdleReturnTimer(uiScope) { view = DashView.HOME } }
+                    val idleSeconds = config.home.idleReturnSeconds
+                    val idleTimer = remember(idleSeconds) {
+                        IdleReturnTimer(uiScope, timeoutMs = idleSeconds * 1000L) { view = DashView.HOME }
+                    }
                     LaunchedEffect(view) { idleTimer.onViewChanged(view == DashView.HOME) }
 
                     DashboardShell(
@@ -200,6 +204,7 @@ fun EchoDashApp(deps: AppDeps) {
                             view = v
                             deps.kiosk.onUserInteraction()
                         },
+                        config = config,
                         entities = entities,
                         registry = registry,
                         connState = connState,
@@ -229,6 +234,8 @@ fun EchoDashApp(deps: AppDeps) {
                             }
                         },
                         fetchForecast = { id -> deps.entityHub.getForecasts(id) },
+                        configUrl = "",
+                        configPin = "",
                         onLogout = {
                             deps.ws.stop()
                             deps.settings.clearAuth()

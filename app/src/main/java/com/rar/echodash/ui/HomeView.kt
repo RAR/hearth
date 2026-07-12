@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rar.echodash.config.ClockFormat
 import com.rar.echodash.ha.ConnState
 import com.rar.echodash.ui.model.WeatherPill
 import com.rar.echodash.photos.PhotoConfig
@@ -118,7 +119,10 @@ private fun PhotoBackdrop(photos: List<File>) {
 fun HomeView(
     photos: List<File>,
     pill: WeatherPill?,
+    clockFormat: ClockFormat,
     connState: ConnState,
+    configUrl: String,
+    configPin: String,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -135,7 +139,7 @@ fun HomeView(
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
 
         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-            val pattern = if (DateFormat.is24HourFormat(context)) "HH:mm" else "h:mm a"
+            val pattern = clockPattern(clockFormat, DateFormat.is24HourFormat(context))
             Text(
                 SimpleDateFormat(pattern, Locale.getDefault()).format(Date(now)),
                 color = Color.White, fontSize = 96.sp, fontWeight = FontWeight.Light,
@@ -177,6 +181,10 @@ fun HomeView(
         }
 
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text("Configure: $configUrl  ·  PIN $configPin") },
+                onClick = { menuOpen = false },
+            )
             DropdownMenuItem(
                 text = { Text("Android settings") },
                 onClick = {

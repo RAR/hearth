@@ -17,6 +17,8 @@ import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material.icons.outlined.WbCloudy
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.rar.echodash.config.ClockFormat
+import com.rar.echodash.config.Panels
 import com.rar.echodash.ui.model.WeatherIcon
 
 /** The six rail destinations, top-to-bottom. */
@@ -44,4 +46,26 @@ fun railIcon(view: DashView): ImageVector = when (view) {
     DashView.MEDIA -> Icons.Outlined.MusicNote
     DashView.WEATHER -> Icons.Outlined.WbCloudy
     DashView.SOLAR -> Icons.Outlined.SolarPower
+}
+
+/** The rail destinations: HOME first, then enabled panels ordered by their configured `order`. */
+fun railViews(panels: Panels): List<DashView> {
+    val configured = listOf(
+        DashView.LIGHTS to panels.lights,
+        DashView.CLIMATE to panels.climate,
+        DashView.MEDIA to panels.media,
+        DashView.WEATHER to panels.weather,
+        DashView.SOLAR to panels.solar,
+    ).filter { it.second.enabled }.sortedBy { it.second.order }.map { it.first }
+    return listOf(DashView.HOME) + configured
+}
+
+/** SimpleDateFormat time pattern for the configured clock format (AUTO follows the system setting). */
+fun clockPattern(format: ClockFormat, systemIs24: Boolean): String {
+    val is24 = when (format) {
+        ClockFormat.AUTO -> systemIs24
+        ClockFormat.H12 -> false
+        ClockFormat.H24 -> true
+    }
+    return if (is24) "HH:mm" else "h:mm a"
 }

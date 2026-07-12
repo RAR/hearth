@@ -17,9 +17,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-/** Right-side translucent rail: six Material icon buttons; the active one sits on an accent square. */
+/** Right-side translucent rail: Material icon buttons; the active one sits on an accent square. */
 @Composable
-fun IconRail(current: DashView, onSelect: (DashView) -> Unit, modifier: Modifier = Modifier) {
+fun IconRail(current: DashView, views: List<DashView>, onSelect: (DashView) -> Unit, modifier: Modifier = Modifier) {
     Column(
         modifier
             .width(72.dp)
@@ -29,7 +29,7 @@ fun IconRail(current: DashView, onSelect: (DashView) -> Unit, modifier: Modifier
         verticalArrangement = Arrangement.spacedBy(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        DashView.entries.forEach { view ->
+        views.forEach { view ->
             val active = view == current
             Box(
                 Modifier

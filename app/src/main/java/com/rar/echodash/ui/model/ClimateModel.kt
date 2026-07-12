@@ -22,28 +22,31 @@ data class ThermostatState(
     val available: Boolean,
 )
 
-const val CLIMATE_LABEL = "echo-climate"
 const val SETPOINT_STEP = 0.5
 
-fun thermostatStates(registry: RegistryIndex, entities: Map<String, EntityState>): List<ThermostatState> =
-    registry.labelToEntities[CLIMATE_LABEL].orEmpty()
-        .filter { it.startsWith("climate.") }
-        .map { id ->
-            val s = entities[id]
-            ThermostatState(
-                entityId = id,
-                name = registry.displayName(id, s),
-                current = s?.attrDouble("current_temperature"),
-                target = s?.attrDouble("temperature"),
-                minTemp = s?.attrDouble("min_temp") ?: 7.0,
-                maxTemp = s?.attrDouble("max_temp") ?: 35.0,
-                step = SETPOINT_STEP,
-                hvacAction = s?.attr("hvac_action"),
-                hvacModes = s?.attrStringList("hvac_modes") ?: emptyList(),
-                mode = s?.state ?: "unknown",
-                available = s != null && s.state != "unavailable" && s.state != "unknown",
-            )
-        }
+/** Build thermostats from the configured climate id list; non-`climate.*` ids are ignored. */
+fun thermostats(
+    ids: List<String>,
+    registry: RegistryIndex,
+    entities: Map<String, EntityState>,
+    step: Double = SETPOINT_STEP,
+): List<ThermostatState> =
+    ids.filter { it.startsWith("climate.") }.map { id ->
+        val s = entities[id]
+        ThermostatState(
+            entityId = id,
+            name = registry.displayName(id, s),
+            current = s?.attrDouble("current_temperature"),
+            target = s?.attrDouble("temperature"),
+            minTemp = s?.attrDouble("min_temp") ?: 7.0,
+            maxTemp = s?.attrDouble("max_temp") ?: 35.0,
+            step = step,
+            hvacAction = s?.attr("hvac_action"),
+            hvacModes = s?.attrStringList("hvac_modes") ?: emptyList(),
+            mode = s?.state ?: "unknown",
+            available = s != null && s.state != "unavailable" && s.state != "unknown",
+        )
+    }
 
 /**
  * Accumulates rapid +/- setpoint taps and commits the final clamped target [debounceMs] after the

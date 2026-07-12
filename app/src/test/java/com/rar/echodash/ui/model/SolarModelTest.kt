@@ -1,7 +1,7 @@
 package com.rar.echodash.ui.model
 
+import com.rar.echodash.config.SolarConfig
 import com.rar.echodash.ha.EntityState
-import com.rar.echodash.ha.parseEntityRegistry
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
@@ -13,18 +13,10 @@ class SolarModelTest {
     private fun st(id: String, state: String, unit: String) =
         EntityState(id, state, attrs("""{"unit_of_measurement":"$unit"}"""), 0L)
 
-    private val regAll = parseEntityRegistry(Json.parseToJsonElement(
-        """[
-          {"entity_id":"sensor.pv","labels":["echo-solar-pv"]},
-          {"entity_id":"sensor.load","labels":["echo-solar-load"]},
-          {"entity_id":"sensor.grid","labels":["echo-solar-grid"]},
-          {"entity_id":"sensor.pvday","labels":["echo-solar-pv-today"]},
-          {"entity_id":"sensor.loadday","labels":["echo-solar-load-today"]}
-        ]"""
-    ))
-
     @Test
     fun formatsWattsAndKwAndGridSignAndToday() {
+        val cfg = SolarConfig(pv = "sensor.pv", load = "sensor.load", grid = "sensor.grid",
+            pvToday = "sensor.pvday", loadToday = "sensor.loadday")
         val entities = mapOf(
             "sensor.pv" to st("sensor.pv", "3500", "W"),
             "sensor.load" to st("sensor.load", "800", "W"),
@@ -32,22 +24,23 @@ class SolarModelTest {
             "sensor.pvday" to st("sensor.pvday", "12.4", "kWh"),
             "sensor.loadday" to st("sensor.loadday", "9.1", "kWh"),
         )
-        val flow = buildSolarFlow(regAll, entities)
+        val flow = solarFlow(cfg, entities)
         assertEquals("3.5 kW", flow.pv!!.watts)
         assertEquals("800 W", flow.home!!.watts)
-        assertEquals("1.2 kW", flow.grid!!.watts)     // magnitude only; sign is separate
-        assertEquals(false, flow.gridImporting)       // -1200 => exporting
+        assertEquals("1.2 kW", flow.grid!!.watts)
+        assertEquals(false, flow.gridImporting)
         assertEquals("Today: 12.4 kWh produced · 9.1 kWh used", flow.todayLine)
     }
 
     @Test
     fun noGridSensorGivesTwoNodeFlowAndPartialToday() {
+        val cfg = SolarConfig(pv = "sensor.pv", load = "sensor.load", pvToday = "sensor.pvday")
         val entities = mapOf(
             "sensor.pv" to st("sensor.pv", "1000", "W"),
             "sensor.load" to st("sensor.load", "1500", "W"),
             "sensor.pvday" to st("sensor.pvday", "5.0", "kWh"),
         )
-        val flow = buildSolarFlow(regAll, entities)
+        val flow = solarFlow(cfg, entities)
         assertNull(flow.grid)
         assertNull(flow.gridImporting)
         assertEquals("1.0 kW", flow.pv!!.watts)

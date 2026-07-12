@@ -12,12 +12,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import com.rar.echodash.config.DashConfig
 import com.rar.echodash.ha.ConnState
 import com.rar.echodash.ha.EntityState
 import com.rar.echodash.ha.RegistryIndex
-import com.rar.echodash.ui.model.buildLightGroups
-import com.rar.echodash.ui.model.buildSolarFlow
-import com.rar.echodash.ui.model.thermostatStates
+import com.rar.echodash.ui.model.lightSections
+import com.rar.echodash.ui.model.solarFlow
+import com.rar.echodash.ui.model.thermostats
 import com.rar.echodash.ui.model.weatherPill
 import com.rar.echodash.ui.panels.ClimatePanel
 import com.rar.echodash.ui.panels.LightsPanel
@@ -32,6 +33,7 @@ import kotlinx.serialization.json.JsonElement
 fun DashboardShell(
     current: DashView,
     onSelect: (DashView) -> Unit,
+    config: DashConfig,
     entities: Map<String, EntityState>,
     registry: RegistryIndex,
     connState: ConnState,
@@ -45,11 +47,14 @@ fun DashboardShell(
     onMediaStop: () -> Unit,
     onMediaVolume: (Int) -> Unit,
     fetchForecast: suspend (String) -> JsonElement?,
+    configUrl: String,
+    configPin: String,
     onLogout: () -> Unit,
     onInteraction: () -> Unit,
 ) {
     val connected = connState == ConnState.CONNECTED
-    val weatherEntityId = registry.labelToEntities["echo-weather"]?.firstOrNull()
+    val weatherEntityId = config.entities.weather
+    val views = remember(config.panels) { railViews(config.panels) }
 
     Box(
         Modifier
@@ -67,25 +72,40 @@ fun DashboardShell(
         Crossfade(targetState = current, animationSpec = tween(300), label = "view") { view ->
             when (view) {
                 DashView.HOME -> {
-                    val pill = remember(entities, registry) { weatherPill(registry, entities, System.currentTimeMillis()) }
-                    HomeView(photos = photos, pill = pill, connState = connState, onLogout = onLogout)
+                    val pill = remember(entities, config.entities) {
+                        weatherPill(config.entities.tempSensor, config.entities.weather, entities, System.currentTimeMillis())
+                    }
+                    HomeView(
+                        photos = if (config.home.slideshowEnabled) photos else emptyList(),
+                        pill = pill,
+                        clockFormat = config.home.clockFormat,
+                        connState = connState,
+                        configUrl = configUrl,
+                        configPin = configPin,
+                        onLogout = onLogout,
+                    )
                 }
                 DashView.LIGHTS -> {
-                    val groups = remember(entities, registry) { buildLightGroups(registry, entities) }
-                    LightsPanel(groups, connected, onToggle)
+                    val sections = remember(entities, registry, config.entities.lightGroups) {
+                        lightSections(config.entities.lightGroups, registry, entities)
+                    }
+                    LightsPanel(sections, connected, onToggle)
                 }
                 DashView.CLIMATE -> {
-                    val thermostats = remember(entities, registry) { thermostatStates(registry, entities) }
-                    ClimatePanel(thermostats, connected, onSetTemperature, onSetHvacMode)
+                    val list = remember(entities, registry, config.entities.climate, config.panelOptions.thermostatStep) {
+                        thermostats(config.entities.climate, registry, entities, config.panelOptions.thermostatStep)
+                    }
+                    ClimatePanel(list, connected, onSetTemperature, onSetHvacMode)
                 }
                 DashView.MEDIA -> MediaPanel(mediaUi, onMediaPlay, onMediaPause, onMediaStop, onMediaVolume)
                 DashView.WEATHER -> WeatherPanel(
                     weather = weatherEntityId?.let { entities[it] },
                     weatherEntityId = weatherEntityId,
+                    forecastDays = config.panelOptions.forecastDays,
                     fetchForecast = fetchForecast,
                 )
                 DashView.SOLAR -> {
-                    val flow = remember(entities, registry) { buildSolarFlow(registry, entities) }
+                    val flow = remember(entities, config.entities.solar) { solarFlow(config.entities.solar, entities) }
                     SolarPanel(flow)
                 }
             }
@@ -93,6 +113,7 @@ fun DashboardShell(
 
         IconRail(
             current = current,
+            views = views,
             onSelect = onSelect,
             modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp),
         )

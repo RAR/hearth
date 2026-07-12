@@ -37,11 +37,12 @@ import kotlinx.serialization.json.JsonElement
 fun WeatherPanel(
     weather: EntityState?,
     weatherEntityId: String?,
+    forecastDays: Int,
     fetchForecast: suspend (String) -> JsonElement?,
 ) {
     PanelSurface {
         if (weather == null || weatherEntityId == null) {
-            EmptyHint("Label a weather entity with `echo-weather` in Home Assistant")
+            EmptyHint("Set a weather entity in the web config")
             return@PanelSurface
         }
         var forecast by remember(weatherEntityId) { mutableStateOf<List<DailyForecast>>(emptyList()) }
@@ -80,7 +81,7 @@ fun WeatherPanel(
             // forecast strip along the bottom, days sharing the full width
             if (forecast.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    forecast.forEach { day ->
+                    forecast.take(forecastDays).forEach { day ->
                         Column(
                             Modifier
                                 .weight(1f)

@@ -1,7 +1,7 @@
 package com.rar.echodash.ui.model
 
+import com.rar.echodash.config.SolarConfig
 import com.rar.echodash.ha.EntityState
-import com.rar.echodash.ha.RegistryIndex
 import java.util.Locale
 import kotlin.math.abs
 
@@ -16,15 +16,14 @@ data class SolarFlow(
     val todayLine: String?,
 )
 
-fun buildSolarFlow(registry: RegistryIndex, entities: Map<String, EntityState>): SolarFlow {
-    fun first(label: String): EntityState? =
-        registry.labelToEntities[label]?.firstOrNull()?.let { entities[it] }
+fun solarFlow(cfg: SolarConfig, entities: Map<String, EntityState>): SolarFlow {
+    fun get(id: String?): EntityState? = id?.let { entities[it] }
 
-    val pv = first("echo-solar-pv")
-    val load = first("echo-solar-load")
-    val grid = first("echo-solar-grid")
-    val pvToday = first("echo-solar-pv-today")
-    val loadToday = first("echo-solar-load-today")
+    val pv = get(cfg.pv)
+    val load = get(cfg.load)
+    val grid = get(cfg.grid)
+    val pvToday = get(cfg.pvToday)
+    val loadToday = get(cfg.loadToday)
 
     val todayLine = buildString {
         pvToday?.let { append("${it.state} ${it.attr("unit_of_measurement") ?: "kWh"} produced") }

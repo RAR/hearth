@@ -34,7 +34,7 @@ import com.rar.echodash.ui.model.LightTile
 fun LightsPanel(groups: List<LightGroup>, connected: Boolean, onToggle: (String) -> Unit) {
     PanelSurface {
         if (groups.all { it.tiles.isEmpty() }) {
-            EmptyHint("Label entities with `echo-lights` in Home Assistant")
+            EmptyHint("Add a light group in the web config")
             return@PanelSurface
         }
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {

@@ -38,7 +38,7 @@ fun ClimatePanel(
 ) {
     PanelSurface {
         if (thermostats.isEmpty()) {
-            EmptyHint("Label a thermostat with `echo-climate` in Home Assistant")
+            EmptyHint("Add a thermostat in the web config")
             return@PanelSurface
         }
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {

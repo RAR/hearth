@@ -1,7 +1,6 @@
 package com.rar.echodash.ui.model
 
 import com.rar.echodash.ha.EntityState
-import com.rar.echodash.ha.RegistryIndex
 import java.time.DayOfWeek
 import java.time.OffsetDateTime
 import java.time.format.TextStyle
@@ -38,10 +37,15 @@ data class WeatherPill(
     val stale: Boolean,
 )
 
-/** Pill temperature: first echo-temp sensor, else weather entity's temperature attr, else hidden. */
-fun weatherPill(registry: RegistryIndex, entities: Map<String, EntityState>, nowMs: Long): WeatherPill? {
-    val tempSensor = registry.labelToEntities["echo-temp"]?.firstOrNull()?.let { entities[it] }
-    val weather = registry.labelToEntities["echo-weather"]?.firstOrNull()?.let { entities[it] }
+/** Pill temperature: configured temp sensor first, else weather entity's temperature attr, else hidden. */
+fun weatherPill(
+    tempSensorId: String?,
+    weatherId: String?,
+    entities: Map<String, EntityState>,
+    nowMs: Long,
+): WeatherPill? {
+    val tempSensor = tempSensorId?.let { entities[it] }
+    val weather = weatherId?.let { entities[it] }
 
     val temperature: String?
     val stale: Boolean

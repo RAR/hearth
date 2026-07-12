@@ -159,8 +159,11 @@ async function beginSetup(ev) {
     showSetupError(b.error || ("Couldn't start setup (" + r.status + ")"));
   } catch (e) {
     showSetupError("Can't reach the device — is it on and connected?");
+  } finally {
+    // Always re-enable, even on the 401→login path — otherwise the card comes back
+    // after re-login with Connect stuck disabled. Harmless on the navigate-away path.
+    btn.disabled = false;
   }
-  btn.disabled = false;
 }
 
 async function completeSetup() {
@@ -170,6 +173,13 @@ async function completeSetup() {
     if (r.ok) {
       history.replaceState(null, "", location.pathname); // strip ?code&state AFTER success only
       await tryLoad();                                   // status now configured:true → card hides
+      return;
+    }
+    if (r.status === 401) {
+      // Session died between the status check and this POST. Re-arm the one-shot guard so the
+      // post-login tryLoad re-attempts the exchange (params are still in the URL), then prompt.
+      setupAttempted = false;
+      showLogin();
       return;
     }
     const b = await r.json().catch(() => ({}));

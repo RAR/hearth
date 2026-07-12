@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -33,6 +34,9 @@ import com.rar.echodash.ui.IdleReturnTimer
 import com.rar.echodash.ui.KioskOverlays
 import com.rar.echodash.ui.KioskUiState
 import com.rar.echodash.ui.SetupScreen
+import com.rar.echodash.ui.TimerChips
+import com.rar.echodash.ui.TimerFinishedOverlay
+import com.rar.echodash.ui.VoiceOverlay
 import com.rar.echodash.ui.theme.EchoTheme
 import com.rar.echodash.vaca.AndroidKioskDevice
 import com.rar.echodash.vaca.AnnouncePlayer
@@ -44,6 +48,12 @@ import com.rar.echodash.vaca.MediaBridge
 import com.rar.echodash.vaca.NsdAdvertiser
 import com.rar.echodash.vaca.VacaOutgoing
 import com.rar.echodash.vaca.VacaServer
+import com.rar.echodash.voice.MicStreamer
+import com.rar.echodash.voice.SatelliteServer
+import com.rar.echodash.voice.TimerChime
+import com.rar.echodash.voice.TimersUiState
+import com.rar.echodash.voice.VoiceOverlayPhase
+import com.rar.echodash.voice.VoiceOverlayState
 import com.rar.echodash.web.ConfigServer
 import com.rar.echodash.web.SessionManager
 import com.rar.echodash.web.SetupCoordinator
@@ -56,6 +66,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -190,6 +203,37 @@ class AppDeps(context: Context) {
     )
     private val nsd = NsdAdvertiser(appContext, VacaServer.DEFAULT_PORT)
 
+    // --- Voice satellite (Wyoming) ---
+    val voiceOverlay = MutableStateFlow(VoiceOverlayState())
+    val timersUi = MutableStateFlow(TimersUiState())
+    val timerChime = TimerChime()
+    private val voiceSink = AndroidPcmSink()
+    private val voicePlayer = AnnouncePlayer(
+        scope,
+        voiceSink,
+        onPlayed = { satellite.onPlaybackFinished() },
+        setDucking = { ducked -> mainScope.launch { media.setDucked(ducked) } },
+    )
+    private val micStreamer = MicStreamer(
+        onChunk = { pcm -> satellite.submitMicChunk(pcm) },
+        onError = { satellite.reportMicError() },
+    )
+    val satellite: SatelliteServer = SatelliteServer(
+        scope = scope,
+        appVersion = BuildConfig.VERSION_NAME,
+        out = object : SatelliteServer.Out {
+            override fun onStartMic() = micStreamer.start()
+            override fun onStopMic() = micStreamer.stop()
+            override fun onPlaybackStart(rate: Int, width: Int, channels: Int) =
+                voicePlayer.onAudioStart(rate, width, channels)
+            override fun onPlaybackChunk(pcm: ByteArray) = voicePlayer.onAudioChunk(pcm)
+            override fun onPlaybackStop() = voicePlayer.onAudioStop()
+            override fun onOverlay(state: VoiceOverlayState) { voiceOverlay.value = state }
+            override fun onTimers(state: TimersUiState) { timersUi.value = state }
+        },
+    )
+    private val voiceNsd = NsdAdvertiser(appContext, SatelliteServer.PORT, "_wyoming._tcp.")
+
     init {
         kiosk.sendFeedback = { s -> scope.launch { vaca.sendSettingsFeedback(s) } }
     }
@@ -205,6 +249,28 @@ class AppDeps(context: Context) {
         vaca.start()
         nsd.register()
         lightSensor.start()
+    }
+
+    /** Reactively run the voice satellite while config.voice.enabled; no app restart needed. */
+    fun startVoice() {
+        scope.launch {
+            configStore.config
+                .map { it.voice.enabled }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    if (enabled) {
+                        satellite.start()
+                        voiceNsd.register()
+                    } else {
+                        voiceNsd.unregister()
+                        satellite.stop()
+                        micStreamer.stop()
+                        timerChime.stop()
+                        voiceOverlay.value = VoiceOverlayState()
+                        timersUi.value = TimersUiState()
+                    }
+                }
+        }
     }
 
     private fun statusSnapshot(): JsonObject = buildJsonObject {
@@ -340,6 +406,40 @@ fun EchoDashApp(deps: AppDeps) {
                         },
                         streamResolver = deps.streamResolver,
                     )
+
+                    val voiceOverlayState by deps.voiceOverlay.collectAsStateWithLifecycle()
+                    val timersState by deps.timersUi.collectAsStateWithLifecycle()
+                    LaunchedEffect(voiceOverlayState.phase) {
+                        if (voiceOverlayState.phase != VoiceOverlayPhase.HIDDEN) {
+                            deps.kiosk.onUserInteraction()   // wakes screen + counts as activity
+                            idleTimer.onInteraction()
+                        }
+                    }
+                    // Timer-finished: hold the screen awake + chime for the alert's whole lifetime; stop the
+                    // chime when the alert clears (dismiss or auto-silence). One-shot wake is not enough: a
+                    // screen_timeout shorter than the 60 s alert would blank mid-alert (same fix as the
+                    // doorbell popup's re-arm loop).
+                    val alerting = timersState.alert != null
+                    LaunchedEffect(alerting) {
+                        if (alerting) {
+                            deps.timerChime.start()
+                            while (true) {
+                                deps.kiosk.onUserInteraction()
+                                idleTimer.onInteraction()
+                                delay(5_000)
+                            }
+                        } else {
+                            deps.timerChime.stop()
+                        }
+                    }
+                    DisposableEffect(Unit) { onDispose { deps.timerChime.stop() } }
+                    TimerChips(timersState)
+                    VoiceOverlay(voiceOverlayState)
+                    timersState.alert?.let { alert ->
+                        key(alert) {
+                            TimerFinishedOverlay(alert, onDismiss = { deps.satellite.dismissTimerAlert() })
+                        }
+                    }
 
                     doorbellPopup?.let { popup ->
                         DoorbellPopupView(

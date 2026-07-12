@@ -10,5 +10,6 @@ class EchoDashApplication : Application() {
         super.onCreate()
         deps = AppDeps(this)
         deps.startVaca()
+        deps.startVoice()
     }
 }

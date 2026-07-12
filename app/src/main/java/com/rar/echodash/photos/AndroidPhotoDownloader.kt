@@ -7,6 +7,7 @@ import com.rar.echodash.ha.HaClient
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
@@ -18,9 +19,11 @@ import okhttp3.Request
 
 /**
  * Resolves a media content id to a signed URL, downloads it (no auth header — the authSig query
- * param authenticates), and decodes+scales it to fit within <=960x480 (preserving aspect ratio)
- * before caching as JPEG. Writes to a temp file first and renames on success, so an interrupted
- * compress never leaves a corrupt file under the final cache name.
+ * param authenticates), and decodes+fill-scales it to cover 960x480, center-cropping the excess,
+ * before caching as JPEG. Fill (not fit) matters: the Home screen draws with ContentScale.Crop,
+ * so a fit-scaled portrait would be upscaled ~2.7x at display time and look pixelated. Writes to
+ * a temp file first and renames on success, so an interrupted compress never leaves a corrupt
+ * file under the final cache name.
  */
 class AndroidPhotoDownloader(
     private val client: HaClient,
@@ -57,11 +60,11 @@ class AndroidPhotoDownloader(
     }
 
     /**
-     * Decode [bytes] scaled to fit within MAX_W x MAX_H with orientation applied. BitmapFactory
-     * ignores orientation metadata — EXIF and the HEIF container rotation iPhone HEICs carry — so
-     * photos came out sideways/upside-down and got baked that way into the JPEG cache. ImageDecoder
-     * applies both forms during decode. Falls back to the orientation-blind BitmapFactory path only
-     * if ImageDecoder rejects the bytes outright.
+     * Decode [bytes] fill-scaled to cover MAX_W x MAX_H (then center-cropped) with orientation
+     * applied. BitmapFactory ignores orientation metadata — EXIF and the HEIF container rotation
+     * iPhone HEICs carry — so photos came out sideways/upside-down and got baked that way into the
+     * JPEG cache. ImageDecoder applies both forms during decode. Falls back to the
+     * orientation-blind BitmapFactory path only if ImageDecoder rejects the bytes outright.
      */
     private fun decodeOriented(bytes: ByteArray): Bitmap? =
         runCatching {
@@ -69,39 +72,49 @@ class AndroidPhotoDownloader(
                 decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE // hardware bitmaps can't be compressed
                 val w = info.size.width
                 val h = info.size.height
-                if (w > PhotoConfig.MAX_W || h > PhotoConfig.MAX_H) {
-                    val scale = minOf(
-                        PhotoConfig.MAX_W.toFloat() / w,
-                        PhotoConfig.MAX_H.toFloat() / h,
-                    )
+                val scale = maxOf(
+                    PhotoConfig.MAX_W.toFloat() / w,
+                    PhotoConfig.MAX_H.toFloat() / h,
+                )
+                if (scale < 1f) {
                     decoder.setTargetSize(
-                        (w * scale).toInt().coerceAtLeast(1),
-                        (h * scale).toInt().coerceAtLeast(1),
+                        (w * scale).roundToInt().coerceAtLeast(1),
+                        (h * scale).roundToInt().coerceAtLeast(1),
                     )
                 }
             }
-        }.getOrNull() ?: decodeDownsampled(bytes)
+        }.getOrNull()?.let(::centerCropToScreen) ?: decodeDownsampled(bytes)
 
-    /** Decode [bytes] downsampled by a power-of-2 inSampleSize, then scale to fit within MAX_W x MAX_H. */
+    /** Decode [bytes] downsampled by a power-of-2 inSampleSize, fill-scaled to cover MAX_W x MAX_H, cropped. */
     private fun decodeDownsampled(bytes: ByteArray): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         var sample = 1
-        while (bounds.outWidth / sample > PhotoConfig.MAX_W * 2 ||
-            bounds.outHeight / sample > PhotoConfig.MAX_H * 2
+        // Halve only while BOTH dims stay >= the screen, so the crop never needs to upscale.
+        while (bounds.outWidth / (sample * 2) >= PhotoConfig.MAX_W &&
+            bounds.outHeight / (sample * 2) >= PhotoConfig.MAX_H
         ) sample *= 2
         val opts = BitmapFactory.Options().apply { inSampleSize = sample }
         val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
-        if (decoded.width <= PhotoConfig.MAX_W && decoded.height <= PhotoConfig.MAX_H) return decoded
-        // inSampleSize only guarantees within 2x of the cap; scale precisely down to fit.
-        val scale = minOf(
+        val scale = maxOf(
             PhotoConfig.MAX_W.toFloat() / decoded.width,
             PhotoConfig.MAX_H.toFloat() / decoded.height,
         )
-        val targetW = (decoded.width * scale).toInt().coerceAtLeast(1)
-        val targetH = (decoded.height * scale).toInt().coerceAtLeast(1)
+        if (scale >= 1f) return centerCropToScreen(decoded) // never upscale a small original
+        val targetW = (decoded.width * scale).roundToInt().coerceAtLeast(1)
+        val targetH = (decoded.height * scale).roundToInt().coerceAtLeast(1)
         val scaled = Bitmap.createScaledBitmap(decoded, targetW, targetH, true)
-        decoded.recycle()
-        return scaled
+        if (scaled !== decoded) decoded.recycle()
+        return centerCropToScreen(scaled)
+    }
+
+    /** Center-crop the overflow dimension down to the screen bounds; no-op when already within. */
+    private fun centerCropToScreen(bmp: Bitmap): Bitmap {
+        val w = minOf(bmp.width, PhotoConfig.MAX_W)
+        val h = minOf(bmp.height, PhotoConfig.MAX_H)
+        if (w == bmp.width && h == bmp.height) return bmp
+        val cropped = Bitmap.createBitmap(bmp, (bmp.width - w) / 2, (bmp.height - h) / 2, w, h)
+        if (cropped !== bmp) bmp.recycle()
+        return cropped
     }
 }

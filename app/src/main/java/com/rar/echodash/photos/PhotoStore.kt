@@ -89,11 +89,14 @@ open class PhotoStore(
             connectionState.collect { if (it == ConnState.CONNECTED) sync() }
         }
         scope.launch {
-            // Resync when the folder or cap changes (ignore other config edits). The initial
-            // replayed value on subscribe is dropped — that config state is already covered by
-            // the CONNECTED-trigger sync above; only later changes should force a resync.
+            // Resync when the folder, cap, or slideshow-enabled flag changes (ignore other
+            // config edits). The initial replayed value on subscribe is dropped — that config
+            // state is already covered by the CONNECTED-trigger sync above; only later changes
+            // should force a resync. Including slideshowEnabled means enabling the slideshow
+            // triggers an immediate sync instead of waiting for the periodic sync; a false-flip
+            // triggering a sync is harmless since sync() no-ops when disabled.
             config
-                .map { it.home.photoFolder to it.home.photoCacheCap }
+                .map { Triple(it.home.photoFolder, it.home.photoCacheCap, it.home.slideshowEnabled) }
                 .distinctUntilChanged()
                 .drop(1)
                 .collect { sync() }

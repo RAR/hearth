@@ -1235,6 +1235,8 @@ git add app/src/main/java/com/rar/echodash/photos/PhotoStore.kt app/src/main/jav
 git commit -m "feat: config-driven photo folder/cap with rotating subset sync"
 ```
 
+**Deviation note (per task review, fix round 1):** the config-change collector originally keyed `distinctUntilChanged` on `(photoFolder, photoCacheCap)` only, so flipping `slideshowEnabled` false→true fired no resync — on a fresh cache the screen stayed photo-less until the 6h periodic sync. The key now includes `slideshowEnabled` (`Triple(photoFolder, photoCacheCap, slideshowEnabled)`), so enabling the slideshow syncs immediately; a false-flip triggering a sync is harmless since `sync()` already no-ops when disabled.
+
 ---
 
 ### Task 6: EntityHub config-driven watching + full registry list + entity-list API

@@ -14,7 +14,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -138,9 +137,29 @@ class PhotoStoreTest {
         assertEquals(2, syncs)                              // folder change resyncs
         config.value = cfg(folder = "new-folder", cap = 25); runCurrent()
         assertEquals(3, syncs)                              // cap change resyncs
-        // an unrelated change (slideshow flag flip only) still resyncs at most on folder/cap keys:
+        // re-emitting an identical (folder, cap, slideshow) triple must not resync:
         config.value = cfg(folder = "new-folder", cap = 25); runCurrent()
-        assertEquals(3, syncs)                              // identical folder+cap => no extra sync
+        assertEquals(3, syncs)                              // identical config => distinctUntilChanged dedups, no extra sync
+        cacheDir.deleteRecursively()
+    }
+
+    @Test
+    fun resyncsWhenSlideshowEnabledFromDisabled() = runTest {
+        val cacheDir = tempDir("photocache_slideshow_enable")
+        var syncs = 0
+        val downloader = object : PhotoDownloader {
+            override suspend fun download(contentId: String, cacheKey: String): File? = null
+        }
+        val conn = MutableStateFlow(ConnState.OFFLINE)
+        val config = MutableStateFlow(cfg(folder = "echo-frame", cap = 50, slideshow = false))
+        val store = object : PhotoStore(FakeHaClient(browseJson), downloader, cacheDir, backgroundScope, config) {
+            override suspend fun sync() { syncs++ }
+        }
+        store.start(conn)
+        conn.value = ConnState.CONNECTED; runCurrent()
+        assertEquals(1, syncs)                              // connect trigger (sync() itself would no-op when disabled; here it's stubbed)
+        config.value = cfg(folder = "echo-frame", cap = 50, slideshow = true); runCurrent()
+        assertEquals(2, syncs)                              // enabling the slideshow (folder/cap unchanged) resyncs
         cacheDir.deleteRecursively()
     }
 

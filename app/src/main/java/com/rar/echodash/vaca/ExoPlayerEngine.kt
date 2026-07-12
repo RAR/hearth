@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -12,6 +13,8 @@ import androidx.media3.exoplayer.ExoPlayer
 class ExoPlayerEngine(context: Context) : MediaEngine {
     private val main = Handler(Looper.getMainLooper())
     override var onPlayingChanged: ((Boolean) -> Unit)? = null
+    override var onMeta: ((String?, ByteArray?) -> Unit)? = null
+    override var onEnded: (() -> Unit)? = null
 
     private val player: ExoPlayer = ExoPlayer.Builder(context).build().apply {
         addListener(object : Player.Listener {
@@ -20,6 +23,14 @@ class ExoPlayerEngine(context: Context) : MediaEngine {
             }
             override fun onPlayerError(error: PlaybackException) {
                 onPlayingChanged?.invoke(false)
+                onEnded?.invoke()
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) onEnded?.invoke()
+            }
+            override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
+                // media3 surfaces ICY StreamTitle as title; embedded tag art as artworkData.
+                onMeta?.invoke(mediaMetadata.title?.toString(), mediaMetadata.artworkData)
             }
         })
     }

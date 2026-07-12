@@ -45,6 +45,7 @@ import com.rar.echodash.vaca.ExoPlayerEngine
 import com.rar.echodash.vaca.KioskController
 import com.rar.echodash.vaca.LightSensorReporter
 import com.rar.echodash.vaca.MediaBridge
+import com.rar.echodash.media.NowPlayingStore
 import com.rar.echodash.vaca.NsdAdvertiser
 import com.rar.echodash.vaca.VacaOutgoing
 import com.rar.echodash.vaca.VacaServer
@@ -149,7 +150,8 @@ class AppDeps(context: Context) {
         restoredJson = settings.vacaSettingsJson,
     )
     private val mediaEngine = ExoPlayerEngine(appContext)
-    val media = MediaBridge(mediaEngine) { status ->
+    val nowPlaying = NowPlayingStore()
+    val media = MediaBridge(mediaEngine, nowPlaying) { status ->
         scope.launch { vaca.sendStatus(status) }
     }
     val announce = AnnouncePlayer(
@@ -320,6 +322,7 @@ fun EchoDashApp(deps: AppDeps) {
                     val photos by deps.photoStore.photos.collectAsStateWithLifecycle()
                     val mediaUi by deps.media.ui.collectAsStateWithLifecycle()
                     val config by deps.configStore.config.collectAsStateWithLifecycle()
+                    val nowPlayingState by deps.nowPlaying.state.collectAsStateWithLifecycle()
                     val configUrl = remember { deps.configUrl() }
                     val configPinValue = remember { deps.configPin() }
                     var view by remember { mutableStateOf(DashView.HOME) }
@@ -330,6 +333,12 @@ fun EchoDashApp(deps: AppDeps) {
                     }
                     DisposableEffect(idleTimer) { onDispose { idleTimer.cancel() } }
                     LaunchedEffect(idleTimer, view) { idleTimer.onViewChanged(view == DashView.HOME) }
+
+                    // Feed the companion media_player entity (config-driven watched set) into the
+                    // store. Null when unconfigured or not yet loaded -> local metadata fallback.
+                    LaunchedEffect(entities, config.media.companionEntity) {
+                        deps.nowPlaying.onEntity(config.media.companionEntity?.let { entities[it] })
+                    }
 
                     val doorbellCoordinator = remember { DoorbellCoordinator() }
                     var doorbellPopup by remember { mutableStateOf<DoorbellPopup?>(null) }

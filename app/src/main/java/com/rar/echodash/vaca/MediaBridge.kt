@@ -1,5 +1,6 @@
 package com.rar.echodash.vaca
 
+import com.rar.echodash.media.NowPlayingStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -21,6 +22,12 @@ interface MediaEngine {
     fun stop()
     fun setVolume(fraction: Float)
     var onPlayingChanged: ((Boolean) -> Unit)?
+
+    /** Local metadata callback: ICY StreamTitle (or tag title) and embedded artwork bytes. */
+    var onMeta: ((title: String?, artworkData: ByteArray?) -> Unit)?
+
+    /** Playback reached a terminal state on its own: player error or natural end of the media. */
+    var onEnded: (() -> Unit)?
 }
 
 /** Read-side snapshot of the on-device player for the Media panel. */
@@ -36,21 +43,38 @@ data class MediaUiState(
  */
 class MediaBridge(
     private val engine: MediaEngine,
+    private val nowPlaying: NowPlayingStore,
     private val sendStatus: (JsonObject) -> Unit,
 ) {
     private var volumePercent = 90 // HA media player default volume_level 0.9
     private var duckingVolume = 1  // 1..10 scale, integration default
     private var ducked = false
+    private var active = false   // engine has media loaded (play-media until stop/error)
+    private var playing = false  // mirrors the engine isPlaying callback
+
+    /** Push the current engine snapshot into the NowPlayingStore. */
+    private fun pushEngine() = nowPlaying.onEngine(active, playing, volumePercent)
 
     private val _ui = MutableStateFlow(MediaUiState(volume = volumePercent))
     val ui: StateFlow<MediaUiState> = _ui
 
     init {
-        engine.onPlayingChanged = { playing ->
-            _ui.update { it.copy(playing = playing) }
+        engine.onPlayingChanged = { isPlaying ->
+            playing = isPlaying
+            _ui.update { it.copy(playing = isPlaying) }
             sendStatus(buildJsonObject {
-                putJsonObject("media_player") { put("playing", playing) }
+                putJsonObject("media_player") { put("playing", isPlaying) }
             })
+            pushEngine()
+        }
+        engine.onMeta = { title, artworkData -> nowPlaying.onLocalMeta(title, artworkData) }
+        // Player error or natural end-of-media: without this the home takeover would stay up
+        // forever showing a dead player (spec: engine error -> active=false -> takeover dismisses).
+        engine.onEnded = {
+            active = false
+            playing = false
+            _ui.update { it.copy(playing = false, nowPlaying = "Nothing playing") }
+            pushEngine()
         }
     }
 
@@ -61,11 +85,13 @@ class MediaBridge(
             applyVolume()
             val url = payloadUrl(payload)
             if (url != null) {
+                active = true
                 engine.play(url)
                 _ui.update { it.copy(nowPlaying = url, volume = volumePercent) }
             } else {
                 _ui.update { it.copy(volume = volumePercent) }
             }
+            pushEngine()
             true
         }
         "play" -> {
@@ -73,17 +99,22 @@ class MediaBridge(
             applyVolume()
             engine.resume()
             _ui.update { it.copy(volume = volumePercent) }
+            pushEngine()
             true
         }
         "pause" -> { engine.pause(); true }
         "stop" -> {
+            active = false
+            playing = false
             engine.stop()
             _ui.update { it.copy(playing = false, nowPlaying = "Nothing playing") }
+            pushEngine()
             true
         }
         "set-volume" -> {
             payloadVolume(payload)?.let { volumePercent = it; applyVolume() }
             _ui.update { it.copy(volume = volumePercent) }
+            pushEngine()
             true
         }
         else -> false
@@ -99,7 +130,7 @@ class MediaBridge(
             duckingVolume = it.coerceIn(0, 10)
             changed = true
         }
-        if (changed) { applyVolume(); _ui.update { it.copy(volume = volumePercent) } }
+        if (changed) { applyVolume(); _ui.update { it.copy(volume = volumePercent) }; pushEngine() }
     }
 
     fun setDucked(ducked: Boolean) {

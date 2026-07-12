@@ -31,17 +31,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.rar.echodash.data.SettingsStore
 import com.rar.echodash.ha.AuthManager
+import com.rar.echodash.web.normalizeBaseUrl
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-
-fun normalizeBaseUrl(input: String): String? {
-    val trimmed = input.trim().trimEnd('/').trim()
-    if (trimmed.isEmpty()) return null
-    val withScheme = if ("://" in trimmed) trimmed else "http://$trimmed"
-    val ok = withScheme.startsWith("http://") || withScheme.startsWith("https://")
-    return if (ok) withScheme.trimEnd('/') else null
-}
 
 private sealed interface SetupPhase {
     data object EnterUrl : SetupPhase

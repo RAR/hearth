@@ -1,10 +1,10 @@
-package com.rar.echodash.ui
+package com.rar.echodash.web
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-class SetupLogicTest {
+class NormalizeBaseUrlTest {
     @Test
     fun addsHttpSchemeWhenMissing() {
         assertEquals("http://ha.local:8123", normalizeBaseUrl("ha.local:8123"))

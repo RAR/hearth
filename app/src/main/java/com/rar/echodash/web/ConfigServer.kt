@@ -105,6 +105,7 @@ class ConfigServer(
         }
         val bytes = assetReader(path) ?: return error(Response.Status.NOT_FOUND, "not found")
         return newFixedLengthResponse(Response.Status.OK, mimeOf(path), ByteArrayInputStream(bytes), bytes.size.toLong())
+            .apply { addHeader("Cache-Control", "no-cache") } // assets change on app update; force revalidation
     }
 
     private fun ok(body: String): Response = json(Response.Status.OK, body)

@@ -14,6 +14,14 @@ import kotlinx.serialization.json.doubleOrNull
 
 const val STALE_AFTER_MS = 15 * 60_000L
 
+/** Fixed-decimals sensor value, e.g. 14.156 -> "14.2" at 1 decimal, "14" at 0. */
+fun formatSensor(value: Double, decimals: Int): String =
+    String.format(Locale.US, "%.${decimals}f", value)
+
+/** [formatSensor] for a raw state string; non-numeric states pass through untouched. */
+fun formatSensorState(state: String, decimals: Int): String =
+    state.toDoubleOrNull()?.let { formatSensor(it, decimals) } ?: state
+
 enum class WeatherIcon { SUNNY, CLEAR_NIGHT, PARTLY_CLOUDY, CLOUDY, RAIN, SNOW, STORM, FOG, WIND, UNKNOWN }
 
 /** Maps a HA weather condition string to the app's icon set. */
@@ -43,6 +51,7 @@ fun weatherPill(
     weatherId: String?,
     entities: Map<String, EntityState>,
     nowMs: Long,
+    decimals: Int = 1,
 ): WeatherPill? {
     val tempSensor = tempSensorId?.let { entities[it] }
     val weather = weatherId?.let { entities[it] }
@@ -52,13 +61,14 @@ fun weatherPill(
     when {
         tempSensor != null && tempSensor.state.toDoubleOrNull() != null -> {
             val unit = tempSensor.attr("unit_of_measurement")
-            temperature = if (unit != null) "${tempSensor.state} $unit" else tempSensor.state
+            val t = formatSensorState(tempSensor.state, decimals)
+            temperature = if (unit != null) "$t $unit" else t
             stale = nowMs - tempSensor.lastUpdatedMs > STALE_AFTER_MS
         }
         weather?.attrDouble("temperature") != null -> {
             val unit = weather.attr("temperature_unit")
-            val t = weather.attrDouble("temperature")
-            temperature = if (unit != null) "$t $unit" else t.toString()
+            val t = formatSensor(weather.attrDouble("temperature")!!, decimals)
+            temperature = if (unit != null) "$t $unit" else t
             stale = false
         }
         else -> { temperature = null; stale = false }

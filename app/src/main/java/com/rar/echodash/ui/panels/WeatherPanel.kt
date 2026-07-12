@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.rar.echodash.ha.EntityState
 import com.rar.echodash.ui.model.DailyForecast
 import com.rar.echodash.ui.model.conditionIcon
+import com.rar.echodash.ui.model.formatSensor
 import com.rar.echodash.ui.model.parseForecasts
 import com.rar.echodash.ui.weatherIcon
 import kotlinx.coroutines.delay
@@ -38,6 +39,7 @@ fun WeatherPanel(
     weather: EntityState?,
     weatherEntityId: String?,
     forecastDays: Int,
+    sensorDecimals: Int,
     fetchForecast: suspend (String) -> JsonElement?,
 ) {
     PanelSurface {
@@ -69,7 +71,10 @@ fun WeatherPanel(
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         weather.attrDouble("temperature")?.let {
-                            Text("${it}°", color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Light)
+                            Text(
+                                "${formatSensor(it, sensorDecimals)}°",
+                                color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Light,
+                            )
                         }
                         Text(weather.state, color = Color.White, fontSize = 24.sp)
                         weather.attrDouble("humidity")?.let {

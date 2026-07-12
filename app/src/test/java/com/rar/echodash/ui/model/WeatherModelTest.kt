@@ -42,6 +42,23 @@ class WeatherModelTest {
     }
 
     @Test
+    fun formatSensorRoundsToConfiguredDecimals() {
+        assertEquals("14.2", formatSensor(14.156, 1))
+        assertEquals("14", formatSensor(14.156, 0))
+        assertEquals("14.16", formatSensor(14.156, 2))
+        assertEquals("14.16", formatSensorState("14.156", 2))
+        assertEquals("unavailable", formatSensorState("unavailable", 2))
+    }
+
+    @Test
+    fun pillTemperatureHonorsDecimals() {
+        val entities = mapOf("sensor.temp" to EntityState("sensor.temp", "14.156",
+            attrs("""{"unit_of_measurement":"°C"}"""), 1_000L))
+        assertEquals("14.2 °C", weatherPill("sensor.temp", null, entities, nowMs = 1_500L)!!.temperature)
+        assertEquals("14 °C", weatherPill("sensor.temp", null, entities, nowMs = 1_500L, decimals = 0)!!.temperature)
+    }
+
+    @Test
     fun parsesFiveDayForecast() {
         val result = Json.parseToJsonElement(
             """{"response":{"weather.home":{"forecast":[

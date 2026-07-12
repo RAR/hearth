@@ -55,6 +55,7 @@ data class HomeSettings(
 data class PanelOptions(
     val thermostatStep: Double = 0.5,
     val forecastDays: Int = 5,
+    val sensorDecimals: Int = 1,
 )
 
 /** The whole device configuration; one versioned document persisted at filesDir/config.json. */
@@ -105,6 +106,7 @@ data class DashConfig(
         panelOptions = panelOptions.copy(
             thermostatStep = panelOptions.thermostatStep.coerceIn(0.1, 5.0),
             forecastDays = panelOptions.forecastDays.coerceIn(1, 5),
+            sensorDecimals = panelOptions.sensorDecimals.coerceIn(0, 3),
         ),
     )
 }

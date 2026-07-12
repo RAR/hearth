@@ -422,6 +422,7 @@ function renderOptions() {
   const o = config.panelOptions;
   host.appendChild(labeledRow("Thermostat step", numberInput(o.thermostatStep, v => o.thermostatStep = v)));
   host.appendChild(labeledRow("Forecast days", numberInput(o.forecastDays, v => o.forecastDays = Math.round(v))));
+  host.appendChild(labeledRow("Sensor decimal places", numberInput(o.sensorDecimals, v => o.sensorDecimals = Math.round(v))));
   host.appendChild(el("div", "muted", "Step 0.1–5.0, forecast 1–5 (clamped on save)."));
 }
 

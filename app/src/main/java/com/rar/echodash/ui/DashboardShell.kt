@@ -73,8 +73,9 @@ fun DashboardShell(
         Crossfade(targetState = current, animationSpec = tween(300), label = "view") { view ->
             when (view) {
                 DashView.HOME -> {
-                    val pill = remember(entities, config.entities) {
-                        weatherPill(config.entities.tempSensor, config.entities.weather, entities, System.currentTimeMillis())
+                    val pill = remember(entities, config.entities, config.panelOptions.sensorDecimals) {
+                        weatherPill(config.entities.tempSensor, config.entities.weather, entities,
+                            System.currentTimeMillis(), config.panelOptions.sensorDecimals)
                     }
                     val aqi = remember(entities, config.entities) {
                         aqiPill(config.entities.aqiSensor, entities, System.currentTimeMillis())
@@ -107,6 +108,7 @@ fun DashboardShell(
                     weather = weatherEntityId?.let { entities[it] },
                     weatherEntityId = weatherEntityId,
                     forecastDays = config.panelOptions.forecastDays,
+                    sensorDecimals = config.panelOptions.sensorDecimals,
                     fetchForecast = fetchForecast,
                 )
                 DashView.SOLAR -> {

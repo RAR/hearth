@@ -1952,6 +1952,8 @@ git add app/src/main/java/com/rar/echodash/web/SessionManager.kt app/src/main/ja
 git commit -m "feat: SessionManager PIN auth with lockout, and PIN generation"
 ```
 
+**Deviation note (per task review, fix round 1):** SessionManager internally synchronized per task review (NanoHTTPD calls from concurrent request threads).
+
 ---
 
 ### Task 8: ConfigServer (NanoHTTPD) + network info + dependency

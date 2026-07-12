@@ -19,33 +19,6 @@ class AuthManagerTest {
     private fun auth() = AuthManager(settings, client) { now }
 
     @Test
-    fun authorizeUrlEncodesParams() {
-        val url = auth().authorizeUrl("http://ha.local:8123")
-        assertTrue(url.startsWith("http://ha.local:8123/auth/authorize?"))
-        assertTrue(url.contains("client_id=https%3A%2F%2Fhome-assistant.io%2Fandroid"))
-        assertTrue(url.contains("redirect_uri=homeassistant%3A%2F%2Fauth-callback"))
-    }
-
-    @Test
-    fun exchangeCodeStoresTokens() = runBlocking {
-        MockWebServer().use { server ->
-            server.enqueue(MockResponse().setBody(
-                """{"access_token":"AT","refresh_token":"RT","expires_in":1800,"token_type":"Bearer"}"""))
-            server.start()
-            settings.baseUrl = server.url("/").toString().trimEnd('/')
-            auth().exchangeCode("CODE123")
-            assertEquals("AT", settings.accessToken)
-            assertEquals("RT", settings.refreshToken)
-            assertEquals(now + 1800_000L, settings.accessTokenExpiresAt)
-            val req = server.takeRequest()
-            assertEquals("/auth/token", req.path)
-            val body = req.body.readUtf8()
-            assertTrue(body.contains("grant_type=authorization_code"))
-            assertTrue(body.contains("code=CODE123"))
-        }
-    }
-
-    @Test
     fun validTokenReturnsCachedWhenFresh() = runBlocking {
         settings.accessToken = "AT"
         settings.accessTokenExpiresAt = now + 120_000L

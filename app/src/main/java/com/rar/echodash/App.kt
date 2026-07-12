@@ -92,7 +92,6 @@ class AppDeps(context: Context) {
             runCatching { appContext.assets.open("config/$path").readBytes() }.getOrNull()
         },
     )
-    private var seedStarted = false
     private var serverStarted = false
 
     /** The 6-digit config PIN (generated once, persisted). */
@@ -185,18 +184,10 @@ class AppDeps(context: Context) {
         kiosk.sendFeedback = { s -> scope.launch { vaca.sendSettingsFeedback(s) } }
     }
 
-    /** Start the HA connection, entity hub, photo sync, and config seeding. */
+    /** Start the HA connection, entity hub, and photo sync. */
     fun startDashboard() {
         entityHub.start()
         photoStore.start(ws.connectionState)
-        if (!seedStarted) {
-            seedStarted = true
-            scope.launch {
-                entityHub.registry.collect { reg ->
-                    if (configStore.needsSeed() && reg.allEntities.isNotEmpty()) configStore.seedFrom(reg)
-                }
-            }
-        }
         ws.start()
     }
 
@@ -234,12 +225,17 @@ fun EchoDashApp(deps: AppDeps) {
         }
     }
 
+    LaunchedEffect(Unit) {
+        deps.setupEvents.collect { screen = Screen.Dashboard }
+    }
+
     EchoTheme {
         Box(Modifier.fillMaxSize()) {
             when (screen) {
-                Screen.Setup -> SetupScreen(deps.settings, deps.auth) {
-                    screen = Screen.Dashboard
-                }
+                Screen.Setup -> SetupScreen(
+                    configUrl = remember { deps.configUrl() },
+                    configPin = remember { deps.configPin() },
+                )
                 Screen.Dashboard -> {
                     LaunchedEffect(Unit) { deps.startDashboard() }
                     val entities by deps.entityHub.entities.collectAsStateWithLifecycle()

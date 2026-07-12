@@ -2,7 +2,6 @@ package com.rar.echodash.ha
 
 import com.rar.echodash.data.SettingsStore
 import java.io.IOException
-import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -27,26 +26,7 @@ class AuthManager(
 ) {
     companion object {
         const val CLIENT_ID = "https://home-assistant.io/android"
-        const val REDIRECT_URI = "homeassistant://auth-callback"
         private const val EXPIRY_MARGIN_MS = 60_000L
-    }
-
-    fun authorizeUrl(baseUrl: String): String =
-        "$baseUrl/auth/authorize?client_id=${enc(CLIENT_ID)}&redirect_uri=${enc(REDIRECT_URI)}"
-
-    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
-
-    suspend fun exchangeCode(code: String) {
-        val base = settings.baseUrl ?: throw IOException("no base url configured")
-        val tokens = tokenRequest(
-            base,
-            FormBody.Builder()
-                .add("grant_type", "authorization_code")
-                .add("code", code)
-                .add("client_id", CLIENT_ID)
-                .build()
-        )
-        store(tokens)
     }
 
     /** Exchange an authorization code obtained via the browser setup flow. [baseUrl] is used directly

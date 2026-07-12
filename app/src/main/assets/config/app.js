@@ -17,6 +17,13 @@ const PANEL_LABELS = {
   lights: "Lights", climate: "Climate", media: "Media", weather: "Weather", solar: "Solar", cameras: "Cameras",
 };
 
+const TONE_OPTIONS = [
+  ["twotone", "Two-tone"],
+  ["beeps", "Beeps"],
+  ["chime", "Chime"],
+  ["trill", "Trill"],
+];
+
 // ---------- inline SVG glyphs (currentColor) ----------
 const ICONS = {
   lights: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.5.5.8 1 .8 1.6V16h6v-.8c0-.6.3-1.1.8-1.6A6 6 0 0 0 12 3Z"/></svg>',
@@ -501,10 +508,39 @@ function renderVoice() {
   clear(host);
   if (!config.voice) config.voice = { enabled: false };
   const v = config.voice;
+  if (v.timerTone == null) v.timerTone = "twotone";
+  if (v.timerVolume == null) v.timerVolume = 80;
+
   const toggle = el("input"); toggle.type = "checkbox"; toggle.checked = !!v.enabled;
   toggle.setAttribute("aria-label", "Voice satellite enabled");
   toggle.addEventListener("change", () => v.enabled = toggle.checked);
   host.appendChild(labeledRow("Voice satellite (Wyoming)", toggle));
+
+  const toneSel = el("select");
+  TONE_OPTIONS.forEach(([val, lbl]) => {
+    const o = el("option", null, lbl); o.value = val;
+    if (v.timerTone === val) o.selected = true;
+    toneSel.appendChild(o);
+  });
+  toneSel.addEventListener("change", () => v.timerTone = toneSel.value);
+  host.appendChild(labeledRow("Timer alarm", toneSel));
+
+  const vol = el("input"); vol.type = "number"; vol.min = 0; vol.max = 100; vol.value = v.timerVolume;
+  vol.addEventListener("change", () => v.timerVolume = Math.round(parseFloat(vol.value) || 0));
+  host.appendChild(labeledRow("Alarm volume", vol));
+
+  const preview = el("button", "ghost small", "Preview");
+  preview.type = "button";
+  preview.addEventListener("click", async () => {
+    // Audition the CURRENT (possibly unsaved) selections. Best-effort; ignore failures.
+    preview.disabled = true;
+    try {
+      await api("POST", "/api/voice/preview-chime", { tone: v.timerTone, volume: v.timerVolume });
+    } catch (e) { /* device may be unreachable; nothing to persist */ }
+    finally { preview.disabled = false; }
+  });
+  host.appendChild(preview);
+
   host.appendChild(el("div", "muted",
     "Home Assistant should auto-discover the satellite; otherwise add the Wyoming Protocol integration at <this-device-ip>:10600. Pick the pipeline and wake word in HA's Assist satellite settings."));
 }

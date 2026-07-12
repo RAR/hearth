@@ -52,8 +52,31 @@
 
     <div class="content">
 
-      <!-- FUTURE "Setup" card (Home Assistant URL entry + Connect button) slots in here as
-           another <section class="card-section">, no surrounding layout changes needed. -->
+      <section id="setup-section" class="card-section" hidden>
+        <div class="card-head">
+          <span class="ic" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 3v6l4 2"/>
+            </svg>
+          </span>
+          <div class="card-titles">
+            <h2>Connect to Home Assistant</h2>
+            <p>Sign in through your Home Assistant to finish setup.</p>
+          </div>
+        </div>
+        <form id="setup-form" class="setup">
+          <div class="row">
+            <label for="setup-url">Home Assistant URL</label>
+            <span class="picker">
+              <input id="setup-url" inputmode="url" autocomplete="off" placeholder="http://homeassistant.local:8123">
+            </span>
+          </div>
+          <div class="setup-actions">
+            <button id="setup-connect" type="submit" class="btn-primary">Connect</button>
+          </div>
+          <div id="setup-error" class="error" role="alert"></div>
+        </form>
+      </section>
 
       <section id="panels-section" class="card-section">
         <div class="card-head">

@@ -326,6 +326,12 @@ button:active { transform: translateY(1px); }
 .muted { color: var(--text-dim); font-size: .78rem; margin-top: .55rem; }
 
 /* =========================================================
+   Setup card
+   ========================================================= */
+#setup-url { width: 100%; }
+.setup .setup-actions { margin-top: .8rem; }
+
+/* =========================================================
    Responsive
    ========================================================= */
 @media (max-width: 460px) {

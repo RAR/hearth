@@ -6,6 +6,12 @@ let dlSeq = 0;
 let idSeq = 0;
 function nextId(prefix) { return prefix + "-" + (++idSeq); }
 
+// OAuth callback params captured once at load, before any history.replaceState.
+const _sp = new URLSearchParams(location.search);
+const setupCode = _sp.get("code");
+const setupState = _sp.get("state");
+let setupAttempted = false;
+
 const PANEL_KEYS = ["lights", "climate", "media", "weather", "solar"];
 const PANEL_LABELS = {
   lights: "Lights", climate: "Climate", media: "Media", weather: "Weather", solar: "Solar",
@@ -61,7 +67,16 @@ async function tryLoad() {
     config = await r.json();
     const er = await api("GET", "/api/entities");
     entities = er.ok ? await er.json() : [];
+    const sr = await api("GET", "/api/status");
+    const status = sr.ok ? await sr.json() : { configured: true };
     showApp();
+    // If HA just redirected back with a code and setup isn't done yet, finish it once.
+    if (setupCode && setupState && status.configured === false && !setupAttempted) {
+      setupAttempted = true;
+      await completeSetup();
+      return;
+    }
+    renderSetup(status.configured === false);
     render();
     setStatus("Connected", "ok");
   } catch (e) {
@@ -115,6 +130,57 @@ async function save() {
   } catch (e) {
     setStatus("Can't reach the device — changes not saved.", "err");
   }
+}
+
+function renderSetup(show) {
+  document.getElementById("setup-section").hidden = !show;
+}
+
+function showSetupError(msg) {
+  document.getElementById("setup-error").textContent = msg || "";
+}
+
+async function beginSetup(ev) {
+  ev.preventDefault();
+  const haUrl = document.getElementById("setup-url").value.trim();
+  showSetupError("");
+  if (!haUrl) { showSetupError("Enter your Home Assistant URL."); return; }
+  const btn = document.getElementById("setup-connect");
+  btn.disabled = true;
+  try {
+    const r = await api("POST", "/api/setup/begin", { haUrl, clientId: location.origin + "/" });
+    if (r.ok) {
+      const b = await r.json();
+      location.assign(b.authorizeUrl);   // hand off to Home Assistant's login
+      return;
+    }
+    if (r.status === 401) { showLogin(); return; }
+    const b = await r.json().catch(() => ({}));
+    showSetupError(b.error || ("Couldn't start setup (" + r.status + ")"));
+  } catch (e) {
+    showSetupError("Can't reach the device — is it on and connected?");
+  }
+  btn.disabled = false;
+}
+
+async function completeSetup() {
+  setStatus("Finishing setup…", "busy");
+  try {
+    const r = await api("POST", "/api/setup/complete", { code: setupCode, state: setupState });
+    if (r.ok) {
+      history.replaceState(null, "", location.pathname); // strip ?code&state AFTER success only
+      await tryLoad();                                   // status now configured:true → card hides
+      return;
+    }
+    const b = await r.json().catch(() => ({}));
+    showSetupError(b.error || ("Setup failed (" + r.status + ")"));
+  } catch (e) {
+    showSetupError("Can't reach the device — setup not completed.");
+  }
+  // On failure the params stay in the URL; show the card so the user can retry Connect.
+  renderSetup(true);
+  render();
+  setStatus("Setup failed", "err");
 }
 
 // ---------- reusable controls ----------
@@ -350,4 +416,5 @@ function renderOptions() {
 // ---------- boot ----------
 document.getElementById("login-form").addEventListener("submit", doLogin);
 document.getElementById("save").addEventListener("click", save);
+document.getElementById("setup-form").addEventListener("submit", beginSetup);
 tryLoad();

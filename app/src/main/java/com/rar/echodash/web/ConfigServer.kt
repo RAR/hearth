@@ -3,12 +3,14 @@ package com.rar.echodash.web
 import com.rar.echodash.config.ConfigJson
 import com.rar.echodash.config.ConfigStore
 import com.rar.echodash.config.DashConfig
+import com.rar.echodash.config.VoiceSettings
 import com.rar.echodash.config.decodeConfig
 import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayInputStream
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
@@ -26,6 +28,7 @@ class ConfigServer(
     private val setup: SetupCoordinator,
     private val configured: () -> Boolean,
     private val connState: () -> String,
+    private val previewChime: (String, Int) -> Unit,
     private val assetReader: (String) -> ByteArray?,
 ) : NanoHTTPD(port) {
 
@@ -53,6 +56,7 @@ class ConfigServer(
                 uri == "/api/status" && method == Method.GET -> handleStatus()
                 uri == "/api/setup/begin" && method == Method.POST -> handleSetupBegin(session)
                 uri == "/api/setup/complete" && method == Method.POST -> handleSetupComplete(session)
+                uri == "/api/voice/preview-chime" && method == Method.POST -> handlePreviewChime(session)
                 else -> error(Response.Status.NOT_FOUND, "not found")
             }
         }
@@ -93,6 +97,16 @@ class ConfigServer(
             put("configured", configured())
             put("connState", connState())
         }.toString())
+
+    private fun handlePreviewChime(session: IHTTPSession): Response {
+        val obj = runCatching { ConfigJson.json.parseToJsonElement(readBody(session)) as JsonObject }.getOrNull()
+        val saved = store.config.value.voice
+        val tone = obj?.get("tone")?.jsonPrimitive?.contentOrNull ?: saved.timerTone
+        val volume = obj?.get("volume")?.jsonPrimitive?.intOrNull ?: saved.timerVolume
+        val norm = VoiceSettings(timerTone = tone, timerVolume = volume).clamped()
+        previewChime(norm.timerTone, norm.timerVolume)
+        return ok("""{"ok":true}""")
+    }
 
     private fun handleSetupBegin(session: IHTTPSession): Response {
         val obj = runCatching { ConfigJson.json.parseToJsonElement(readBody(session)) as JsonObject }

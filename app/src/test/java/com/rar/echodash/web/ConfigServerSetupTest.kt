@@ -52,6 +52,7 @@ class ConfigServerSetupTest {
             setup = setup,
             configured = { settings.refreshToken != null },
             connState = { "OFFLINE" },
+            previewChime = { _, _ -> },
             assetReader = { null },
         )
         server.start()

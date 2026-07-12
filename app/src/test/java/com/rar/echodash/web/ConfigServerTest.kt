@@ -25,6 +25,7 @@ class ConfigServerTest {
     private lateinit var store: ConfigStore
     private lateinit var base: String
     private val requestedAssetPaths = mutableListOf<String>()
+    private val previewCalls = mutableListOf<Pair<String, Int>>()
 
     private fun tempDir(): File =
         File.createTempFile("cfgserver", "").let { it.delete(); it.mkdirs(); it }
@@ -41,6 +42,7 @@ class ConfigServerTest {
             setup = SetupCoordinator(AuthManager(InMemorySettingsStore(), OkHttpClient()), onConfigured = {}),
             configured = { false },
             connState = { "OFFLINE" },
+            previewChime = { tone, volume -> previewCalls += tone to volume },
             assetReader = { path ->
                 requestedAssetPaths += path
                 if (path == "index.html") "<html>ok</html>".toByteArray() else null
@@ -196,5 +198,35 @@ class ConfigServerTest {
         val ip = localIpAddress()
         assertTrue(ip == null || ip.matches(Regex("""\d+\.\d+\.\d+\.\d+""")))
         assertNotNull(server) // touch server so the test is meaningful even if no LAN IP is present
+    }
+
+    @Test
+    fun previewChimeRequiresSession() {
+        http.newCall(Request.Builder().url("$base/api/voice/preview-chime")
+            .post("""{"tone":"beeps","volume":50}""".toRequestBody(json)).build())
+            .execute().use { r -> assertEquals(401, r.code) }
+        assertTrue(previewCalls.isEmpty())
+    }
+
+    @Test
+    fun previewChimeClampsAndFires() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/voice/preview-chime").header("Cookie", cookie)
+            .post("""{"tone":"nope","volume":250}""".toRequestBody(json)).build())
+            .execute().use { r ->
+                assertEquals(200, r.code)
+                assertTrue(r.body!!.string().contains("\"ok\":true"))
+            }
+        assertEquals(listOf("twotone" to 100), previewCalls) // unknown->twotone, 250->100
+    }
+
+    @Test
+    fun previewChimeDefaultsToSavedConfigWhenFieldsOmitted() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/voice/preview-chime").header("Cookie", cookie)
+            .post("{}".toRequestBody(json)).build())
+            .execute().use { r -> assertEquals(200, r.code) }
+        // saved config is default VoiceSettings: twotone @ 80
+        assertEquals(listOf("twotone" to 80), previewCalls)
     }
 }

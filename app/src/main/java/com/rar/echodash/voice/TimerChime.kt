@@ -5,42 +5,41 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.util.Log
 import kotlin.concurrent.thread
-import kotlin.math.PI
-import kotlin.math.sin
 
 /**
- * Repeating two-tone "timer done" chime synthesized on the fly and played through AudioTrack
- * on the alarm stream. [start] loops until [stop]; both are idempotent. No bundled audio asset.
+ * Plays the "timer done" alarm through AudioTrack on the alarm stream. The waveform is synthesized
+ * by [ToneGenerator] as one cycle (sound + trailing gap); [start] loops that single buffer until
+ * [stop]. Both are idempotent. [playOnce] auditions a single cycle for the config-page preview.
+ * No bundled audio asset.
  */
 class TimerChime {
     @Volatile private var playing = false
     private var worker: Thread? = null
 
+    /** Loop [tone] at [volume] until [stop]. Idempotent: a second call while playing is a no-op. */
     @Synchronized
-    fun start() {
+    fun start(tone: String, volume: Int) {
         if (playing) return
         playing = true
         worker = thread(name = "TimerChime", isDaemon = true) {
             val rate = 22050
-            val tone = buildTone(rate)
-            val gap = ShortArray(rate) // ~1 s silence between repeats
+            val cycle = ToneGenerator.render(tone, volume, rate)
             val minBuf = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
             val track = try {
                 @Suppress("DEPRECATION")
                 AudioTrack(
                     AudioManager.STREAM_ALARM, rate, AudioFormat.CHANNEL_OUT_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuf, tone.size * 2), AudioTrack.MODE_STREAM,
+                    AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuf, cycle.size * 2), AudioTrack.MODE_STREAM,
                 )
             } catch (e: Exception) {
                 Log.w(TAG, "chime init failed", e); playing = false; return@thread
             }
             try {
                 track.play()
+                // The gap is baked into the rendered cycle, so each loop iteration is one write.
                 while (playing) {
                     var off = 0
-                    while (playing && off < tone.size) off += track.write(tone, off, tone.size - off)
-                    off = 0
-                    while (playing && off < gap.size) off += track.write(gap, off, gap.size - off)
+                    while (playing && off < cycle.size) off += track.write(cycle, off, cycle.size - off)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "chime playback failed", e)
@@ -51,20 +50,46 @@ class TimerChime {
         }
     }
 
+    /** Stop any running loop. Idempotent. */
     @Synchronized
     fun stop() {
         playing = false
         worker = null
     }
 
-    private fun buildTone(rate: Int): ShortArray {
-        val beep = rate * 200 / 1000 // 200 ms per beep
-        val out = ShortArray(beep * 2)
-        for (i in 0 until beep) {
-            out[i] = (sin(2 * PI * 880.0 * i / rate) * 0.6 * Short.MAX_VALUE).toInt().toShort()
-            out[beep + i] = (sin(2 * PI * 1320.0 * i / rate) * 0.6 * Short.MAX_VALUE).toInt().toShort()
+    /**
+     * Play exactly ONE cycle of [tone] at [volume], then stop and release. Best-effort: swallows
+     * all failures and never throws. Runs on its own daemon thread with its own AudioTrack and does
+     * NOT touch [playing]/[worker], so it is safe to call while a [start] loop is running (the OS
+     * mixes both on STREAM_ALARM) and can never leave a loop running. Used by the config preview.
+     */
+    fun playOnce(tone: String, volume: Int) {
+        thread(name = "TimerChimePreview", isDaemon = true) {
+            val rate = 22050
+            val cycle = ToneGenerator.render(tone, volume, rate)
+            val minBuf = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
+            val track = try {
+                @Suppress("DEPRECATION")
+                AudioTrack(
+                    AudioManager.STREAM_ALARM, rate, AudioFormat.CHANNEL_OUT_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuf, cycle.size * 2), AudioTrack.MODE_STREAM,
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "preview init failed", e); return@thread
+            }
+            try {
+                track.play()
+                var off = 0
+                while (off < cycle.size) off += track.write(cycle, off, cycle.size - off)
+                // MODE_STREAM: stop() lets the already-queued buffer drain to completion before the
+                // track halts, so the full cycle is heard. (pause() would truncate it.)
+                track.stop()
+            } catch (e: Exception) {
+                Log.w(TAG, "preview playback failed", e)
+            } finally {
+                runCatching { track.release() }
+            }
         }
-        return out
     }
 
     private companion object { const val TAG = "TimerChime" }

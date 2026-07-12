@@ -111,6 +111,7 @@ class AppDeps(context: Context) {
         setup = setup,
         configured = { settings.refreshToken != null },
         connState = { ws.connectionState.value.name },
+        previewChime = { tone, volume -> timerChime.playOnce(tone, volume) },
         assetReader = { path ->
             runCatching { appContext.assets.open("config/$path").readBytes() }.getOrNull()
         },
@@ -422,7 +423,7 @@ fun EchoDashApp(deps: AppDeps) {
                     val alerting = timersState.alert != null
                     LaunchedEffect(alerting) {
                         if (alerting) {
-                            deps.timerChime.start()
+                            deps.timerChime.start(config.voice.timerTone, config.voice.timerVolume)
                             while (true) {
                                 deps.kiosk.onUserInteraction()
                                 idleTimer.onInteraction()

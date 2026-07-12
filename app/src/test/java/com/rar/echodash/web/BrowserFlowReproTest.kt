@@ -38,6 +38,7 @@ class BrowserFlowReproTest {
             setup = SetupCoordinator(AuthManager(InMemorySettingsStore(), OkHttpClient()), onConfigured = {}),
             configured = { false },
             connState = { "OFFLINE" },
+            previewChime = { _, _ -> },
             assetReader = { null },
         )
         server.start()

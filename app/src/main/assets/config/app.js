@@ -12,9 +12,9 @@ const setupCode = _sp.get("code");
 const setupState = _sp.get("state");
 let setupAttempted = false;
 
-const PANEL_KEYS = ["lights", "climate", "media", "weather", "solar"];
+const PANEL_KEYS = ["lights", "climate", "media", "weather", "solar", "cameras"];
 const PANEL_LABELS = {
-  lights: "Lights", climate: "Climate", media: "Media", weather: "Weather", solar: "Solar",
+  lights: "Lights", climate: "Climate", media: "Media", weather: "Weather", solar: "Solar", cameras: "Cameras",
 };
 
 // ---------- inline SVG glyphs (currentColor) ----------
@@ -24,6 +24,7 @@ const ICONS = {
   media: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10.2 8.3 16 12l-5.8 3.7Z" fill="currentColor" stroke="none"/></svg>',
   weather: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-.4-8A5.5 5.5 0 0 1 17 9.2 3.6 3.6 0 0 1 16.8 18Z"/></svg>',
   solar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.6"/><path d="M12 2.5v2.4M12 19.1v2.4M21.5 12h-2.4M4.9 12H2.5M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7M18.4 18.4l-1.7-1.7M7.3 7.3 5.6 5.6"/></svg>',
+  cameras: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="12" height="11" rx="2"/><path d="M15 10l6-3v10l-6-3Z"/></svg>',
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v10h12V10"/><path d="M10 20v-5h4v5"/></svg>',
 };
 
@@ -348,6 +349,24 @@ function renderEntities() {
   addGroup.type = "button";
   addGroup.addEventListener("click", () => { e.lightGroups.push({ name: "New group", entities: [] }); renderEntities(); });
   host.appendChild(addGroup);
+
+  // cameras
+  host.appendChild(subhead("cameras", "Cameras"));
+  e.cameras.forEach((c, ci) => host.appendChild(renderCamera(c, ci)));
+  const addCam = el("button", "add", "Add camera");
+  addCam.type = "button";
+  addCam.addEventListener("click", () => { e.cameras.push({ name: "New camera", entity: null, rtspUrl: null }); renderEntities(); });
+  host.appendChild(addCam);
+  host.appendChild(el("div", "muted",
+    "RTSP plays direct from Frigate/go2rtc (rtsp://host:8554/name) for sub-second latency; leave blank to stream through Home Assistant (HLS, ~5–10 s behind). Tip: prefer sub/fluent streams — the screen is 960×480."));
+
+  // doorbells
+  host.appendChild(subhead("cameras", "Doorbells"));
+  e.doorbells.forEach((d, di) => host.appendChild(renderDoorbell(d, di)));
+  const addDb = el("button", "add", "Add doorbell");
+  addDb.type = "button";
+  addDb.addEventListener("click", () => { e.doorbells.push({ trigger: null, camera: "" }); renderEntities(); });
+  host.appendChild(addDb);
 }
 
 function renderLightGroup(g, gi) {
@@ -391,6 +410,54 @@ function renderLightGroup(g, gi) {
   return box;
 }
 
+function renderCamera(c, ci) {
+  const cams = config.entities.cameras;
+  const box = el("div", "group");
+  const head = el("div", "group-head");
+  const name = el("input"); name.value = c.name; name.setAttribute("aria-label", "Camera name");
+  name.addEventListener("change", () => c.name = name.value.trim());
+  head.appendChild(name);
+  head.appendChild(reorderButtons(
+    ci !== 0, ci !== cams.length - 1,
+    () => { const t = cams[ci]; cams[ci] = cams[ci - 1]; cams[ci - 1] = t; renderEntities(); },
+    () => { const t = cams[ci]; cams[ci] = cams[ci + 1]; cams[ci + 1] = t; renderEntities(); },
+  ));
+  const del = el("button", "ghost small danger", "Delete");
+  del.type = "button";
+  del.setAttribute("aria-label", "Delete camera");
+  del.addEventListener("click", () => { cams.splice(ci, 1); renderEntities(); });
+  head.appendChild(del);
+  box.appendChild(head);
+
+  box.appendChild(labeledRow("Camera entity", entityPicker(["camera"], c.entity, v => c.entity = v)));
+  const rtsp = el("input"); rtsp.value = c.rtspUrl || ""; rtsp.placeholder = "rtsp://host:8554/name";
+  rtsp.setAttribute("autocomplete", "off");
+  rtsp.addEventListener("change", () => c.rtspUrl = rtsp.value.trim() || null);
+  box.appendChild(labeledRow("RTSP URL", rtsp));
+  return box;
+}
+
+function renderDoorbell(d, di) {
+  const dbs = config.entities.doorbells;
+  const row = el("div", "row");
+  row.appendChild(entityPicker(["binary_sensor", "event"], d.trigger, v => d.trigger = v));
+  const sel = el("select");
+  const none = el("option", null, "— camera —"); none.value = ""; sel.appendChild(none);
+  config.entities.cameras.forEach(c => {
+    const o = el("option", null, c.name); o.value = c.name;
+    if (d.camera === c.name) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.addEventListener("change", () => d.camera = sel.value);
+  row.appendChild(sel);
+  const del = el("button", "ghost small danger", "Remove");
+  del.type = "button";
+  del.setAttribute("aria-label", "Remove doorbell");
+  del.addEventListener("click", () => { dbs.splice(di, 1); renderEntities(); });
+  row.appendChild(del);
+  return row;
+}
+
 function numberInput(value, onChange) {
   const n = el("input"); n.type = "number"; n.value = value;
   n.addEventListener("change", () => onChange(parseFloat(n.value)));
@@ -424,7 +491,8 @@ function renderOptions() {
   host.appendChild(labeledRow("Thermostat step", numberInput(o.thermostatStep, v => o.thermostatStep = v)));
   host.appendChild(labeledRow("Forecast days", numberInput(o.forecastDays, v => o.forecastDays = Math.round(v))));
   host.appendChild(labeledRow("Sensor decimal places", numberInput(o.sensorDecimals, v => o.sensorDecimals = Math.round(v))));
-  host.appendChild(el("div", "muted", "Step 0.1–5.0, forecast 1–5 (clamped on save)."));
+  host.appendChild(labeledRow("Doorbell popup (s)", numberInput(o.doorbellPopupSeconds, v => o.doorbellPopupSeconds = Math.round(v))));
+  host.appendChild(el("div", "muted", "Step 0.1–5.0, forecast 1–5, doorbell popup 5–120 (clamped on save)."));
 }
 
 // ---------- boot ----------

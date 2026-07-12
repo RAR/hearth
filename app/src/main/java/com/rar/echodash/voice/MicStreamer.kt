@@ -66,7 +66,7 @@ class MicStreamer(
                         break
                     }
                     if (n == 0) continue
-                    onChunk(if (n == buf.size) buf.copyOf() else buf.copyOf(n))
+                    if (running && gen == generation) onChunk(if (n == buf.size) buf.copyOf() else buf.copyOf(n))
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "recording failed", e)

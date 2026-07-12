@@ -81,9 +81,22 @@ class TimerChime {
                 track.play()
                 var off = 0
                 while (off < cycle.size) off += track.write(cycle, off, cycle.size - off)
-                // MODE_STREAM: stop() lets the already-queued buffer drain to completion before the
-                // track halts, so the full cycle is heard. (pause() would truncate it.)
-                track.stop()
+                // MODE_STREAM: write() returns as soon as data is queued, not once it has
+                // rendered, so we must wait for the hardware playback head to reach the frames
+                // we wrote before releasing — otherwise the native track is destroyed with the
+                // whole cycle still unplayed and nothing is heard. Same fix as
+                // AndroidPcmSink.finish().
+                val target = cycle.size.toLong()
+                val cycleMs = cycle.size * 1000L / rate
+                val bufferMs = track.bufferSizeInFrames * 1000L / rate
+                val deadline = System.currentTimeMillis() + cycleMs + bufferMs + 500L
+                while (System.currentTimeMillis() < deadline) {
+                    // getPlaybackHeadPosition() is a 32-bit frame counter (unsigned).
+                    val head = track.playbackHeadPosition.toLong() and 0xFFFFFFFFL
+                    if (head >= target) break
+                    Thread.sleep(20)
+                }
+                runCatching { track.stop() }
             } catch (e: Exception) {
                 Log.w(TAG, "preview playback failed", e)
             } finally {

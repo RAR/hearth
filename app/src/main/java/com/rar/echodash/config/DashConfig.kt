@@ -74,9 +74,27 @@ data class DashConfig(
         entities.lightGroups.forEach { addAll(it.entities) }
     }.distinct()
 
-    /** Coerce out-of-range numbers into their sane bounds (validation on save). */
+    /**
+     * Coerce out-of-range numbers into their sane bounds and drop blank entity-id slots
+     * left behind by the web config's free-text pickers (validation on save).
+     */
     fun clamped(): DashConfig = copy(
         version = 1,
+        entities = entities.copy(
+            tempSensor = entities.tempSensor?.trim()?.ifBlank { null },
+            weather = entities.weather?.trim()?.ifBlank { null },
+            climate = entities.climate.filter { it.isNotBlank() },
+            solar = entities.solar.copy(
+                pv = entities.solar.pv?.trim()?.ifBlank { null },
+                load = entities.solar.load?.trim()?.ifBlank { null },
+                grid = entities.solar.grid?.trim()?.ifBlank { null },
+                pvToday = entities.solar.pvToday?.trim()?.ifBlank { null },
+                loadToday = entities.solar.loadToday?.trim()?.ifBlank { null },
+            ),
+            lightGroups = entities.lightGroups
+                .map { it.copy(entities = it.entities.filter { id -> id.isNotBlank() }) }
+                .filter { it.entities.isNotEmpty() || it.name.isNotBlank() },
+        ),
         home = home.copy(
             idleReturnSeconds = home.idleReturnSeconds.coerceIn(15, 3600),
             photoCacheCap = home.photoCacheCap.coerceIn(5, 500),

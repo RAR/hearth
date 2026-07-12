@@ -54,6 +54,56 @@ class DashConfigTest {
     }
 
     @Test
+    fun clampedStripsBlankClimateIds() {
+        val cfg = DashConfig(
+            entities = Entities(climate = listOf("climate.hall", "", "  ")),
+        ).clamped()
+        assertEquals(listOf("climate.hall"), cfg.entities.climate)
+    }
+
+    @Test
+    fun clampedStripsBlankLightGroupEntities() {
+        val cfg = DashConfig(
+            entities = Entities(
+                lightGroups = listOf(LightGroup("Kitchen", listOf("light.k", "", " "))),
+            ),
+        ).clamped()
+        assertEquals(listOf(LightGroup("Kitchen", listOf("light.k"))), cfg.entities.lightGroups)
+    }
+
+    @Test
+    fun clampedDropsUnnamedLightGroupsThatBecomeEmpty() {
+        val cfg = DashConfig(
+            entities = Entities(
+                lightGroups = listOf(
+                    LightGroup("", listOf("", " ")), // blank name, all entities blank -> dropped
+                    LightGroup("Kept", listOf("")),   // named, entities become empty -> kept
+                    LightGroup("", emptyList()),      // blank name, already empty -> dropped
+                ),
+            ),
+        ).clamped()
+        assertEquals(listOf(LightGroup("Kept", emptyList())), cfg.entities.lightGroups)
+    }
+
+    @Test
+    fun clampedMapsBlankSingleSlotsToNull() {
+        val cfg = DashConfig(
+            entities = Entities(
+                tempSensor = "  ",
+                weather = "",
+                solar = SolarConfig(pv = "sensor.pv", load = "", grid = "  ", pvToday = null, loadToday = "x"),
+            ),
+        ).clamped()
+        assertEquals(null, cfg.entities.tempSensor)
+        assertEquals(null, cfg.entities.weather)
+        assertEquals("sensor.pv", cfg.entities.solar.pv)
+        assertEquals(null, cfg.entities.solar.load)
+        assertEquals(null, cfg.entities.solar.grid)
+        assertEquals(null, cfg.entities.solar.pvToday)
+        assertEquals("x", cfg.entities.solar.loadToday)
+    }
+
+    @Test
     fun referencedEntityIdsCollectsEverySlotDistinct() {
         val cfg = DashConfig(
             entities = Entities(

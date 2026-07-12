@@ -23,7 +23,7 @@ class ConfigStore(
     private val file = File(dir, "config.json")
     private val _config = MutableStateFlow(DashConfig())
     val config: StateFlow<DashConfig> = _config
-    private var persisted = false
+    @Volatile private var persisted = false
 
     /**
      * Guards the load/write mutation path (clamp -> persist -> emit). `update()` must stay a

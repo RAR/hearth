@@ -58,7 +58,7 @@ interface PhotoDownloader {
 /**
  * Syncs a HA media folder into [cacheDir] and publishes the cached files. The folder, the cache cap,
  * and the slideshow-enabled flag come from [config]. Sync triggers: each CONNECTED transition, every
- * [syncIntervalMs], and every change to the (folder, cap) pair. Large folders are kept as a bounded
+ * [syncIntervalMs], and every change to the folder, cap, or slideshow-enabled flag. Large folders are kept as a bounded
  * rotating subset via [rotatingSubset]; folders within the cap sync fully. [sync] is serialized with
  * a mutex so a reconnect mid-sync can't race a config-change or periodic trigger over the same cache.
  * Open for a test subclass that overrides [sync].

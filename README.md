@@ -70,9 +70,9 @@ Drop images into a Home Assistant media folder (default `media/echo-frame/`, cha
 MVP items verified 2026-07-11: setup → login → dashboard works on the Echo.
 
 - [ ] Keyboard doesn't cover the URL field / HA login form (IME insets under immersive mode)
-- [ ] Home pill tracks the `echo-temp`/`echo-weather` labeled entities; toggle Wi-Fi → offline dot appears, last value stays
+- [ ] Home pill tracks the configured temp/weather entities; toggle Wi-Fi → offline dot appears, last value stays
 - [ ] Delete the device in HA while the dashboard is live → app returns to Setup promptly
-- [ ] Re-label an entity in HA (e.g. add/remove `echo-lights-*`) → the matching panel updates live, no restart
+- [ ] Edit an entity assignment in the web config → the matching panel updates live, no restart
 - [ ] Set as default launcher, reboot → dashboard comes back on its own
 - [ ] VACA: integration auto-discovers the Echo; device + entities appear
 - [ ] VACA: screen switch, brightness, screensaver, dark mode respond from HA

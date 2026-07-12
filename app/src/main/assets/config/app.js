@@ -3,6 +3,8 @@
 let config = null;      // the live DashConfig model (source of truth)
 let entities = [];      // [{id, name, domain, state}]
 let dlSeq = 0;
+let idSeq = 0;
+function nextId(prefix) { return prefix + "-" + (++idSeq); }
 
 const PANEL_KEYS = ["lights", "climate", "media", "weather", "solar"];
 const PANEL_LABELS = {
@@ -104,7 +106,14 @@ function entityPicker(domains, value, onChange) {
 
 function labeledRow(labelText, control) {
   const row = el("div", "row");
-  row.appendChild(el("label", null, labelText));
+  const label = el("label", null, labelText);
+  // control may be a bare input/select, or a wrapper (e.g. entityPicker's span) around one.
+  const target = (control.matches && control.matches("input, select")) ? control : control.querySelector("input, select");
+  if (target) {
+    if (!target.id) target.id = nextId("field");
+    label.setAttribute("for", target.id);
+  }
+  row.appendChild(label);
   row.appendChild(control);
   return row;
 }
@@ -130,9 +139,11 @@ function renderPanels() {
     row.appendChild(el("label", null, PANEL_LABELS[key]));
 
     const up = el("button", "ghost small", "↑");
+    up.setAttribute("aria-label", "Move up");
     up.disabled = idx === 0;
     up.addEventListener("click", () => { swapOrder(ordered, idx, idx - 1); renderPanels(); });
     const down = el("button", "ghost small", "↓");
+    down.setAttribute("aria-label", "Move down");
     down.disabled = idx === ordered.length - 1;
     down.addEventListener("click", () => { swapOrder(ordered, idx, idx + 1); renderPanels(); });
     row.appendChild(up); row.appendChild(down);
@@ -162,6 +173,7 @@ function renderEntities() {
     const row = el("div", "row");
     row.appendChild(entityPicker(["climate"], id, v => { if (v) e.climate[i] = v; else e.climate.splice(i, 1); renderEntities(); }));
     const del = el("button", "ghost small", "Remove");
+    del.setAttribute("aria-label", "Remove thermostat");
     del.addEventListener("click", () => { e.climate.splice(i, 1); renderEntities(); });
     row.appendChild(del);
     host.appendChild(row);
@@ -194,12 +206,15 @@ function renderLightGroup(g, gi) {
   name.addEventListener("change", () => g.name = name.value.trim() || "Group");
   head.appendChild(name);
   const up = el("button", "ghost small", "↑");
+  up.setAttribute("aria-label", "Move up");
   up.disabled = gi === 0;
   up.addEventListener("click", () => { const t = groups[gi]; groups[gi] = groups[gi - 1]; groups[gi - 1] = t; renderEntities(); });
   const down = el("button", "ghost small", "↓");
+  down.setAttribute("aria-label", "Move down");
   down.disabled = gi === groups.length - 1;
   down.addEventListener("click", () => { const t = groups[gi]; groups[gi] = groups[gi + 1]; groups[gi + 1] = t; renderEntities(); });
   const del = el("button", "ghost small", "Delete");
+  del.setAttribute("aria-label", "Delete group");
   del.addEventListener("click", () => { groups.splice(gi, 1); renderEntities(); });
   head.appendChild(up); head.appendChild(down); head.appendChild(del);
   box.appendChild(head);
@@ -208,12 +223,15 @@ function renderLightGroup(g, gi) {
     const row = el("div", "row");
     row.appendChild(entityPicker(["light", "switch", "fan"], id, v => { if (v) g.entities[ei] = v; else g.entities.splice(ei, 1); renderEntities(); }));
     const eup = el("button", "ghost small", "↑");
+    eup.setAttribute("aria-label", "Move up");
     eup.disabled = ei === 0;
     eup.addEventListener("click", () => { const t = g.entities[ei]; g.entities[ei] = g.entities[ei - 1]; g.entities[ei - 1] = t; renderEntities(); });
     const edown = el("button", "ghost small", "↓");
+    edown.setAttribute("aria-label", "Move down");
     edown.disabled = ei === g.entities.length - 1;
     edown.addEventListener("click", () => { const t = g.entities[ei]; g.entities[ei] = g.entities[ei + 1]; g.entities[ei + 1] = t; renderEntities(); });
     const erm = el("button", "ghost small", "Remove");
+    erm.setAttribute("aria-label", "Remove entity");
     erm.addEventListener("click", () => { g.entities.splice(ei, 1); renderEntities(); });
     row.appendChild(eup); row.appendChild(edown); row.appendChild(erm);
     box.appendChild(row);

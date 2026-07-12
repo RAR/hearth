@@ -265,6 +265,7 @@ function render() {
   renderEntities();
   renderHome();
   renderOptions();
+  renderVoice();
 }
 
 function renderPanels() {
@@ -493,6 +494,19 @@ function renderOptions() {
   host.appendChild(labeledRow("Sensor decimal places", numberInput(o.sensorDecimals, v => o.sensorDecimals = Math.round(v))));
   host.appendChild(labeledRow("Doorbell popup (s)", numberInput(o.doorbellPopupSeconds, v => o.doorbellPopupSeconds = Math.round(v))));
   host.appendChild(el("div", "muted", "Step 0.1–5.0, forecast 1–5, doorbell popup 5–120 (clamped on save)."));
+}
+
+function renderVoice() {
+  const host = document.getElementById("voice");
+  clear(host);
+  if (!config.voice) config.voice = { enabled: false };
+  const v = config.voice;
+  const toggle = el("input"); toggle.type = "checkbox"; toggle.checked = !!v.enabled;
+  toggle.setAttribute("aria-label", "Voice satellite enabled");
+  toggle.addEventListener("change", () => v.enabled = toggle.checked);
+  host.appendChild(labeledRow("Voice satellite (Wyoming)", toggle));
+  host.appendChild(el("div", "muted",
+    "Home Assistant should auto-discover the satellite; otherwise add the Wyoming Protocol integration at <this-device-ip>:10600. Pick the pipeline and wake word in HA's Assist satellite settings."));
 }
 
 // ---------- boot ----------

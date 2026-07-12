@@ -41,6 +41,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
     testImplementation(composeBom)
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")

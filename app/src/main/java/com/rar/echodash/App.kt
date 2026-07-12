@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rar.echodash.camera.StreamResolver
 import com.rar.echodash.config.ConfigStore
 import com.rar.echodash.data.PrefsSettingsStore
 import com.rar.echodash.data.SettingsStore
@@ -69,6 +70,10 @@ class AppDeps(context: Context) {
     val ws = HaWebSocket(settings, auth, client, scope)
     val configStore = ConfigStore(appContext.filesDir)
     val entityHub = EntityHub(ws, scope, configStore.config)
+    val streamResolver = StreamResolver(
+        requestStream = { entityId -> entityHub.cameraStream(entityId) },
+        baseUrl = { settings.baseUrl },
+    )
 
     private val photoCacheDir = File(appContext.cacheDir, "photos")
     private val photoDownloader = AndroidPhotoDownloader(ws, client, { settings.baseUrl }, photoCacheDir)
@@ -301,6 +306,7 @@ fun EchoDashApp(deps: AppDeps) {
                             deps.kiosk.onUserInteraction()
                             idleTimer.onInteraction()
                         },
+                        streamResolver = deps.streamResolver,
                     )
                 }
             }

@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import com.rar.echodash.camera.StreamResolver
 import com.rar.echodash.config.DashConfig
 import com.rar.echodash.ha.ConnState
 import com.rar.echodash.ha.EntityState
@@ -21,6 +22,7 @@ import com.rar.echodash.ui.model.lightSections
 import com.rar.echodash.ui.model.solarFlow
 import com.rar.echodash.ui.model.thermostats
 import com.rar.echodash.ui.model.weatherPill
+import com.rar.echodash.ui.panels.CamerasPanel
 import com.rar.echodash.ui.panels.ClimatePanel
 import com.rar.echodash.ui.panels.LightsPanel
 import com.rar.echodash.ui.panels.MediaPanel
@@ -52,10 +54,13 @@ fun DashboardShell(
     configPin: String,
     onLogout: () -> Unit,
     onInteraction: () -> Unit,
+    streamResolver: StreamResolver,
 ) {
     val connected = connState == ConnState.CONNECTED
     val weatherEntityId = config.entities.weather
-    val views = remember(config.panels) { railViews(config.panels) }
+    val views = remember(config.panels, config.entities.cameras) {
+        railViews(config.panels, config.entities.cameras.isNotEmpty())
+    }
 
     Box(
         Modifier
@@ -116,10 +121,7 @@ fun DashboardShell(
                     val flow = remember(entities, config.entities.solar) { solarFlow(config.entities.solar, entities) }
                     SolarPanel(flow)
                 }
-                // Placeholder: railViews(config.panels) above never yields CAMERAS (camerasConfigured
-                // defaults to false), so this branch is unreached today. Wiring the real cameras panel
-                // is a later task; this exists only to satisfy exhaustiveness after adding DashView.CAMERAS.
-                DashView.CAMERAS -> {}
+                DashView.CAMERAS -> CamerasPanel(config.entities.cameras, streamResolver)
             }
         }
 

@@ -25,6 +25,32 @@ class DashViewsTest {
     }
 
     @Test
+    fun railViewsIncludesCamerasOnlyWhenEnabledAndConfigured() {
+        val enabled = Panels(cameras = PanelConfig(true, 6))
+        assertEquals(
+            listOf(DashView.HOME, DashView.LIGHTS, DashView.CLIMATE, DashView.MEDIA,
+                DashView.WEATHER, DashView.SOLAR, DashView.CAMERAS),
+            railViews(enabled, camerasConfigured = true),
+        )
+        // Enabled but no cameras configured -> excluded.
+        assertEquals(
+            listOf(DashView.HOME, DashView.LIGHTS, DashView.CLIMATE, DashView.MEDIA,
+                DashView.WEATHER, DashView.SOLAR),
+            railViews(enabled, camerasConfigured = false),
+        )
+    }
+
+    @Test
+    fun railViewsExcludesDisabledCamerasEvenWhenConfigured() {
+        val disabled = Panels(cameras = PanelConfig(false, 6))
+        assertEquals(
+            listOf(DashView.HOME, DashView.LIGHTS, DashView.CLIMATE, DashView.MEDIA,
+                DashView.WEATHER, DashView.SOLAR),
+            railViews(disabled, camerasConfigured = true),
+        )
+    }
+
+    @Test
     fun clockIs24HonorsFormatThenSystem() {
         assertEquals(true, clockIs24(ClockFormat.H24, systemIs24 = false))
         assertEquals(false, clockIs24(ClockFormat.H12, systemIs24 = true))

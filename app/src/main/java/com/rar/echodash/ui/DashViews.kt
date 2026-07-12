@@ -13,6 +13,7 @@ import androidx.compose.material.icons.outlined.NightsStay
 import androidx.compose.material.icons.outlined.SolarPower
 import androidx.compose.material.icons.outlined.Thermostat
 import androidx.compose.material.icons.outlined.Thunderstorm
+import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material.icons.outlined.WbCloudy
 import androidx.compose.material.icons.outlined.WbSunny
@@ -25,8 +26,8 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-/** The six rail destinations, top-to-bottom. */
-enum class DashView { HOME, LIGHTS, CLIMATE, MEDIA, WEATHER, SOLAR }
+/** The rail destinations, top-to-bottom. */
+enum class DashView { HOME, LIGHTS, CLIMATE, MEDIA, WEATHER, SOLAR, CAMERAS }
 
 /** Material icon for a weather condition (used by the Home pill and the Weather panel). */
 fun weatherIcon(icon: WeatherIcon): ImageVector = when (icon) {
@@ -50,17 +51,22 @@ fun railIcon(view: DashView): ImageVector = when (view) {
     DashView.MEDIA -> Icons.Outlined.MusicNote
     DashView.WEATHER -> Icons.Outlined.WbCloudy
     DashView.SOLAR -> Icons.Outlined.SolarPower
+    DashView.CAMERAS -> Icons.Outlined.Videocam
 }
 
-/** The rail destinations: HOME first, then enabled panels ordered by their configured `order`. */
-fun railViews(panels: Panels): List<DashView> {
+/** The rail destinations: HOME first, then enabled panels ordered by their configured `order`.
+ * Cameras appears only when its panel is enabled AND at least one camera is configured. */
+fun railViews(panels: Panels, camerasConfigured: Boolean = false): List<DashView> {
     val configured = listOf(
         DashView.LIGHTS to panels.lights,
         DashView.CLIMATE to panels.climate,
         DashView.MEDIA to panels.media,
         DashView.WEATHER to panels.weather,
         DashView.SOLAR to panels.solar,
-    ).filter { it.second.enabled }.sortedBy { it.second.order }.map { it.first }
+        DashView.CAMERAS to panels.cameras,
+    ).filter { (view, cfg) ->
+        cfg.enabled && (view != DashView.CAMERAS || camerasConfigured)
+    }.sortedBy { it.second.order }.map { it.first }
     return listOf(DashView.HOME) + configured
 }
 

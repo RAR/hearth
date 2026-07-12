@@ -116,6 +116,10 @@ fun DashboardShell(
                     val flow = remember(entities, config.entities.solar) { solarFlow(config.entities.solar, entities) }
                     SolarPanel(flow)
                 }
+                // Placeholder: railViews(config.panels) above never yields CAMERAS (camerasConfigured
+                // defaults to false), so this branch is unreached today. Wiring the real cameras panel
+                // is a later task; this exists only to satisfy exhaustiveness after adding DashView.CAMERAS.
+                DashView.CAMERAS -> {}
             }
         }
 

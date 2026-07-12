@@ -23,6 +23,12 @@ class MainActivity : ComponentActivity() {
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
         deps = (application as EchoDashApplication).deps
+        if (deps.configStore.config.value.voice.enabled &&
+            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), RECORD_AUDIO_REQ)
+        }
         deps.startConfigServer()
         val hooks = object : AndroidKioskDevice.WindowHooks {
             override fun setWindowBrightness(percent: Int) {
@@ -58,4 +64,6 @@ class MainActivity : ComponentActivity() {
         super.onUserInteraction()
         deps.kiosk.onUserInteraction()
     }
+
+    private companion object { const val RECORD_AUDIO_REQ = 4201 }
 }

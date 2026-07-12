@@ -149,4 +149,11 @@ class EntityHub(
                 put("return_response", JsonPrimitive(true))
             })
         }.getOrNull()
+
+    /** Ask HA to prepare an HLS stream. Returns e.g. {"url":"/api/hls/<token>/master_playlist.m3u8"}
+     * or null on any failure — the StreamResolver maps null/missing url to Unavailable. */
+    suspend fun cameraStream(entityId: String): JsonElement? =
+        runCatching {
+            client.request("camera/stream", buildJsonObject { put("entity_id", entityId) })
+        }.getOrNull()
 }

@@ -34,7 +34,7 @@ class EntityHub(
     private val _entities = MutableStateFlow<Map<String, EntityState>>(emptyMap())
     val entities: StateFlow<Map<String, EntityState>> = _entities
 
-    private val _registry = MutableStateFlow(RegistryIndex(emptyMap(), emptyMap()))
+    private val _registry = MutableStateFlow(RegistryIndex(emptyMap()))
     val registry: StateFlow<RegistryIndex> = _registry
 
     // Guards all hub mutations (entitiesSubId/watched/_entities + subscribe/unsubscribe) so a config

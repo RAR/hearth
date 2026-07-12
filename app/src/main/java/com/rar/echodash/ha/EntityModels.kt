@@ -27,18 +27,13 @@ data class EntityState(
 data class RegistryEntity(val id: String, val name: String?, val domain: String)
 
 /**
- * Registry index. [labelToEntities] keeps echo-* labels for one-time config seeding; [registryNames]
- * and [allEntities] cover EVERY registry entity so the web picker can list and name them.
+ * Registry index for the web picker and display names. [registryNames] maps entity id -> display name
+ * and [allEntities] is EVERY registry entity so the config page can list and name them.
  */
 data class RegistryIndex(
-    val labelToEntities: Map<String, List<String>>,
     val registryNames: Map<String, String>,
     val allEntities: List<RegistryEntity> = emptyList(),
-) {
-    /** Every entity referenced by any echo-* label, first-seen order, de-duplicated (seeding only). */
-    val allEntityIds: List<String>
-        get() = labelToEntities.values.flatten().distinct()
-}
+)
 
 /** Display name: registry name/original_name, else live friendly_name, else the entity id. */
 fun RegistryIndex.displayName(entityId: String, state: EntityState?): String =
@@ -46,7 +41,6 @@ fun RegistryIndex.displayName(entityId: String, state: EntityState?): String =
 
 /** Build the index from a config/entity_registry/list result array. */
 fun parseEntityRegistry(result: JsonElement): RegistryIndex {
-    val labelToEntities = LinkedHashMap<String, MutableList<String>>()
     val names = LinkedHashMap<String, String>()
     val all = ArrayList<RegistryEntity>()
     for (el in result.jsonArray) {
@@ -56,12 +50,6 @@ fun parseEntityRegistry(result: JsonElement): RegistryIndex {
             ?: (obj["original_name"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
         if (name != null) names[id] = name
         all += RegistryEntity(id = id, name = name, domain = id.substringBefore('.'))
-
-        val labels = (obj["labels"] as? JsonArray)
-            ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.lowercase()?.replace('_', '-') }
-            ?.filter { it.startsWith("echo-") }
-            .orEmpty()
-        for (label in labels) labelToEntities.getOrPut(label) { mutableListOf() }.add(id)
     }
-    return RegistryIndex(labelToEntities, names, all)
+    return RegistryIndex(names, all)
 }

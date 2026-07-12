@@ -1,12 +1,10 @@
 package com.rar.echodash.config
 
-import com.rar.echodash.ha.parseEntityRegistry
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
-import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
@@ -14,26 +12,10 @@ class ConfigStoreTest {
     private fun tempDir(): File =
         File.createTempFile("cfgstore", "").let { it.delete(); it.mkdirs(); it }
 
-    private fun reg(s: String) = parseEntityRegistry(Json.parseToJsonElement(s))
-
     @Test
-    fun freshDirNeedsSeedAndHoldsDefaults() {
+    fun freshDirHoldsDefaults() {
         val store = ConfigStore(tempDir())
-        assertTrue(store.needsSeed())
         assertEquals(DashConfig(), store.config.value)
-    }
-
-    @Test
-    fun seedFromPersistsAndClearsNeedsSeed() {
-        val dir = tempDir()
-        val store = ConfigStore(dir)
-        store.seedFrom(reg("""[{"entity_id":"weather.home","labels":["echo-weather"]}]"""))
-        assertFalse(store.needsSeed())
-        assertEquals("weather.home", store.config.value.entities.weather)
-        // a new store over the same dir loads the persisted config and does NOT need seeding
-        val reopened = ConfigStore(dir)
-        assertFalse(reopened.needsSeed())
-        assertEquals("weather.home", reopened.config.value.entities.weather)
     }
 
     @Test
@@ -46,18 +28,24 @@ class ConfigStoreTest {
         assertEquals(15, stored.home.idleReturnSeconds)   // clamped
         assertEquals(500, stored.home.photoCacheCap)      // clamped
         assertEquals(stored, store.config.value)
-        assertFalse(store.needsSeed())
         assertEquals(stored, ConfigStore(dir).config.value) // survives reload
     }
 
     @Test
-    fun corruptFileIsRenamedToBadAndReseedable() {
+    fun persistedConfigReloadsFromDisk() {
+        val dir = tempDir()
+        ConfigStore(dir).update(DashConfig(entities = Entities(weather = "weather.home")))
+        val reopened = ConfigStore(dir)
+        assertEquals("weather.home", reopened.config.value.entities.weather)
+    }
+
+    @Test
+    fun corruptFileIsRenamedToBadAndFallsBackToDefaults() {
         val dir = tempDir()
         File(dir, "config.json").writeText("{ this is not json")
         val store = ConfigStore(dir)
-        assertTrue(store.needsSeed())                       // corrupt => treat as fresh
         assertTrue(File(dir, "config.json.bad").exists())   // corrupt file preserved
-        assertEquals(DashConfig(), store.config.value)      // defaults until seeded
+        assertEquals(DashConfig(), store.config.value)      // defaults
     }
 
     @Test
@@ -66,17 +54,14 @@ class ConfigStoreTest {
         File(dir, "config.json.bad").writeText("stale bytes from a previous corruption")
         File(dir, "config.json").writeText("{ still not valid json")
         val store = ConfigStore(dir)
-        assertTrue(store.needsSeed())                        // corrupt => treat as fresh
-        assertEquals(DashConfig(), store.config.value)       // defaults until seeded
+        assertEquals(DashConfig(), store.config.value)       // defaults
         val bad = File(dir, "config.json.bad")
         assertTrue(bad.exists())
-        // the stale .bad must have been replaced, not left in place blocking the rename
         assertEquals("{ still not valid json", bad.readText())
         assertFalse(File(dir, "config.json").exists())       // corrupt original moved out of the way
 
-        // the store still works normally afterwards (corruption recovery doesn't wedge it)
-        store.seedFrom(reg("""[{"entity_id":"weather.home","labels":["echo-weather"]}]"""))
-        assertFalse(store.needsSeed())
+        // still works normally afterwards
+        store.update(DashConfig(entities = Entities(weather = "weather.home")))
         assertEquals("weather.home", store.config.value.entities.weather)
     }
 
@@ -109,9 +94,6 @@ class ConfigStoreTest {
         done.await()
 
         assertTrue("no exceptions expected from concurrent update(): $errors", errors.isEmpty())
-
-        // The store's in-memory value and the on-disk file must agree: no torn writes, no lost
-        // update where the StateFlow moved on but the file (or vice versa) reflects a stale value.
         val onDisk = decodeConfig(File(dir, "config.json").readText())
         assertEquals(onDisk, store.config.value)
     }

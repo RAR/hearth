@@ -88,6 +88,27 @@ New `voice/` package:
 - **Second `NsdAdvertiser` instance** for `_wyoming._tcp.` port 10600 (parameterize
   the existing class if its service type is hardcoded).
 
+## Timers (local countdown on the device)
+
+"Start a timer for 5 minutes" must produce an on-screen countdown on the Echo and a
+local chime when it fires. HA Assist targets timer intents at the satellite that heard
+them and delegates the timer to the device via Wyoming timer events:
+
+- `timer-started` (id, total seconds, name if given) → add a countdown chip on screen.
+- `timer-updated` (pause/resume/add/remove time) → adjust the chip.
+- `timer-cancelled` → remove the chip.
+- `timer-finished` → chime locally (generated tone via the existing audio path — no
+  bundled asset, no new dependency), show a full-attention "Timer done" overlay that
+  wakes the screen; tap to dismiss, auto-silence after 60 s.
+
+Multiple concurrent timers are supported (HA allows several); chips stack. The
+satellite's `info` block declares timer support so HA routes timer intents to the
+device. Timer state lives in `SatelliteSession` (JVM-testable: event in → timer list /
+overlay state out; countdown display math tested against a fake clock). Exact timer
+event names/fields are covered by the same binding plan-phase source verification as
+the rest of the protocol. Timers survive HA disconnects (they run on-device); they do
+not survive an app restart (accepted).
+
 ## Permissions
 
 - Add `RECORD_AUDIO` to the manifest. On launch, if voice is enabled in config and
@@ -139,7 +160,9 @@ New `voice/` package:
   run-pipeline; detection/transcript/synthesize drive `VoiceOverlayState`
   transitions; audio-start/stop routes playback and emits `played` after
   playback-finished; pause-satellite and disconnect stop the mic; ping→pong;
-  overlay auto-dismiss timing; mic-error path.
+  overlay auto-dismiss timing; mic-error path; timer lifecycle (started/updated/
+  cancelled/finished → chip list and finished-overlay transitions, countdown math
+  against a fake clock, multiple concurrent timers, timers unaffected by disconnect).
 - `DashConfigTest` additions: `voice` round-trip + default-off.
 - `WyomingCodec` is already covered; `AudioRecord`/`AudioTrack`/composables are
   Android-only — verified on-device.
@@ -147,8 +170,10 @@ New `voice/` package:
 ## Out of scope (YAGNI)
 
 - On-device wake word or VAD.
-- Timers/alarms UI, continued conversation, barge-in handling beyond what HA does
-  server-side, multiple wake words, area-aware targeting config on-device.
+- Alarms (clock-time alarms, as opposed to countdown timers), continued conversation,
+  barge-in handling beyond what HA does server-side, multiple wake words, area-aware
+  targeting config on-device.
+- Timer persistence across app restarts.
 - Exposing mic mute as an HA entity.
 
 ## Build/toolchain constraints (unchanged, binding)

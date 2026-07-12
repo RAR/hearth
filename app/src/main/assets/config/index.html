@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Echo Dashboard Config</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <div id="login" class="overlay">
+    <form id="login-form" class="card">
+      <h1>Echo Dashboard</h1>
+      <p>Enter the PIN shown on the device.</p>
+      <input id="pin" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="123456">
+      <button type="submit">Unlock</button>
+      <div id="login-error" class="error"></div>
+    </form>
+  </div>
+
+  <main id="app" hidden>
+    <header>
+      <h1>Echo Dashboard Config</h1>
+      <div class="actions">
+        <span id="status" class="status"></span>
+        <button id="save">Save</button>
+      </div>
+    </header>
+
+    <section id="panels-section">
+      <h2>Panels</h2>
+      <div id="panels"></div>
+    </section>
+
+    <section id="entities-section">
+      <h2>Entities</h2>
+      <div id="entities"></div>
+    </section>
+
+    <section id="home-section">
+      <h2>Home screen</h2>
+      <div id="home"></div>
+    </section>
+
+    <section id="options-section">
+      <h2>Panel options</h2>
+      <div id="options"></div>
+    </section>
+  </main>
+</body>
+</html>

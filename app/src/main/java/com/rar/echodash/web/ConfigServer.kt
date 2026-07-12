@@ -120,6 +120,7 @@ class ConfigServer(
         path.endsWith(".html") -> "text/html"
         path.endsWith(".js") -> "application/javascript"
         path.endsWith(".css") -> "text/css"
+        path.endsWith(".ttf") -> "font/ttf"
         else -> "application/octet-stream"
     }
 

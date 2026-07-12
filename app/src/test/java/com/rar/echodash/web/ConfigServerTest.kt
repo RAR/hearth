@@ -7,11 +7,13 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
+import java.net.Socket
 import kotlin.random.Random
 
 class ConfigServerTest {
@@ -20,6 +22,7 @@ class ConfigServerTest {
     private lateinit var server: ConfigServer
     private lateinit var store: ConfigStore
     private lateinit var base: String
+    private val requestedAssetPaths = mutableListOf<String>()
 
     private fun tempDir(): File =
         File.createTempFile("cfgserver", "").let { it.delete(); it.mkdirs(); it }
@@ -33,10 +36,29 @@ class ConfigServerTest {
             sessions = SessionManager(random = Random(1)),
             pin = { "123456" },
             entitiesJson = { """[{"id":"light.k","name":"K","domain":"light","state":"on"}]""" },
-            assetReader = { path -> if (path == "index.html") "<html>ok</html>".toByteArray() else null },
+            assetReader = { path ->
+                requestedAssetPaths += path
+                if (path == "index.html") "<html>ok</html>".toByteArray() else null
+            },
         )
         server.start()
         base = "http://127.0.0.1:${server.listeningPort}"
+    }
+
+    /**
+     * Sends a raw HTTP/1.1 request line verbatim over a socket. OkHttp's own HttpUrl normalizes
+     * (and even double-decodes) ".." path segments before a request is ever built, so it cannot be
+     * used to reach the server with a literal traversal path on the wire -- this is the only way to
+     * pin what NanoHTTPD itself actually receives and hands to route().
+     */
+    private fun rawRequest(requestLine: String): String {
+        Socket("127.0.0.1", server.listeningPort).use { socket ->
+            socket.getOutputStream().write(
+                "$requestLine HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n".toByteArray()
+            )
+            socket.getOutputStream().flush()
+            return socket.getInputStream().readBytes().toString(Charsets.UTF_8)
+        }
     }
 
     @After
@@ -127,6 +149,41 @@ class ConfigServerTest {
         http.newCall(Request.Builder().url("$base/nope.js").build()).execute().use { r ->
             assertEquals(404, r.code)
         }
+    }
+
+    @Test
+    fun traversalPathIsRejectedWithoutReachingAssetReader() {
+        // Literal ".." in the request line: OkHttp's HttpUrl normalizes (and even double-decodes)
+        // dot segments before a request can be built, so a raw socket is used to send the exact
+        // wire bytes NanoHTTPD receives -- percent-encoding isn't even necessary since NanoHTTPD
+        // does no dot-segment normalization on its single percent-decode pass.
+        val response = rawRequest("GET /../secret")
+        assertTrue("expected 404, got: ${response.lineSequence().first()}", response.startsWith("HTTP/1.1 404"))
+        assertFalse(requestedAssetPaths.any { it.split('/').any { seg -> seg == ".." } })
+    }
+
+    @Test
+    fun putToLoginAndPostToConfigAreNotConfusable() {
+        val before = store.config.value
+
+        http.newCall(Request.Builder().url("$base/api/login")
+            .put("""{"pin":"123456"}""".toRequestBody(json)).build()).execute().use { r ->
+                assertTrue(r.code == 401 || r.code == 404)
+                assertTrue(r.code != 200)
+            }
+        // The route rejects unauthenticated /api/ requests before reading the body, so a reused
+        // keep-alive connection would carry the unread PUT body into the next request line and
+        // corrupt it. Evict the pooled connection so the POST below starts on a fresh socket.
+        http.connectionPool.evictAll()
+
+        val putBody = """{"version":1,"home":{"photoFolder":"nas","photoCacheCap":9000}}"""
+        http.newCall(Request.Builder().url("$base/api/config")
+            .post(putBody.toRequestBody(json)).build()).execute().use { r ->
+                assertTrue(r.code == 401 || r.code == 404)
+                assertTrue(r.code != 200)
+            }
+
+        assertEquals(before, store.config.value)
     }
 
     @Test

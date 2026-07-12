@@ -97,6 +97,12 @@ class ConfigServer(
     }
 
     private fun asset(path: String): Response {
+        // Defense-in-depth: NanoHTTPD percent-decodes the URI but never normalizes ".." segments,
+        // so a raw request path is handed to us (and would be handed to assetReader) verbatim.
+        // Reject traversal here rather than trusting whatever assetReader is injected.
+        if (path.isBlank() || path.split('/').any { it == ".." }) {
+            return error(Response.Status.NOT_FOUND, "not found")
+        }
         val bytes = assetReader(path) ?: return error(Response.Status.NOT_FOUND, "not found")
         return newFixedLengthResponse(Response.Status.OK, mimeOf(path), ByteArrayInputStream(bytes), bytes.size.toLong())
     }

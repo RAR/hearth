@@ -2292,6 +2292,8 @@ git add app/build.gradle.kts app/src/main/java/com/rar/echodash/web/ConfigServer
 git commit -m "feat: ConfigServer HTTP API over NanoHTTPD with cookie auth"
 ```
 
+**Deviation note (per task review, fix round 1):** asset route rejects `..` segments (defense-in-depth) per task review.
+
 ---
 
 ### Task 9: Config web page assets (vanilla JS, untested)

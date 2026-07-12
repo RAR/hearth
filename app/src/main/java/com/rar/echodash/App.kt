@@ -41,6 +41,7 @@ import com.rar.echodash.vaca.VacaOutgoing
 import com.rar.echodash.vaca.VacaServer
 import com.rar.echodash.web.ConfigServer
 import com.rar.echodash.web.SessionManager
+import com.rar.echodash.web.SetupCoordinator
 import com.rar.echodash.web.buildEntityListJson
 import com.rar.echodash.web.generatePin
 import com.rar.echodash.web.localIpAddress
@@ -48,6 +49,7 @@ import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -73,6 +75,8 @@ class AppDeps(context: Context) {
     val photoStore = PhotoStore(ws, photoDownloader, photoCacheDir, scope, configStore.config)
 
     val sessions = SessionManager()
+    val setupEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val setup = SetupCoordinator(auth, onConfigured = { setupEvents.tryEmit(Unit) })
     private val ensuredPin: String by lazy {
         settings.configPin ?: generatePin().also { settings.configPin = it }
     }
@@ -81,6 +85,9 @@ class AppDeps(context: Context) {
         sessions = sessions,
         pin = { configPin() },
         entitiesJson = { buildEntityListJson(entityHub.registry.value, entityHub.entities.value) },
+        setup = setup,
+        configured = { settings.refreshToken != null },
+        connState = { ws.connectionState.value.name },
         assetReader = { path ->
             runCatching { appContext.assets.open("config/$path").readBytes() }.getOrNull()
         },

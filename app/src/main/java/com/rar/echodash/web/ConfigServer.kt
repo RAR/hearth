@@ -23,6 +23,9 @@ class ConfigServer(
     private val sessions: SessionManager,
     private val pin: () -> String,
     private val entitiesJson: () -> String,
+    private val setup: SetupCoordinator,
+    private val configured: () -> Boolean,
+    private val connState: () -> String,
     private val assetReader: (String) -> ByteArray?,
 ) : NanoHTTPD(port) {
 
@@ -47,6 +50,9 @@ class ConfigServer(
                     ok(ConfigJson.json.encodeToString(DashConfig.serializer(), store.config.value))
                 uri == "/api/config" && method == Method.PUT -> handlePutConfig(session)
                 uri == "/api/entities" && method == Method.GET -> ok(entitiesJson())
+                uri == "/api/status" && method == Method.GET -> handleStatus()
+                uri == "/api/setup/begin" && method == Method.POST -> handleSetupBegin(session)
+                uri == "/api/setup/complete" && method == Method.POST -> handleSetupComplete(session)
                 else -> error(Response.Status.NOT_FOUND, "not found")
             }
         }
@@ -80,6 +86,36 @@ class ConfigServer(
         }
         val stored = store.update(parsed)
         return ok(ConfigJson.json.encodeToString(DashConfig.serializer(), stored))
+    }
+
+    private fun handleStatus(): Response =
+        ok(buildJsonObject {
+            put("configured", configured())
+            put("connState", connState())
+        }.toString())
+
+    private fun handleSetupBegin(session: IHTTPSession): Response {
+        val obj = runCatching { ConfigJson.json.parseToJsonElement(readBody(session)) as JsonObject }
+            .getOrNull() ?: return error(Response.Status.BAD_REQUEST, "invalid request")
+        val haUrl = obj["haUrl"]?.jsonPrimitive?.contentOrNull ?: ""
+        val clientId = obj["clientId"]?.jsonPrimitive?.contentOrNull ?: ""
+        if (clientId.isBlank()) return error(Response.Status.BAD_REQUEST, "missing clientId")
+        return when (val r = setup.begin(haUrl, clientId)) {
+            is BeginResult.Ok -> ok(buildJsonObject { put("authorizeUrl", r.authorizeUrl) }.toString())
+            is BeginResult.Invalid -> error(Response.Status.BAD_REQUEST, r.message)
+        }
+    }
+
+    private fun handleSetupComplete(session: IHTTPSession): Response {
+        val obj = runCatching { ConfigJson.json.parseToJsonElement(readBody(session)) as JsonObject }
+            .getOrNull() ?: return error(Response.Status.BAD_REQUEST, "invalid request")
+        val code = obj["code"]?.jsonPrimitive?.contentOrNull ?: ""
+        val state = obj["state"]?.jsonPrimitive?.contentOrNull ?: ""
+        return when (val r = setup.complete(code, state)) {
+            CompleteResult.Ok -> ok("""{"ok":true}""")
+            is CompleteResult.BadState -> error(Response.Status.BAD_REQUEST, r.message)
+            is CompleteResult.ExchangeFailed -> error(STATUS_502, r.message)
+        }
     }
 
     private fun authed(session: IHTTPSession): Boolean = sessions.isValidSession(sessionToken(session))
@@ -128,6 +164,10 @@ class ConfigServer(
         private val STATUS_429 = object : Response.IStatus {
             override fun getRequestStatus(): Int = 429
             override fun getDescription(): String = "429 Too Many Requests"
+        }
+        private val STATUS_502 = object : Response.IStatus {
+            override fun getRequestStatus(): Int = 502
+            override fun getDescription(): String = "502 Bad Gateway"
         }
     }
 }

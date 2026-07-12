@@ -1,6 +1,9 @@
 package com.rar.echodash.web
 
 import com.rar.echodash.config.ConfigStore
+import com.rar.echodash.data.InMemorySettingsStore
+import com.rar.echodash.ha.AuthManager
+import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -32,6 +35,9 @@ class BrowserFlowReproTest {
             sessions = SessionManager(random = Random(1)),
             pin = { "123456" },
             entitiesJson = { "[]" },
+            setup = SetupCoordinator(AuthManager(InMemorySettingsStore(), OkHttpClient()), onConfigured = {}),
+            configured = { false },
+            connState = { "OFFLINE" },
             assetReader = { null },
         )
         server.start()

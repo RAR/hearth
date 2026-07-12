@@ -1,6 +1,8 @@
 package com.rar.echodash.web
 
 import com.rar.echodash.config.ConfigStore
+import com.rar.echodash.data.InMemorySettingsStore
+import com.rar.echodash.ha.AuthManager
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -36,6 +38,9 @@ class ConfigServerTest {
             sessions = SessionManager(random = Random(1)),
             pin = { "123456" },
             entitiesJson = { """[{"id":"light.k","name":"K","domain":"light","state":"on"}]""" },
+            setup = SetupCoordinator(AuthManager(InMemorySettingsStore(), OkHttpClient()), onConfigured = {}),
+            configured = { false },
+            connState = { "OFFLINE" },
             assetReader = { path ->
                 requestedAssetPaths += path
                 if (path == "index.html") "<html>ok</html>".toByteArray() else null

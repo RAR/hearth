@@ -6,6 +6,8 @@ import com.rar.echodash.config.LightGroup
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -32,17 +34,24 @@ class EntityHubTest {
         val unsubscribed = mutableListOf<Int>()
         private var nextId = 100
 
+        // Model the real HaWebSocket: request/subscribe/unsubscribe suspend until CONNECTED
+        // rather than throwing while the link is down (HaWebSocket.kt:78/91).
         override suspend fun request(type: String, fields: JsonObject): JsonElement? {
+            state.first { it == ConnState.CONNECTED }
             requests += type to fields
             return if (results.isEmpty()) null else results.removeFirst()
         }
         override suspend fun subscribe(type: String, fields: JsonObject, onEvent: (JsonObject) -> Unit): Int {
+            state.first { it == ConnState.CONNECTED }
             subscribed += type to fields
             val id = nextId++
             handlers[id] = onEvent
             return id
         }
-        override suspend fun unsubscribe(subId: Int) { unsubscribed += subId }
+        override suspend fun unsubscribe(subId: Int) {
+            state.first { it == ConnState.CONNECTED }
+            unsubscribed += subId
+        }
 
         /** entity_ids field of the Nth subscribe_entities call. */
         fun entityIdsOf(index: Int): List<String> =
@@ -128,6 +137,39 @@ class EntityHubTest {
     }
 
     @Test
+    fun configChangeWhileOfflineDefersToReconnectResync() = runTest {
+        val fake = FakeHaClient()
+        fake.results.add(Json.parseToJsonElement(registryJson))
+        val cfg = config("light.kitchen")
+        val hub = EntityHub(fake, backgroundScope, cfg) { 0L }
+        hub.start()
+
+        // Connect: the single subscribe_entities opens.
+        fake.state.value = ConnState.CONNECTED
+        runCurrent()
+        assertEquals(1, fake.subscribed.count { it.first == "subscribe_entities" })
+
+        // Link drops. The local web UI is still reachable, so the user saves a new config.
+        fake.state.value = ConnState.OFFLINE
+        runCurrent()
+        cfg.value = DashConfig(entities = Entities(lightGroups = listOf(LightGroup("G", listOf("light.kitchen", "climate.hall")))))
+        runCurrent()
+
+        // While offline nothing new may be opened — the reopen must defer to the reconnect resync.
+        val beforeReconnect = fake.subscribed.count { it.first == "subscribe_entities" }
+
+        // Reconnect: exactly ONE new subscribe_entities may follow, carrying the NEW set.
+        fake.results.add(Json.parseToJsonElement(registryJson))
+        fake.state.value = ConnState.CONNECTED
+        runCurrent()
+        advanceUntilIdle()
+
+        val afterReconnect = fake.subscribed.count { it.first == "subscribe_entities" }
+        assertEquals(1, afterReconnect - beforeReconnect)
+        assertEquals(listOf("light.kitchen", "climate.hall"), fake.entityIdsOf(afterReconnect - 1))
+    }
+
+    @Test
     fun secondStartIsNoOp() = runTest {
         val fake = FakeHaClient()
         fake.results.add(Json.parseToJsonElement(registryJson))
@@ -142,6 +184,7 @@ class EntityHubTest {
     @Test
     fun callServiceBuildsCommand() = runTest {
         val fake = FakeHaClient()
+        fake.state.value = ConnState.CONNECTED
         val hub = EntityHub(fake, this, config()) { 0L }
         hub.callService("homeassistant", "toggle", entityId = "light.kitchen")
         runCurrent()

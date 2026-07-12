@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -35,7 +37,10 @@ class EntityHub(
     private val _registry = MutableStateFlow(RegistryIndex(emptyMap(), emptyMap()))
     val registry: StateFlow<RegistryIndex> = _registry
 
-    private var entitiesSubId: Int? = null
+    // Guards all hub mutations (entitiesSubId/watched/_entities + subscribe/unsubscribe) so a config
+    // change and a reconnect resync can never interleave their subscribe calls in the CONNECTED state.
+    private val mutex = Mutex()
+    @Volatile private var entitiesSubId: Int? = null
     private var watched: List<String> = emptyList()
     private var started = false
 
@@ -44,7 +49,14 @@ class EntityHub(
         started = true
         scope.launch {
             client.connectionState.collect { st ->
-                if (st == ConnState.CONNECTED) resync()
+                when (st) {
+                    ConnState.CONNECTED -> resync()
+                    // Link dropped: HaWebSocket already cleared server-side routing for our subscription,
+                    // so there is nothing to unsubscribe. Forget the stale id so onConfigChanged does not
+                    // treat us as "still subscribed" and reopen while offline.
+                    ConnState.OFFLINE -> entitiesSubId = null
+                    else -> {}
+                }
             }
         }
         scope.launch {
@@ -55,8 +67,8 @@ class EntityHub(
         }
     }
 
-    private suspend fun resync() {
-        val reg = listRegistry() ?: return
+    private suspend fun resync() = mutex.withLock {
+        val reg = listRegistry() ?: return@withLock
         _registry.value = reg
         watched = config.value.referencedEntityIds()
         _entities.value = emptyMap()
@@ -77,12 +89,16 @@ class EntityHub(
         listRegistry()?.let { _registry.value = it }
     }
 
-    private suspend fun onConfigChanged(newWatched: List<String>) {
-        if (newWatched.toSet() == watched.toSet()) return
-        if (entitiesSubId == null) { watched = newWatched; return } // not subscribed yet; resync will use it
+    private suspend fun onConfigChanged(newWatched: List<String>) = mutex.withLock {
+        if (newWatched.toSet() == watched.toSet()) return@withLock
+        watched = newWatched
+        // Only reopen live when we are connected AND already hold a subscription. If the link is down
+        // (or we have not subscribed yet), the real client's subscribe()/unsubscribe() would park until
+        // CONNECTED and then race the reconnect resync into a second subscribe_entities. Defer instead:
+        // the CONNECTED resync re-derives the set from config.value and opens the single subscription.
+        if (client.connectionState.value != ConnState.CONNECTED || entitiesSubId == null) return@withLock
         try {
             entitiesSubId?.let { client.unsubscribe(it) }
-            watched = newWatched
             _entities.value = emptyMap()
             openEntitiesSubscription()
         } catch (e: IOException) {

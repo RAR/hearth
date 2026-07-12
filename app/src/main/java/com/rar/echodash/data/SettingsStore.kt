@@ -10,6 +10,7 @@ interface SettingsStore {
     var accessToken: String?
     var accessTokenExpiresAt: Long
     var refreshToken: String?
+    var authClientId: String?
     var vacaSettingsJson: String?
     var configPin: String?
     fun clearAuth()
@@ -20,6 +21,7 @@ class InMemorySettingsStore : SettingsStore {
     override var accessToken: String? = null
     override var accessTokenExpiresAt: Long = 0L
     override var refreshToken: String? = null
+    override var authClientId: String? = null
     override var vacaSettingsJson: String? = null
     override var configPin: String? = null
 
@@ -27,6 +29,7 @@ class InMemorySettingsStore : SettingsStore {
         accessToken = null
         accessTokenExpiresAt = 0L
         refreshToken = null
+        authClientId = null
     }
 }
 
@@ -52,6 +55,8 @@ class PrefsSettingsStore(context: Context) : SettingsStore {
         set(v) = prefs.edit().putLong("access_token_expires_at", v).apply()
     override var refreshToken: String?
         get() = string("refresh_token"); set(v) = put("refresh_token", v)
+    override var authClientId: String?
+        get() = string("auth_client_id"); set(v) = put("auth_client_id", v)
     override var vacaSettingsJson: String?
         get() = string("vaca_settings"); set(v) = put("vaca_settings", v)
     override var configPin: String?
@@ -62,6 +67,7 @@ class PrefsSettingsStore(context: Context) : SettingsStore {
             .remove("access_token")
             .remove("access_token_expires_at")
             .remove("refresh_token")
+            .remove("auth_client_id")
             .apply()
     }
 }

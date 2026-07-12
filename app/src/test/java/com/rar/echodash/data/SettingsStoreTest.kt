@@ -50,4 +50,16 @@ class SettingsStoreTest {
         s.clearAuth()
         assertEquals("042100", s.configPin) // the PIN is not auth; it survives logout
     }
+
+    @Test
+    fun authClientIdRoundTripsAndClearsWithAuth() {
+        val s: SettingsStore = InMemorySettingsStore()
+        s.baseUrl = "http://ha.local:8123"
+        s.authClientId = "http://10.0.0.5:8080/"
+        assertEquals("http://10.0.0.5:8080/", s.authClientId)
+        s.accessToken = "at"; s.refreshToken = "rt"
+        s.clearAuth()
+        assertNull(s.authClientId)                        // clientId is auth material; cleared on logout
+        assertEquals("http://ha.local:8123", s.baseUrl)   // base url is kept
+    }
 }

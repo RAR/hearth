@@ -106,4 +106,57 @@ class AuthManagerTest {
             }
         }
     }
+
+    @Test
+    fun refreshUsesStoredAuthClientId() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody(
+                """{"access_token":"AT2","expires_in":1800,"token_type":"Bearer"}"""))
+            server.start()
+            settings.baseUrl = server.url("/").toString().trimEnd('/')
+            settings.authClientId = "http://10.0.0.5:8080/"
+            settings.refreshToken = "RT"
+            assertEquals("AT2", auth().validAccessToken())
+            val body = server.takeRequest().body.readUtf8()
+            assertTrue(body.contains("grant_type=refresh_token"))
+            assertTrue(body.contains("client_id=http%3A%2F%2F10.0.0.5%3A8080%2F"))
+        }
+    }
+
+    @Test
+    fun refreshFallsBackToLegacyClientIdWhenAbsent() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody(
+                """{"access_token":"AT2","expires_in":1800,"token_type":"Bearer"}"""))
+            server.start()
+            settings.baseUrl = server.url("/").toString().trimEnd('/')
+            settings.authClientId = null
+            settings.refreshToken = "RT"
+            assertEquals("AT2", auth().validAccessToken())
+            val body = server.takeRequest().body.readUtf8()
+            assertTrue(body.contains("client_id=https%3A%2F%2Fhome-assistant.io%2Fandroid"))
+        }
+    }
+
+    @Test
+    fun exchangeSetupCodePersistsBaseUrlClientIdAndTokens() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody(
+                """{"access_token":"AT","refresh_token":"RT","expires_in":1800,"token_type":"Bearer"}"""))
+            server.start()
+            val ha = server.url("/").toString().trimEnd('/')
+            assertNull(settings.baseUrl)
+            auth().exchangeSetupCode(ha, "http://10.0.0.5:8080/", "CODE123")
+            assertEquals(ha, settings.baseUrl)
+            assertEquals("http://10.0.0.5:8080/", settings.authClientId)
+            assertEquals("AT", settings.accessToken)
+            assertEquals("RT", settings.refreshToken)
+            val req = server.takeRequest()
+            assertEquals("/auth/token", req.path)
+            val body = req.body.readUtf8()
+            assertTrue(body.contains("grant_type=authorization_code"))
+            assertTrue(body.contains("code=CODE123"))
+            assertTrue(body.contains("client_id=http%3A%2F%2F10.0.0.5%3A8080%2F"))
+        }
+    }
 }

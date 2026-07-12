@@ -37,13 +37,31 @@ class AuthManager(
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
     suspend fun exchangeCode(code: String) {
+        val base = settings.baseUrl ?: throw IOException("no base url configured")
         val tokens = tokenRequest(
+            base,
             FormBody.Builder()
                 .add("grant_type", "authorization_code")
                 .add("code", code)
                 .add("client_id", CLIENT_ID)
                 .build()
         )
+        store(tokens)
+    }
+
+    /** Exchange an authorization code obtained via the browser setup flow. [baseUrl] is used directly
+     *  (settings.baseUrl is not set yet). On success persists baseUrl, then authClientId, then tokens. */
+    suspend fun exchangeSetupCode(baseUrl: String, clientId: String, code: String) {
+        val tokens = tokenRequest(
+            baseUrl,
+            FormBody.Builder()
+                .add("grant_type", "authorization_code")
+                .add("code", code)
+                .add("client_id", clientId)
+                .build()
+        )
+        settings.baseUrl = baseUrl
+        settings.authClientId = clientId
         store(tokens)
     }
 
@@ -61,12 +79,14 @@ class AuthManager(
 
     private suspend fun refresh(): String {
         val refreshToken = settings.refreshToken ?: throw AuthRevokedException()
+        val base = settings.baseUrl ?: throw IOException("no base url configured")
         val tokens = try {
             tokenRequest(
+                base,
                 FormBody.Builder()
                     .add("grant_type", "refresh_token")
                     .add("refresh_token", refreshToken)
-                    .add("client_id", CLIENT_ID)
+                    .add("client_id", settings.authClientId ?: CLIENT_ID)
                     .build()
             )
         } catch (e: TokenRejectedException) {
@@ -83,8 +103,7 @@ class AuthManager(
         tokens.refreshToken?.let { settings.refreshToken = it }
     }
 
-    private suspend fun tokenRequest(body: FormBody): TokenResponse = withContext(Dispatchers.IO) {
-        val base = settings.baseUrl ?: throw IOException("no base url configured")
+    private suspend fun tokenRequest(base: String, body: FormBody): TokenResponse = withContext(Dispatchers.IO) {
         val request = Request.Builder().url("$base/auth/token").post(body).build()
         client.newCall(request).execute().use { resp ->
             if (resp.code == 400) throw TokenRejectedException()

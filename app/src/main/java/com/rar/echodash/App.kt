@@ -12,6 +12,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rar.echodash.config.ConfigStore
 import com.rar.echodash.data.PrefsSettingsStore
 import com.rar.echodash.data.SettingsStore
 import com.rar.echodash.ha.AuthManager
@@ -59,6 +60,7 @@ class AppDeps(context: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val ws = HaWebSocket(settings, auth, client, scope)
     val entityHub = EntityHub(ws, scope)
+    val configStore = ConfigStore(appContext.filesDir)
 
     private val photoCacheDir = File(appContext.cacheDir, "photos")
     private val photoDownloader = AndroidPhotoDownloader(ws, client, { settings.baseUrl }, photoCacheDir)

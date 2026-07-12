@@ -1,9 +1,12 @@
 package com.rar.echodash.ha
 
+import com.rar.echodash.config.DashConfig
 import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -15,13 +18,15 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
 /**
- * Resolves echo-* labels to entities and maintains their live states over one subscribe_entities
- * subscription. Re-lists and re-subscribes when the entity registry changes. Pure orchestration:
- * all parsing/diffing lives in [parseEntityRegistry]/[applyEntitiesEvent].
+ * Maintains live states for the entities referenced by [config] over one subscribe_entities
+ * subscription. The watched set is DashConfig.referencedEntityIds() — labels no longer decide it.
+ * Re-lists the registry (names + full entity list for the web picker) on connect and on
+ * entity_registry_updated; re-subscribes entities whenever the config's referenced set changes.
  */
 class EntityHub(
     private val client: HaClient,
     private val scope: CoroutineScope,
+    private val config: StateFlow<DashConfig>,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val _entities = MutableStateFlow<Map<String, EntityState>>(emptyMap())
@@ -31,7 +36,7 @@ class EntityHub(
     val registry: StateFlow<RegistryIndex> = _registry
 
     private var entitiesSubId: Int? = null
-    private var matched: List<String> = emptyList()
+    private var watched: List<String> = emptyList()
     private var started = false
 
     fun start() {
@@ -42,12 +47,18 @@ class EntityHub(
                 if (st == ConnState.CONNECTED) resync()
             }
         }
+        scope.launch {
+            config
+                .map { it.referencedEntityIds() }
+                .distinctUntilChanged()
+                .collect { onConfigChanged(it) }
+        }
     }
 
     private suspend fun resync() {
         val reg = listRegistry() ?: return
         _registry.value = reg
-        matched = reg.allEntityIds
+        watched = config.value.referencedEntityIds()
         _entities.value = emptyMap()
         try {
             openEntitiesSubscription()
@@ -60,20 +71,23 @@ class EntityHub(
         }
     }
 
+    /** Registry changed in HA: refresh names + picker list. The watched set is config-driven, so this
+     * never re-subscribes entities. */
     private suspend fun onRegistryUpdated() {
-        val reg = listRegistry() ?: return
-        _registry.value = reg
-        val newMatched = reg.allEntityIds
-        if (newMatched.toSet() != matched.toSet()) {
-            try {
-                entitiesSubId?.let { client.unsubscribe(it) }
-                matched = newMatched
-                _entities.value = emptyMap()
-                openEntitiesSubscription()
-            } catch (e: IOException) {
-                // socket dropped mid-update; the next CONNECTED transition resyncs from scratch
-                android.util.Log.w("EntityHub", "onRegistryUpdated failed", e)
-            }
+        listRegistry()?.let { _registry.value = it }
+    }
+
+    private suspend fun onConfigChanged(newWatched: List<String>) {
+        if (newWatched.toSet() == watched.toSet()) return
+        if (entitiesSubId == null) { watched = newWatched; return } // not subscribed yet; resync will use it
+        try {
+            entitiesSubId?.let { client.unsubscribe(it) }
+            watched = newWatched
+            _entities.value = emptyMap()
+            openEntitiesSubscription()
+        } catch (e: IOException) {
+            // socket dropped mid-update; the next CONNECTED transition resyncs from scratch
+            android.util.Log.w("EntityHub", "onConfigChanged failed", e)
         }
     }
 
@@ -85,7 +99,7 @@ class EntityHub(
     private suspend fun openEntitiesSubscription() {
         entitiesSubId = client.subscribe(
             "subscribe_entities",
-            buildJsonObject { putJsonArray("entity_ids") { matched.forEach { add(it) } } },
+            buildJsonObject { putJsonArray("entity_ids") { watched.forEach { add(it) } } },
         ) { event ->
             _entities.value = applyEntitiesEvent(_entities.value, event, clock())
         }

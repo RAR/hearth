@@ -59,8 +59,8 @@ class AppDeps(context: Context) {
     val auth = AuthManager(settings, client)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val ws = HaWebSocket(settings, auth, client, scope)
-    val entityHub = EntityHub(ws, scope)
     val configStore = ConfigStore(appContext.filesDir)
+    val entityHub = EntityHub(ws, scope, configStore.config)
 
     private val photoCacheDir = File(appContext.cacheDir, "photos")
     private val photoDownloader = AndroidPhotoDownloader(ws, client, { settings.baseUrl }, photoCacheDir)

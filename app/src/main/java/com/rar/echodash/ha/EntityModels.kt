@@ -23,12 +23,19 @@ data class EntityState(
         (attributes[key] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList()
 }
 
-/** Label id (lowercased, echo-* only) -> entity ids, plus registry display names per entity. */
+/** One registry entity for the web picker: id, display name (nullable), and domain. */
+data class RegistryEntity(val id: String, val name: String?, val domain: String)
+
+/**
+ * Registry index. [labelToEntities] keeps echo-* labels for one-time config seeding; [registryNames]
+ * and [allEntities] cover EVERY registry entity so the web picker can list and name them.
+ */
 data class RegistryIndex(
     val labelToEntities: Map<String, List<String>>,
     val registryNames: Map<String, String>,
+    val allEntities: List<RegistryEntity> = emptyList(),
 ) {
-    /** Every entity referenced by any echo-* label, first-seen order, de-duplicated. */
+    /** Every entity referenced by any echo-* label, first-seen order, de-duplicated (seeding only). */
     val allEntityIds: List<String>
         get() = labelToEntities.values.flatten().distinct()
 }
@@ -37,22 +44,24 @@ data class RegistryIndex(
 fun RegistryIndex.displayName(entityId: String, state: EntityState?): String =
     registryNames[entityId] ?: state?.attr("friendly_name") ?: entityId
 
-/** Build the label index from a config/entity_registry/list result array. */
+/** Build the index from a config/entity_registry/list result array. */
 fun parseEntityRegistry(result: JsonElement): RegistryIndex {
     val labelToEntities = LinkedHashMap<String, MutableList<String>>()
     val names = LinkedHashMap<String, String>()
+    val all = ArrayList<RegistryEntity>()
     for (el in result.jsonArray) {
         val obj = el.jsonObject
         val id = (obj["entity_id"] as? JsonPrimitive)?.contentOrNull ?: continue
+        val name = (obj["name"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+            ?: (obj["original_name"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+        if (name != null) names[id] = name
+        all += RegistryEntity(id = id, name = name, domain = id.substringBefore('.'))
+
         val labels = (obj["labels"] as? JsonArray)
             ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.lowercase()?.replace('_', '-') }
             ?.filter { it.startsWith("echo-") }
             .orEmpty()
-        if (labels.isEmpty()) continue
         for (label in labels) labelToEntities.getOrPut(label) { mutableListOf() }.add(id)
-        val name = (obj["name"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
-            ?: (obj["original_name"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
-        if (name != null) names[id] = name
     }
-    return RegistryIndex(labelToEntities, names)
+    return RegistryIndex(labelToEntities, names, all)
 }

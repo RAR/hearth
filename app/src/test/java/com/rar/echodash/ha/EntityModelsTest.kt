@@ -54,6 +54,26 @@ class EntityModelsTest {
     }
 
     @Test
+    fun capturesEveryRegistryEntityForThePicker() {
+        val reg = parseEntityRegistry(json(
+            """[
+              {"entity_id":"light.kitchen","labels":["echo-lights"],"name":null,"original_name":"Kitchen"},
+              {"entity_id":"switch.fan","labels":[],"name":"Desk Fan","original_name":"Fan"},
+              {"entity_id":"climate.hall","labels":[],"name":null,"original_name":null}
+            ]"""
+        ))
+        // allEntities includes entities with NO echo labels (the picker needs the full list)
+        assertEquals(listOf("light.kitchen", "switch.fan", "climate.hall"), reg.allEntities.map { it.id })
+        assertEquals(listOf("light", "switch", "climate"), reg.allEntities.map { it.domain })
+        assertEquals("Desk Fan", reg.allEntities[1].name)
+        // registryNames now covers unlabeled entities too
+        assertEquals("Desk Fan", reg.registryNames["switch.fan"])
+        // labelToEntities stays echo-only (seeding contract unchanged)
+        assertEquals(listOf("light.kitchen"), reg.labelToEntities["echo-lights"])
+        assertEquals(null, reg.labelToEntities["other"])
+    }
+
+    @Test
     fun attributeAccessors() {
         val s = EntityState("climate.hall", "heat",
             Json.parseToJsonElement(

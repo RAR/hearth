@@ -171,6 +171,7 @@ class SatelliteServer(
             val input = socket.getInputStream().buffered()
             while (true) {
                 val event = WyomingCodec.read(input) ?: break
+                if (event.type != "ping") Log.d(TAG, "recv ${event.type} ${event.data}")
                 synchronized(lock) {
                     if (active !== conn) return           // superseded
                     dispatch(conn, session.onEvent(event, System.currentTimeMillis()))
@@ -201,6 +202,9 @@ class SatelliteServer(
         for (a in actions) when (a) {
             is SatelliteAction.Send ->
                 if (conn != null) {
+                    if (a.event.type != "audio-chunk" && a.event.type != "pong") {
+                        Log.d(TAG, "send ${a.event.type} ${a.event.data}")
+                    }
                     try { WyomingCodec.write(a.event, conn.out) } catch (e: Exception) { Log.w(TAG, "write failed", e) }
                 }
             SatelliteAction.StartMic -> out.onStartMic()

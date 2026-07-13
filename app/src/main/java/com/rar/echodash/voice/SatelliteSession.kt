@@ -369,7 +369,16 @@ class SatelliteSession(
                             for ((id, phrase) in WAKE_MODELS) {
                                 addJsonObject {
                                     put("name", id)
+                                    // description + attribution are REQUIRED on every model:
+                                    // wyoming's WakeModel.from_dict indexes d["attribution"],
+                                    // and a missing key crashes HA's satellite event loop into
+                                    // a 3s reconnect flap (observed on-device 2026-07-13).
+                                    put("description", phrase)
                                     put("phrase", phrase)
+                                    putJsonObject("attribution") {
+                                        put("name", "openWakeWord")
+                                        put("url", "https://github.com/dscripka/openWakeWord")
+                                    }
                                     put("installed", true)
                                     putJsonArray("languages") {}
                                     put("version", JsonNull)

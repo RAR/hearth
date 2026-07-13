@@ -32,9 +32,13 @@ object TfliteWakeGraphs {
         wakeWord: String,
     ): Triple<WakeDetector.TfGraph, WakeDetector.TfGraph, WakeDetector.TfGraph>? {
         return try {
+            // The bundled melspectrogram.tflite is PRE-PATCHED (tools/patch-melspec-shape.py)
+            // to a static [1, 1760] input. Upstream ships it with shape [1, 1] / signature
+            // [-1, -1], and the Java Interpreter constructor allocates tensors before any
+            // resizeInput can run, overflowing CONV_2D prepare ("BytesRequired number of
+            // elements overflowed", openWakeWord issue #223) — resize-then-allocate CANNOT
+            // fix it on Android. Never replace this asset with the raw upstream file.
             val mel = Interpreter(loadModel(assets, "melspectrogram.tflite"))
-            mel.resizeInput(0, intArrayOf(1, MEL_SAMPLES))
-            mel.allocateTensors()
             val emb = Interpreter(loadModel(assets, "embedding_model.tflite"))
             val head = Interpreter(loadModel(assets, "$wakeWord.tflite"))
             Triple(

@@ -318,7 +318,7 @@ private fun EvCardView(card: EvCard) {
             .width(248.dp)
             .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
             .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -329,76 +329,68 @@ private fun EvCardView(card: EvCard) {
                 tint = Color.White, modifier = Modifier.size(18.dp),
             )
             Text(
-                card.name, color = Color.White, fontSize = 16.sp,
-                fontWeight = FontWeight.Medium, lineHeight = 17.sp,
+                card.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f),
             )
+            if (card.socPct != null) {
+                Text("${card.socPct}%", color = Color.White, fontSize = 14.sp)
+            }
         }
-        if (card.chargeLine != null) {
-            Text(
-                card.chargeLine, color = Color.White.copy(alpha = 0.9f),
-                fontSize = 14.sp, lineHeight = 15.sp,
-            )
-        }
-        val soc = card.socPct
-        if (soc != null || card.etaText != null) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+        if (card.socPct != null) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .size(width = 216.dp, height = 8.dp)
+                    .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(4.dp)),
             ) {
-                if (soc != null) {
-                    Box(
-                        Modifier
-                            .size(width = 112.dp, height = 8.dp)
-                            .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(4.dp)),
-                    ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(card.socPct / 100f)
+                        .fillMaxHeight()
+                        // clip() is required: background() draws a rounded shape but does
+                        // not clip children, so the shimmer band would bleed past the fill.
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF7BC67E)),
+                ) {
+                    // Only run the infinite animation while actually charging.
+                    if (card.charging) {
+                        val shimmer = rememberInfiniteTransition(label = "evShimmer")
+                        val fraction by shimmer.animateFloat(
+                            initialValue = 0f,
+                            targetValue = 1f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(1800, easing = LinearEasing),
+                                repeatMode = RepeatMode.Restart,
+                            ),
+                            label = "evShimmerX",
+                        )
                         Box(
                             Modifier
-                                .fillMaxWidth(soc / 100f)
+                                // Sweep a 24dp band left-to-right across the full 216dp track
+                                // width; the fill's clip keeps it inside the filled region.
+                                .offset(x = (fraction * (216 + 24)).dp - 24.dp)
+                                .width(24.dp)
                                 .fillMaxHeight()
-                                // clip() is required: background() draws a rounded shape but does
-                                // not clip children, so the shimmer band would bleed past the fill.
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0xFF7BC67E)),
-                        ) {
-                            // Only run the infinite animation while actually charging.
-                            if (card.charging) {
-                                val shimmer = rememberInfiniteTransition(label = "evShimmer")
-                                val fraction by shimmer.animateFloat(
-                                    initialValue = 0f,
-                                    targetValue = 1f,
-                                    animationSpec = infiniteRepeatable(
-                                        animation = tween(1800, easing = LinearEasing),
-                                        repeatMode = RepeatMode.Restart,
-                                    ),
-                                    label = "evShimmerX",
-                                )
-                                Box(
-                                    Modifier
-                                        // Sweep a 24dp band left-to-right across the full track
-                                        // width; the fill's clip keeps it inside the filled region.
-                                        .offset(x = (fraction * (112 + 24)).dp - 24.dp)
-                                        .width(24.dp)
-                                        .fillMaxHeight()
-                                        .background(
-                                            Brush.horizontalGradient(
-                                                listOf(
-                                                    Color.Transparent,
-                                                    Color.White.copy(alpha = 0.35f),
-                                                    Color.Transparent,
-                                                ),
-                                            ),
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            Color.Transparent,
+                                            Color.White.copy(alpha = 0.35f),
+                                            Color.Transparent,
                                         ),
-                                )
-                            }
-                        }
+                                    ),
+                                ),
+                        )
                     }
                 }
-                Text(
-                    listOfNotNull(soc?.let { "$it%" }, card.etaText).joinToString(" · "),
-                    color = Color.White, fontSize = 14.sp, lineHeight = 15.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
             }
+        }
+        val stats = listOfNotNull(card.chargeLine, card.etaText).joinToString(" · ")
+        if (stats.isNotEmpty()) {
+            Text(
+                stats, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

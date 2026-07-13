@@ -48,6 +48,8 @@ class ConfigServerSetupTest {
             store = ConfigStore(tempDir()),
             sessions = SessionManager(random = Random(1)),
             pin = { "123456" },
+            notifyToken = { "testtoken" },
+            pushStore = com.rar.echodash.notify.PushNotificationStore(),
             entitiesJson = { "[]" },
             setup = setup,
             configured = { settings.refreshToken != null },

@@ -8,6 +8,7 @@ import com.rar.echodash.config.decodeConfig
 import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayInputStream
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -24,6 +25,8 @@ class ConfigServer(
     private val store: ConfigStore,
     private val sessions: SessionManager,
     private val pin: () -> String,
+    private val notifyToken: () -> String,
+    private val pushStore: com.rar.echodash.notify.PushNotificationStore,
     private val entitiesJson: () -> String,
     private val setup: SetupCoordinator,
     private val configured: () -> Boolean,
@@ -47,6 +50,8 @@ class ConfigServer(
         val method = session.method
 
         if (uri == "/api/login" && method == Method.POST) return handleLogin(session)
+        if (uri == "/api/notify" && method == Method.POST) return handleNotify(session)
+        if (uri == "/api/notify/clear" && method == Method.POST) return handleNotifyClear(session)
 
         if (uri.startsWith("/api/")) {
             if (!authed(session)) return error(Response.Status.UNAUTHORIZED, "unauthorized")
@@ -100,7 +105,51 @@ class ConfigServer(
             put("configured", configured())
             put("connState", connState())
             put("lux", lux())            // int, or JSON null when no sensor reading yet
+            put("notifyToken", notifyToken())
         }.toString())
+
+    /** Constant-time check of the `Authorization: Bearer <token>` header against the notify token. */
+    private fun bearerAuthed(session: IHTTPSession): Boolean {
+        val header = session.headers["authorization"] ?: return false // NanoHTTPD lowercases keys
+        val prefix = "Bearer "
+        if (!header.startsWith(prefix)) return false
+        val provided = header.substring(prefix.length).trim()
+        val expected = notifyToken()
+        if (expected.isBlank()) return false
+        return java.security.MessageDigest.isEqual(
+            provided.toByteArray(Charsets.UTF_8),
+            expected.toByteArray(Charsets.UTF_8),
+        )
+    }
+
+    private fun handleNotify(session: IHTTPSession): Response {
+        if (!bearerAuthed(session)) return error(Response.Status.UNAUTHORIZED, "unauthorized")
+        val obj = runCatching { ConfigJson.json.parseToJsonElement(readBody(session)) as JsonObject }
+            .getOrNull() ?: return error(Response.Status.BAD_REQUEST, "invalid request")
+        val title = obj["title"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+        if (title.isBlank()) return error(Response.Status.BAD_REQUEST, "missing title")
+        val id = obj["id"]?.jsonPrimitive?.contentOrNull
+        val message = obj["message"]?.jsonPrimitive?.contentOrNull
+        val severity = obj["severity"]?.jsonPrimitive?.contentOrNull
+        // timeout <= 0 or absent -> null (persistent); the store also guards this.
+        val timeout = obj["timeout"]?.jsonPrimitive?.intOrNull?.takeIf { it > 0 }
+        val effectiveId = pushStore.post(id, title, message, severity, timeout, System.currentTimeMillis())
+        return ok(buildJsonObject { put("ok", true); put("id", effectiveId) }.toString())
+    }
+
+    private fun handleNotifyClear(session: IHTTPSession): Response {
+        if (!bearerAuthed(session)) return error(Response.Status.UNAUTHORIZED, "unauthorized")
+        val obj = runCatching { ConfigJson.json.parseToJsonElement(readBody(session)) as JsonObject }
+            .getOrNull() ?: return error(Response.Status.BAD_REQUEST, "invalid request")
+        if (obj["all"]?.jsonPrimitive?.booleanOrNull == true) {
+            pushStore.clearAll()
+            return ok("""{"ok":true}""")
+        }
+        val id = obj["id"]?.jsonPrimitive?.contentOrNull?.trim()
+        if (id.isNullOrBlank()) return error(Response.Status.BAD_REQUEST, "missing id")
+        pushStore.clear(id) // clearing an unknown id is still ok:true (idempotent)
+        return ok("""{"ok":true}""")
+    }
 
     private fun handlePreviewChime(session: IHTTPSession): Response {
         val obj = runCatching { ConfigJson.json.parseToJsonElement(readBody(session)) as JsonObject }.getOrNull()

@@ -68,6 +68,7 @@ import com.rar.echodash.web.SessionManager
 import com.rar.echodash.web.SetupCoordinator
 import com.rar.echodash.web.buildEntityListJson
 import com.rar.echodash.web.generatePin
+import com.rar.echodash.web.generateNotifyToken
 import com.rar.echodash.web.localIpAddress
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -115,10 +116,16 @@ class AppDeps(context: Context) {
     private val ensuredPin: String by lazy {
         settings.configPin ?: generatePin().also { settings.configPin = it }
     }
+    private val ensuredNotifyToken: String by lazy {
+        settings.notifyToken ?: generateNotifyToken().also { settings.notifyToken = it }
+    }
+    val pushStore = com.rar.echodash.notify.PushNotificationStore()
     val configServer = ConfigServer(
         store = configStore,
         sessions = sessions,
         pin = { configPin() },
+        notifyToken = { ensuredNotifyToken },
+        pushStore = pushStore,
         entitiesJson = { buildEntityListJson(entityHub.registry.value, entityHub.entities.value) },
         setup = setup,
         configured = { settings.refreshToken != null },

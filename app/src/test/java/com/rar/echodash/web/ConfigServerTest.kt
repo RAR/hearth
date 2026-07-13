@@ -3,6 +3,8 @@ package com.rar.echodash.web
 import com.rar.echodash.config.ConfigStore
 import com.rar.echodash.data.InMemorySettingsStore
 import com.rar.echodash.ha.AuthManager
+import com.rar.echodash.notify.PushNotificationStore
+import com.rar.echodash.ui.model.NotifSeverity
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -23,6 +25,7 @@ class ConfigServerTest {
     private val http = OkHttpClient()
     private lateinit var server: ConfigServer
     private lateinit var store: ConfigStore
+    private lateinit var pushStore: PushNotificationStore
     private lateinit var base: String
     private val requestedAssetPaths = mutableListOf<String>()
     private val previewCalls = mutableListOf<Pair<String, Int>>()
@@ -33,11 +36,14 @@ class ConfigServerTest {
     @Before
     fun setUp() {
         store = ConfigStore(tempDir())
+        pushStore = PushNotificationStore()
         server = ConfigServer(
             port = 0,
             store = store,
             sessions = SessionManager(random = Random(1)),
             pin = { "123456" },
+            notifyToken = { "testtoken" },
+            pushStore = pushStore,
             entitiesJson = { """[{"id":"light.k","name":"K","domain":"light","state":"on"}]""" },
             setup = SetupCoordinator(AuthManager(InMemorySettingsStore(), OkHttpClient()), onConfigured = {}),
             configured = { false },
@@ -241,6 +247,124 @@ class ConfigServerTest {
                 val body = r.body!!.string()
                 assertTrue(body.contains("\"lux\":42"))
                 assertTrue(body.contains("\"connState\":\"OFFLINE\""))
+            }
+    }
+
+    @Test
+    fun notifyMissingTokenReturns401() {
+        http.newCall(Request.Builder().url("$base/api/notify")
+            .post("""{"title":"Hi"}""".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(401, r.code)
+            }
+        assertTrue(pushStore.items.value.isEmpty())
+    }
+
+    @Test
+    fun notifyWrongTokenReturns401() {
+        http.newCall(Request.Builder().url("$base/api/notify").header("Authorization", "Bearer nope")
+            .post("""{"title":"Hi"}""".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(401, r.code)
+            }
+        assertTrue(pushStore.items.value.isEmpty())
+    }
+
+    @Test
+    fun notifyValidPostStoresItemAndReturnsId() {
+        http.newCall(Request.Builder().url("$base/api/notify").header("Authorization", "Bearer testtoken")
+            .post("""{"title":"Laundry done","message":"go get it","severity":"warning","id":"chores"}"""
+                .toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(200, r.code)
+                val body = r.body!!.string()
+                assertTrue(body.contains("\"ok\":true"))
+                assertTrue(body.contains("\"id\":\"chores\""))
+            }
+        val item = pushStore.items.value.single()
+        assertEquals("chores", item.id)
+        assertEquals("Laundry done", item.title)
+        assertEquals("go get it", item.message)
+        assertEquals(NotifSeverity.WARNING, item.severity)
+    }
+
+    @Test
+    fun notifyBlankTitleReturns400() {
+        http.newCall(Request.Builder().url("$base/api/notify").header("Authorization", "Bearer testtoken")
+            .post("""{"title":"   "}""".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(400, r.code)
+            }
+        assertTrue(pushStore.items.value.isEmpty())
+    }
+
+    @Test
+    fun notifyMalformedBodyReturns400() {
+        http.newCall(Request.Builder().url("$base/api/notify").header("Authorization", "Bearer testtoken")
+            .post("{ not json".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(400, r.code)
+            }
+        assertTrue(pushStore.items.value.isEmpty())
+    }
+
+    @Test
+    fun notifyClearByIdRemovesItem() {
+        pushStore.post("chores", "T", null, null, null, System.currentTimeMillis())
+        http.newCall(Request.Builder().url("$base/api/notify/clear").header("Authorization", "Bearer testtoken")
+            .post("""{"id":"chores"}""".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(200, r.code)
+                assertTrue(r.body!!.string().contains("\"ok\":true"))
+            }
+        assertTrue(pushStore.items.value.isEmpty())
+    }
+
+    @Test
+    fun notifyClearAllRemovesEverything() {
+        pushStore.post("a", "A", null, null, null, 0L)
+        pushStore.post("b", "B", null, null, null, 0L)
+        http.newCall(Request.Builder().url("$base/api/notify/clear").header("Authorization", "Bearer testtoken")
+            .post("""{"all":true}""".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(200, r.code)
+            }
+        assertTrue(pushStore.items.value.isEmpty())
+    }
+
+    @Test
+    fun notifyClearUnknownIdStillOk() {
+        http.newCall(Request.Builder().url("$base/api/notify/clear").header("Authorization", "Bearer testtoken")
+            .post("""{"id":"ghost"}""".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(200, r.code)
+                assertTrue(r.body!!.string().contains("\"ok\":true"))
+            }
+    }
+
+    @Test
+    fun notifyClearNeitherIdNorAllReturns400() {
+        http.newCall(Request.Builder().url("$base/api/notify/clear").header("Authorization", "Bearer testtoken")
+            .post("{}".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(400, r.code)
+            }
+    }
+
+    @Test
+    fun notifyTokenDoesNotAuthorizeConfig() {
+        http.newCall(Request.Builder().url("$base/api/config").header("Authorization", "Bearer testtoken")
+            .build()).execute().use { r -> assertEquals(401, r.code) }
+    }
+
+    @Test
+    fun sessionCookieDoesNotAuthorizeNotify() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/notify").header("Cookie", cookie)
+            .post("""{"title":"Hi"}""".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(401, r.code)
+            }
+        assertTrue(pushStore.items.value.isEmpty())
+    }
+
+    @Test
+    fun statusIncludesNotifyToken() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/status").header("Cookie", cookie).build())
+            .execute().use { r ->
+                assertEquals(200, r.code)
+                assertTrue(r.body!!.string().contains("\"notifyToken\":\"testtoken\""))
             }
     }
 }

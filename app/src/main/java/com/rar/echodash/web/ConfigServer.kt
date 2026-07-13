@@ -30,6 +30,7 @@ class ConfigServer(
     private val connState: () -> String,
     private val lux: () -> Int? = { null },
     private val previewChime: (String, Int) -> Unit,
+    private val previewEarcon: (Int) -> Unit,
     private val assetReader: (String) -> ByteArray?,
 ) : NanoHTTPD(port) {
 
@@ -58,6 +59,7 @@ class ConfigServer(
                 uri == "/api/setup/begin" && method == Method.POST -> handleSetupBegin(session)
                 uri == "/api/setup/complete" && method == Method.POST -> handleSetupComplete(session)
                 uri == "/api/voice/preview-chime" && method == Method.POST -> handlePreviewChime(session)
+                uri == "/api/voice/preview-wake" && method == Method.POST -> handlePreviewWake(session)
                 else -> error(Response.Status.NOT_FOUND, "not found")
             }
         }
@@ -107,6 +109,15 @@ class ConfigServer(
         val volume = obj?.get("volume")?.jsonPrimitive?.intOrNull ?: saved.timerVolume
         val norm = VoiceSettings(timerTone = tone, timerVolume = volume).clamped()
         previewChime(norm.timerTone, norm.timerVolume)
+        return ok("""{"ok":true}""")
+    }
+
+    private fun handlePreviewWake(session: IHTTPSession): Response {
+        val obj = runCatching { ConfigJson.json.parseToJsonElement(readBody(session)) as JsonObject }.getOrNull()
+        val saved = store.config.value.voice
+        val volume = obj?.get("volume")?.jsonPrimitive?.intOrNull ?: saved.wakeSoundVolume
+        val norm = VoiceSettings(wakeSoundVolume = volume).clamped()
+        previewEarcon(norm.wakeSoundVolume)
         return ok("""{"ok":true}""")
     }
 

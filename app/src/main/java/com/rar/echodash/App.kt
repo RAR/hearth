@@ -38,6 +38,7 @@ import com.rar.echodash.ui.SetupScreen
 import com.rar.echodash.ui.TimerChips
 import com.rar.echodash.ui.TimerFinishedOverlay
 import com.rar.echodash.ui.VoiceOverlay
+import com.rar.echodash.ui.WakeGlow
 import com.rar.echodash.ui.theme.EchoTheme
 import com.rar.echodash.vaca.AndroidKioskDevice
 import com.rar.echodash.vaca.AnnouncePlayer
@@ -53,6 +54,7 @@ import com.rar.echodash.vaca.NsdAdvertiser
 import com.rar.echodash.vaca.VacaOutgoing
 import com.rar.echodash.vaca.VacaServer
 import com.rar.echodash.voice.EarconKind
+import com.rar.echodash.voice.EarconPlayer
 import com.rar.echodash.voice.MicStreamer
 import com.rar.echodash.voice.SatelliteServer
 import com.rar.echodash.voice.TimerChime
@@ -121,6 +123,7 @@ class AppDeps(context: Context) {
         connState = { ws.connectionState.value.name },
         lux = { lastLux },
         previewChime = { tone, volume -> timerChime.playOnce(tone, volume) },
+        previewEarcon = { volume -> earconPlayer.play("preview", volume) },
         assetReader = { path ->
             runCatching { appContext.assets.open("config/$path").readBytes() }.getOrNull()
         },
@@ -229,6 +232,7 @@ class AppDeps(context: Context) {
     val voiceOverlay = MutableStateFlow(VoiceOverlayState())
     val timersUi = MutableStateFlow(TimersUiState())
     val timerChime = TimerChime()
+    val earconPlayer = EarconPlayer()
     private val voiceSink = AndroidPcmSink()
     private val voicePlayer = AnnouncePlayer(
         scope,
@@ -252,7 +256,10 @@ class AppDeps(context: Context) {
             override fun onPlaybackStop() = voicePlayer.onAudioStop()
             override fun onOverlay(state: VoiceOverlayState) { voiceOverlay.value = state }
             override fun onTimers(state: TimersUiState) { timersUi.value = state }
-            override fun onEarcon(kind: EarconKind) { } // wired to EarconPlayer in the next commit
+            override fun onEarcon(kind: EarconKind) = earconPlayer.play(
+                if (kind == EarconKind.WAKE) "wake" else "done",
+                configStore.config.value.voice.wakeSoundVolume,
+            )
         },
     )
     private val voiceNsd = NsdAdvertiser(appContext, SatelliteServer.PORT, "_wyoming._tcp.")
@@ -547,6 +554,7 @@ fun EchoDashApp(deps: AppDeps) {
                     }
                     DisposableEffect(Unit) { onDispose { deps.timerChime.stop() } }
                     TimerChips(timersState)
+                    WakeGlow(voiceOverlayState.phase == VoiceOverlayPhase.LISTENING)
                     VoiceOverlay(voiceOverlayState)
                     timersState.alert?.let { alert ->
                         key(alert) {

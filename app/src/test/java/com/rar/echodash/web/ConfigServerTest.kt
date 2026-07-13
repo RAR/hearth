@@ -44,6 +44,7 @@ class ConfigServerTest {
             connState = { "OFFLINE" },
             lux = { 42 },
             previewChime = { tone, volume -> previewCalls += tone to volume },
+            previewEarcon = { },
             assetReader = { path ->
                 requestedAssetPaths += path
                 if (path == "index.html") "<html>ok</html>".toByteArray() else null

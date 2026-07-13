@@ -542,6 +542,7 @@ function renderVoice() {
   const v = config.voice;
   if (v.timerTone == null) v.timerTone = "twotone";
   if (v.timerVolume == null) v.timerVolume = 80;
+  if (v.wakeSoundVolume == null) v.wakeSoundVolume = 80;
 
   const toggle = el("input"); toggle.type = "checkbox"; toggle.checked = !!v.enabled;
   toggle.setAttribute("aria-label", "Voice satellite enabled");
@@ -573,8 +574,25 @@ function renderVoice() {
   });
   host.appendChild(preview);
 
+  const wakeVol = el("input"); wakeVol.type = "number"; wakeVol.min = 0; wakeVol.max = 100; wakeVol.value = v.wakeSoundVolume;
+  wakeVol.addEventListener("change", () => v.wakeSoundVolume = Math.round(parseFloat(wakeVol.value) || 0));
+  host.appendChild(labeledRow("Wake sound volume", wakeVol));
+
+  const wakePreview = el("button", "ghost small", "Preview");
+  wakePreview.type = "button";
+  wakePreview.addEventListener("click", async () => {
+    // Audition the CURRENT (possibly unsaved) volume. Best-effort; ignore failures.
+    wakePreview.disabled = true;
+    try {
+      await api("POST", "/api/voice/preview-wake", { volume: v.wakeSoundVolume });
+    } catch (e) { /* device may be unreachable; nothing to persist */ }
+    finally { wakePreview.disabled = false; }
+  });
+  host.appendChild(wakePreview);
+
   host.appendChild(el("div", "muted",
-    "Home Assistant should auto-discover the satellite; otherwise add the Wyoming Protocol integration at <this-device-ip>:10600. Pick the pipeline and wake word in HA's Assist satellite settings."));
+    "Home Assistant should auto-discover the satellite; otherwise add the Wyoming Protocol integration at <this-device-ip>:10600. Pick the pipeline and wake word in HA's Assist satellite settings." +
+    " Wake sound: chirps when the wake word is heard and when it stops listening; volume 0 disables it."));
 }
 
 function renderNight() {

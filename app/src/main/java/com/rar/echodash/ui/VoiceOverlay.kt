@@ -1,17 +1,32 @@
 package com.rar.echodash.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
@@ -21,6 +36,46 @@ import com.rar.echodash.voice.TimerAlert
 import com.rar.echodash.voice.TimersUiState
 import com.rar.echodash.voice.VoiceOverlayPhase
 import com.rar.echodash.voice.VoiceOverlayState
+
+/**
+ * Full screen-edge glow shown while the satellite is listening (wake word heard, speech not
+ * yet captured). Four thin gradient strips hugging the edges — cheap fill for this GPU; the
+ * pulse animation only runs while the glow is composed.
+ */
+@Composable
+fun WakeGlow(visible: Boolean, modifier: Modifier = Modifier) {
+    AnimatedVisibility(visible, enter = fadeIn(tween(250)), exit = fadeOut(tween(400)), modifier = modifier) {
+        val pulse = rememberInfiniteTransition(label = "wakeGlow")
+        val alpha by pulse.animateFloat(
+            initialValue = 0.45f,
+            targetValue = 0.9f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(600, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "wakeGlowAlpha",
+        )
+        val color = Color(0xFF4FC3F7).copy(alpha = alpha)
+        Box(Modifier.fillMaxSize()) {
+            Box(
+                Modifier.fillMaxWidth().height(28.dp).align(Alignment.TopCenter)
+                    .background(Brush.verticalGradient(listOf(color, Color.Transparent))),
+            )
+            Box(
+                Modifier.fillMaxWidth().height(28.dp).align(Alignment.BottomCenter)
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, color))),
+            )
+            Box(
+                Modifier.fillMaxHeight().width(28.dp).align(Alignment.CenterStart)
+                    .background(Brush.horizontalGradient(listOf(color, Color.Transparent))),
+            )
+            Box(
+                Modifier.fillMaxHeight().width(28.dp).align(Alignment.CenterEnd)
+                    .background(Brush.horizontalGradient(listOf(Color.Transparent, color))),
+            )
+        }
+    }
+}
 
 /**
  * Small bottom-center voice pill. Lighter than the doorbell popup: it does not cover the

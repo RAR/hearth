@@ -39,6 +39,7 @@ class BrowserFlowReproTest {
             configured = { false },
             connState = { "OFFLINE" },
             previewChime = { _, _ -> },
+            previewEarcon = { },
             assetReader = { null },
         )
         server.start()

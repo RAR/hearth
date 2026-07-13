@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rar.echodash.config.ClockFormat
 import com.rar.echodash.ha.ConnState
+import com.rar.echodash.media.ArtBitmaps
+import com.rar.echodash.media.NowPlayingState
 import com.rar.echodash.ui.model.AqiPill
 import com.rar.echodash.ui.model.WeatherPill
 import java.io.File
@@ -71,7 +73,7 @@ private fun rememberMinuteTicker(): State<Long> {
 }
 
 @Composable
-private fun DuskBackground() {
+internal fun DuskBackground() {
     Canvas(Modifier.fillMaxSize()) {
         drawRect(
             brush = Brush.verticalGradient(
@@ -121,6 +123,13 @@ fun HomeView(
     configUrl: String,
     configPin: String,
     onLogout: () -> Unit,
+    nowPlaying: NowPlayingState,
+    art: ArtBitmaps?,
+    onMediaPlay: () -> Unit,
+    onMediaPause: () -> Unit,
+    onMediaNext: () -> Unit,
+    onMediaPrev: () -> Unit,
+    onMediaVolume: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -129,9 +138,10 @@ fun HomeView(
 
     val order = remember(photos) { photos.shuffled() }
     var photoIndex by remember(order) { mutableIntStateOf(0) }
-    // Keying on photoIndex re-arms the countdown, so a manual swipe restarts the timer.
-    LaunchedEffect(order, photoIndex, slideshowSeconds) {
-        if (order.size > 1) {
+    // Keying on photoIndex re-arms the countdown, so a manual swipe restarts the timer. Keying on
+    // nowPlaying.active pauses advancing while the now-playing takeover is showing and resumes after.
+    LaunchedEffect(order, photoIndex, slideshowSeconds, nowPlaying.active) {
+        if (order.size > 1 && !nowPlaying.active) {
             delay(slideshowSeconds * 1000L)
             photoIndex += 1
         }
@@ -153,8 +163,24 @@ fun HomeView(
                 ) { _, dragAmount -> dx += dragAmount }
             }
     ) {
-        PhotoBackdrop(order.getOrNull(Math.floorMod(photoIndex, maxOf(order.size, 1))))
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
+        Crossfade(targetState = nowPlaying.active, animationSpec = tween(1000), label = "home-backdrop") { active ->
+            if (active) {
+                NowPlayingHome(
+                    state = nowPlaying,
+                    art = art,
+                    onPlay = onMediaPlay,
+                    onPause = onMediaPause,
+                    onNext = onMediaNext,
+                    onPrev = onMediaPrev,
+                    onVolume = onMediaVolume,
+                )
+            } else {
+                Box(Modifier.fillMaxSize()) {
+                    PhotoBackdrop(order.getOrNull(Math.floorMod(photoIndex, maxOf(order.size, 1))))
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
+                }
+            }
+        }
 
         Column(Modifier.align(Alignment.BottomStart).padding(start = 28.dp, bottom = 20.dp)) {
             val is24 = clockIs24(clockFormat, DateFormat.is24HourFormat(context))

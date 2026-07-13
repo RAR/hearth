@@ -99,6 +99,13 @@ fun DashboardShell(
                         configUrl = configUrl,
                         configPin = configPin,
                         onLogout = onLogout,
+                        nowPlaying = nowPlaying,
+                        art = art,
+                        onMediaPlay = onMediaPlay,
+                        onMediaPause = onMediaPause,
+                        onMediaNext = onMediaNext,
+                        onMediaPrev = onMediaPrev,
+                        onMediaVolume = onMediaVolume,
                     )
                 }
                 DashView.LIGHTS -> {

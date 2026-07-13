@@ -348,6 +348,18 @@ fun EchoDashApp(deps: AppDeps) {
                         deps.nowPlaying.onEntity(config.media.companionEntity?.let { entities[it] })
                     }
 
+                    // Hold the screen awake while music is actively playing (not while paused, so a
+                    // paused player still lets the backlight sleep). Only wakes the screen; the
+                    // idle-return timer is intentionally NOT poked, so a panel still returns Home.
+                    LaunchedEffect(nowPlayingState.playing) {
+                        if (nowPlayingState.playing) {
+                            while (true) {
+                                deps.kiosk.onUserInteraction()
+                                delay(5_000)
+                            }
+                        }
+                    }
+
                     val doorbellCoordinator = remember { DoorbellCoordinator() }
                     var doorbellPopup by remember { mutableStateOf<DoorbellPopup?>(null) }
                     LaunchedEffect(entities, config.entities.doorbells, config.panelOptions.doorbellPopupSeconds) {

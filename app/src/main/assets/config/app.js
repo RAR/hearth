@@ -2,6 +2,8 @@
 
 let config = null;      // the live DashConfig model (source of truth)
 let entities = [];      // [{id, name, domain, state}]
+let lastStatus = null;  // most recent /api/status body (carries the live lux reading)
+let statusPollStarted = false;
 let dlSeq = 0;
 let idSeq = 0;
 function nextId(prefix) { return prefix + "-" + (++idSeq); }
@@ -77,6 +79,7 @@ async function tryLoad() {
     entities = er.ok ? await er.json() : [];
     const sr = await api("GET", "/api/status");
     const status = sr.ok ? await sr.json() : { configured: true };
+    lastStatus = status;
     showApp();
     // If HA just redirected back with a code and setup isn't done yet, finish it once.
     if (setupCode && setupState && status.configured === false && !setupAttempted) {
@@ -86,6 +89,7 @@ async function tryLoad() {
     }
     renderSetup(status.configured === false);
     render();
+    startStatusPoll();
     setStatus("Connected", "ok");
   } catch (e) {
     showLogin();
@@ -274,6 +278,7 @@ function render() {
   renderHome();
   renderOptions();
   renderVoice();
+  renderNight();
 }
 
 function renderPanels() {
@@ -559,6 +564,54 @@ function renderVoice() {
 
   host.appendChild(el("div", "muted",
     "Home Assistant should auto-discover the satellite; otherwise add the Wyoming Protocol integration at <this-device-ip>:10600. Pick the pipeline and wake word in HA's Assist satellite settings."));
+}
+
+function renderNight() {
+  const host = document.getElementById("night");
+  clear(host);
+  // Defensive defaults for configs saved before night mode existed (same pattern as the Media card).
+  if (!config.night) config.night = { enabled: false, thresholdLux: 10, brightness: 0 };
+  const n = config.night;
+  if (typeof n.thresholdLux !== "number") n.thresholdLux = 10;
+  if (typeof n.brightness !== "number") n.brightness = 0;
+
+  const toggle = el("input"); toggle.type = "checkbox"; toggle.checked = !!n.enabled;
+  toggle.setAttribute("aria-label", "Night clock enabled");
+  toggle.addEventListener("change", () => n.enabled = toggle.checked);
+  host.appendChild(labeledRow("Night clock", toggle));
+
+  host.appendChild(labeledRow("Enter below (lux)",
+    numberInput(n.thresholdLux, v => n.thresholdLux = Math.round(v || 0))));
+  host.appendChild(labeledRow("Night brightness (%)",
+    numberInput(n.brightness, v => n.brightness = Math.round(v || 0))));
+
+  const lux = el("div", "muted"); lux.id = "night-lux";
+  host.appendChild(lux);
+  updateNightLux(lastStatus);
+
+  host.appendChild(el("div", "muted",
+    "When the room stays darker than the threshold for ~30 s the screen becomes a dim clock at the " +
+    "night brightness. A touch or activity (music, doorbell, voice, timers) wakes it; it returns after " +
+    "60 s if still dark. Threshold 1–1000 lux, brightness 0–100 % (0 = dimmest), clamped on save."));
+}
+
+function updateNightLux(status) {
+  const box = document.getElementById("night-lux");
+  if (!box) return;
+  if (status && typeof status.lux === "number") box.textContent = "Current reading: " + status.lux + " lux";
+  else box.textContent = "Current reading: no sensor";
+}
+
+// The base page fetches /api/status once at load; poll it here so the live lux reading refreshes.
+function startStatusPoll() {
+  if (statusPollStarted) return;
+  statusPollStarted = true;
+  setInterval(async () => {
+    try {
+      const r = await api("GET", "/api/status");
+      if (r.ok) { lastStatus = await r.json(); updateNightLux(lastStatus); }
+    } catch (e) { /* device may be briefly unreachable; ignore */ }
+  }, 5000);
 }
 
 // ---------- boot ----------

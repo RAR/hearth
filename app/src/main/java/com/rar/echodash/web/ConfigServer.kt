@@ -28,6 +28,7 @@ class ConfigServer(
     private val setup: SetupCoordinator,
     private val configured: () -> Boolean,
     private val connState: () -> String,
+    private val lux: () -> Int? = { null },
     private val previewChime: (String, Int) -> Unit,
     private val assetReader: (String) -> ByteArray?,
 ) : NanoHTTPD(port) {
@@ -96,6 +97,7 @@ class ConfigServer(
         ok(buildJsonObject {
             put("configured", configured())
             put("connState", connState())
+            put("lux", lux())            // int, or JSON null when no sensor reading yet
         }.toString())
 
     private fun handlePreviewChime(session: IHTTPSession): Response {

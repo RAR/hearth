@@ -118,6 +118,7 @@ class AppDeps(context: Context) {
         setup = setup,
         configured = { settings.refreshToken != null },
         connState = { ws.connectionState.value.name },
+        lux = { lastLux },
         previewChime = { tone, volume -> timerChime.playOnce(tone, volume) },
         assetReader = { path ->
             runCatching { appContext.assets.open("config/$path").readBytes() }.getOrNull()

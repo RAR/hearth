@@ -42,6 +42,7 @@ class ConfigServerTest {
             setup = SetupCoordinator(AuthManager(InMemorySettingsStore(), OkHttpClient()), onConfigured = {}),
             configured = { false },
             connState = { "OFFLINE" },
+            lux = { 42 },
             previewChime = { tone, volume -> previewCalls += tone to volume },
             assetReader = { path ->
                 requestedAssetPaths += path
@@ -228,5 +229,17 @@ class ConfigServerTest {
             .execute().use { r -> assertEquals(200, r.code) }
         // saved config is default VoiceSettings: twotone @ 80
         assertEquals(listOf("twotone" to 80), previewCalls)
+    }
+
+    @Test
+    fun statusIncludesLuxReading() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/status").header("Cookie", cookie).build())
+            .execute().use { r ->
+                assertEquals(200, r.code)
+                val body = r.body!!.string()
+                assertTrue(body.contains("\"lux\":42"))
+                assertTrue(body.contains("\"connState\":\"OFFLINE\""))
+            }
     }
 }

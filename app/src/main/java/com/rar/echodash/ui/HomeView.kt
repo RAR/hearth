@@ -58,6 +58,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rar.echodash.config.ClockFormat
@@ -309,11 +310,12 @@ fun HomeView(
     }
 }
 
-/** One EV charging pill: plug icon + name, then a battery gauge with one combined detail line. */
+/** One EV charging pill: plug icon + name, a power/energy line, then a battery gauge + SOC/eta. */
 @Composable
 private fun EvCardView(card: EvCard) {
     Column(
         Modifier
+            .width(248.dp)
             .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -328,9 +330,11 @@ private fun EvCardView(card: EvCard) {
             )
             Text(card.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
         }
+        if (card.chargeLine != null) {
+            Text(card.chargeLine, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp)
+        }
         val soc = card.socPct
-        val detail = listOfNotNull(soc?.let { "$it%" }, card.statusLine).joinToString(" · ")
-        if (soc != null || detail.isNotEmpty()) {
+        if (soc != null || card.etaText != null) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -338,7 +342,7 @@ private fun EvCardView(card: EvCard) {
                 if (soc != null) {
                     Box(
                         Modifier
-                            .size(width = 96.dp, height = 8.dp)
+                            .size(width = 112.dp, height = 8.dp)
                             .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(4.dp)),
                     ) {
                         Box(
@@ -366,7 +370,7 @@ private fun EvCardView(card: EvCard) {
                                     Modifier
                                         // Sweep a 24dp band left-to-right across the full track
                                         // width; the fill's clip keeps it inside the filled region.
-                                        .offset(x = (fraction * (96 + 24)).dp - 24.dp)
+                                        .offset(x = (fraction * (112 + 24)).dp - 24.dp)
                                         .width(24.dp)
                                         .fillMaxHeight()
                                         .background(
@@ -383,9 +387,11 @@ private fun EvCardView(card: EvCard) {
                         }
                     }
                 }
-                if (detail.isNotEmpty()) {
-                    Text(detail, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp)
-                }
+                Text(
+                    listOfNotNull(soc?.let { "$it%" }, card.etaText).joinToString(" · "),
+                    color = Color.White, fontSize = 14.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

@@ -59,38 +59,43 @@ class EvModelTest {
 
     @Test
     fun powerUnitAwareFormatting() {
-        fun status(state: String, unit: String) = evCards(
+        fun chargeLine(state: String, unit: String) = evCards(
             listOf(EvConfig(charging = "binary_sensor.c", power = "sensor.p")),
             mapOf("binary_sensor.c" to st("binary_sensor.c", "on"),
                 "sensor.p" to st("sensor.p", state, unit)),
             0L,
-        ).single().statusLine
-        assertEquals("7.2 kW", status("7240", "W"))
-        assertEquals("7.2 kW", status("7.24", "kW"))
-        assertEquals("11 kW", status("11000", "W"))
+        ).single().chargeLine
+        assertEquals("7.2 kW", chargeLine("7240", "W"))
+        assertEquals("7.2 kW", chargeLine("7.24", "kW"))
+        assertEquals("11 kW", chargeLine("11000", "W"))
     }
 
     @Test
     fun etaMinutesNumber() {
-        fun status(v: String) = evCards(
+        fun card(v: String) = evCards(
             listOf(EvConfig(charging = "binary_sensor.c", eta = "sensor.eta")),
             mapOf("binary_sensor.c" to st("binary_sensor.c", "on"),
                 "sensor.eta" to st("sensor.eta", v)),
             0L,
-        ).single().statusLine
-        assertEquals("1h05 left", status("65"))
-        assertEquals("45m left", status("45"))
+        ).single()
+        val sixtyFive = card("65")
+        assertNull(sixtyFive.chargeLine)
+        assertEquals("1h05", sixtyFive.etaText)
+        val fortyFive = card("45")
+        assertNull(fortyFive.chargeLine)
+        assertEquals("45m", fortyFive.etaText)
     }
 
     @Test
     fun etaDurationString() {
-        val status = evCards(
+        val card = evCards(
             listOf(EvConfig(charging = "binary_sensor.c", eta = "sensor.eta")),
             mapOf("binary_sensor.c" to st("binary_sensor.c", "on"),
                 "sensor.eta" to st("sensor.eta", "1:05:00")),
             0L,
-        ).single().statusLine
-        assertEquals("1h05 left", status)
+        ).single()
+        assertNull(card.chargeLine)
+        assertEquals("1h05", card.etaText)
     }
 
     @Test
@@ -98,14 +103,16 @@ class EvModelTest {
         val now = 1_700_000_000_000L
         val future = java.time.Instant.ofEpochMilli(now + 65 * 60_000L).toString()
         val past = java.time.Instant.ofEpochMilli(now - 5 * 60_000L).toString()
-        fun status(v: String) = evCards(
+        fun card(v: String) = evCards(
             listOf(EvConfig(charging = "binary_sensor.c", eta = "sensor.eta")),
             mapOf("binary_sensor.c" to st("binary_sensor.c", "on"),
                 "sensor.eta" to st("sensor.eta", v)),
             now,
-        ).single().statusLine
-        assertEquals("1h05 left", status(future))
-        assertNull(status(past)) // finishing/past -> eta omitted; card still shown with null statusLine
+        ).single()
+        assertEquals("1h05", card(future).etaText)
+        val pastCard = card(past)
+        assertNull(pastCard.etaText) // finishing/past -> eta omitted; card still shown with null etaText
+        assertNull(pastCard.chargeLine)
     }
 
     @Test
@@ -113,18 +120,22 @@ class EvModelTest {
         val base = mapOf("binary_sensor.c" to st("binary_sensor.c", "on"))
         val both = evCards(listOf(EvConfig(charging = "binary_sensor.c", power = "sensor.p", eta = "sensor.e")),
             base + mapOf("sensor.p" to st("sensor.p", "7240", "W"), "sensor.e" to st("sensor.e", "65")), 0L).single()
-        assertEquals("7.2 kW · 1h05 left", both.statusLine)
+        assertEquals("7.2 kW", both.chargeLine)
+        assertEquals("1h05", both.etaText)
 
         val p = evCards(listOf(EvConfig(charging = "binary_sensor.c", power = "sensor.p")),
             base + mapOf("sensor.p" to st("sensor.p", "7240", "W")), 0L).single()
-        assertEquals("7.2 kW", p.statusLine)
+        assertEquals("7.2 kW", p.chargeLine)
+        assertNull(p.etaText)
 
         val e = evCards(listOf(EvConfig(charging = "binary_sensor.c", eta = "sensor.e")),
             base + mapOf("sensor.e" to st("sensor.e", "65")), 0L).single()
-        assertEquals("1h05 left", e.statusLine)
+        assertNull(e.chargeLine)
+        assertEquals("1h05", e.etaText)
 
         val none = evCards(listOf(EvConfig(name = "X", charging = "binary_sensor.c")), base, 0L).single()
-        assertNull(none.statusLine)
+        assertNull(none.chargeLine)
+        assertNull(none.etaText)
         assertEquals("X", none.name)
     }
 
@@ -148,7 +159,8 @@ class EvModelTest {
         )
         assertEquals(1, cards.size)
         assertEquals(false, cards[0].charging)
-        assertNull(cards[0].statusLine) // plugged-idle: power reads 0 W noise -> no status line
+        assertNull(cards[0].chargeLine) // plugged-idle: power reads 0 W noise -> no charge line
+        assertNull(cards[0].etaText)
         assertEquals(50, cards[0].socPct)
     }
 
@@ -170,7 +182,7 @@ class EvModelTest {
 
     @Test
     fun energyUnitAwareInStatusLine() {
-        fun status(energyState: String, unit: String?) = evCards(
+        fun card(energyState: String, unit: String?) = evCards(
             listOf(EvConfig(charging = "binary_sensor.c", power = "sensor.p", energy = "sensor.e", eta = "sensor.eta")),
             mapOf(
                 "binary_sensor.c" to st("binary_sensor.c", "on"),
@@ -179,10 +191,16 @@ class EvModelTest {
                 "sensor.eta" to st("sensor.eta", "65"),
             ),
             0L,
-        ).single().statusLine
-        assertEquals("7.2 kW · 4.3 kWh · 1h05 left", status("4300", null)) // Wh -> kWh
-        assertEquals("7.2 kW · 4.3 kWh · 1h05 left", status("4.3", "kWh"))
-        assertEquals("7.2 kW · 12 kWh · 1h05 left", status("12.4", "kWh")) // integer at >= 10
+        ).single()
+        val whToKwh = card("4300", null) // Wh -> kWh
+        assertEquals("7.2 kW · 4.3 kWh", whToKwh.chargeLine)
+        assertEquals("1h05", whToKwh.etaText)
+        val kwh = card("4.3", "kWh")
+        assertEquals("7.2 kW · 4.3 kWh", kwh.chargeLine)
+        assertEquals("1h05", kwh.etaText)
+        val integerAtTen = card("12.4", "kWh") // integer at >= 10
+        assertEquals("7.2 kW · 12 kWh", integerAtTen.chargeLine)
+        assertEquals("1h05", integerAtTen.etaText)
     }
 
     @Test

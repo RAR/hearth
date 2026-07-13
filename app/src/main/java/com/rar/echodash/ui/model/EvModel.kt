@@ -11,9 +11,10 @@ import kotlin.math.roundToInt
 /** One EV's card. Fields are pre-formatted display strings; null = omit that line. */
 data class EvCard(
     val name: String,        // config name, or "EV" when blank
-    val charging: Boolean,   // true while actually charging: animates the gauge + shows the status line
+    val charging: Boolean,   // true while actually charging: animates the gauge + shows the charge/eta lines
     val socPct: Int?,        // 0..100 for the gauge + "%" text; null hides the gauge row
-    val statusLine: String?, // "7.2 kW · 4.3 kWh · 1h05 left"; null hides the row (always null when idle)
+    val chargeLine: String?, // "7.2 kW · 4.3 kWh" (power · energy); null when idle or neither sensor readable
+    val etaText: String?,    // "1h05" / "45m"; null when idle or unparseable
 )
 
 /** States (lowercased, trimmed) that mean "plugged in" (cable connected), incl. EVCC status B/C. */
@@ -26,8 +27,8 @@ private val CHARGING_TRUTHY = setOf("on", "true", "charging", "c")
  * Build a card per config slot whose car is plugged in OR charging. Either trigger entity may be
  * unconfigured; a slot with only `charging` behaves exactly as v1. The card is shown when the
  * `plugged` entity is plugged-truthy or the `charging` entity is charging-truthy. Order follows
- * config order; slots that are neither plugged nor charging are skipped. The status line (power ·
- * energy · eta) is built only while charging — idle readings are noise.
+ * config order; slots that are neither plugged nor charging are skipped. The charge line (power ·
+ * energy) and eta text are built only while charging — idle readings are noise.
  */
 fun evCards(cfgs: List<EvConfig>, entities: Map<String, EntityState>, nowMs: Long): List<EvCard> =
     cfgs.mapNotNull { cfg ->
@@ -38,20 +39,24 @@ fun evCards(cfgs: List<EvConfig>, entities: Map<String, EntityState>, nowMs: Lon
         if (!plugged && !charging) return@mapNotNull null
 
         val socPct = cfg.soc?.let { entities[it] }?.state?.toDoubleOrNull()?.roundToInt()?.coerceIn(0, 100)
-        val statusLine = if (charging) {
+        val chargeLine: String?
+        val etaText: String?
+        if (charging) {
             val power = cfg.power?.let { entities[it] }?.let { formatPower(it) }
             val energy = cfg.energy?.let { entities[it] }?.let { formatEnergy(it) }
-            val eta = cfg.eta?.let { entities[it] }?.let { formatEta(it, nowMs) }
-            listOfNotNull(power, energy, eta?.let { "$it left" }).joinToString(" · ").ifBlank { null }
+            chargeLine = listOfNotNull(power, energy).joinToString(" · ").ifBlank { null }
+            etaText = cfg.eta?.let { entities[it] }?.let { formatEta(it, nowMs) }
         } else {
-            null
+            chargeLine = null
+            etaText = null
         }
 
         EvCard(
             name = cfg.name.trim().ifBlank { "EV" },
             charging = charging,
             socPct = socPct,
-            statusLine = statusLine,
+            chargeLine = chargeLine,
+            etaText = etaText,
         )
     }
 

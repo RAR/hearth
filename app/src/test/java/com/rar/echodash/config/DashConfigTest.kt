@@ -310,4 +310,46 @@ class DashConfigTest {
         assertEquals(5, DashConfig(media = MediaSettings(pausedDismissSeconds = 0)).clamped().media.pausedDismissSeconds)
         assertEquals(3600, DashConfig(media = MediaSettings(pausedDismissSeconds = 99999)).clamped().media.pausedDismissSeconds)
     }
+
+    @Test
+    fun nightDefaults() {
+        val n = DashConfig().night
+        assertEquals(false, n.enabled)
+        assertEquals(10, n.thresholdLux)
+        assertEquals(0, n.brightness)
+        // absent from JSON -> defaults, unknown-key tolerant
+        val cfg = decodeConfig("""{"version":1}""")
+        assertEquals(false, cfg.night.enabled)
+        assertEquals(10, cfg.night.thresholdLux)
+        assertEquals(0, cfg.night.brightness)
+    }
+
+    @Test
+    fun nightRoundTrips() {
+        val cfg = DashConfig(night = NightSettings(enabled = true, thresholdLux = 25, brightness = 3))
+        val text = ConfigJson.json.encodeToString(DashConfig.serializer(), cfg)
+        assertEquals(cfg, decodeConfig(text))
+        assertEquals(true, decodeConfig(text).night.enabled)
+        assertEquals(25, decodeConfig(text).night.thresholdLux)
+        assertEquals(3, decodeConfig(text).night.brightness)
+    }
+
+    @Test
+    fun nightClampsBounds() {
+        val hi = DashConfig(night = NightSettings(thresholdLux = 5000, brightness = 250)).clamped().night
+        assertEquals(1000, hi.thresholdLux)   // ceil 1000
+        assertEquals(100, hi.brightness)       // ceil 100
+        val lo = DashConfig(night = NightSettings(thresholdLux = 0, brightness = -5)).clamped().night
+        assertEquals(1, lo.thresholdLux)       // floor 1
+        assertEquals(0, lo.brightness)          // floor 0
+    }
+
+    @Test
+    fun nightSurvivesClampedAndDefaultsOnOldConfig() {
+        assertEquals(true, DashConfig(night = NightSettings(enabled = true)).clamped().night.enabled)
+        // old config document with no "night" key -> defaults fill in
+        val cfg = decodeConfig("""{"version":1,"home":{"photoFolder":"nas"}}""")
+        assertEquals(false, cfg.night.enabled)
+        assertEquals(10, cfg.night.thresholdLux)
+    }
 }

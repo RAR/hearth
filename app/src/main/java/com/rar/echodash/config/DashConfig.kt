@@ -110,6 +110,18 @@ data class MediaSettings(
     )
 }
 
+@Serializable
+data class NightSettings(
+    val enabled: Boolean = false,
+    val thresholdLux: Int = 10,
+    val brightness: Int = 0,      // 0 = minimum backlight (window-brightness floor 0.01)
+) {
+    fun clamped(): NightSettings = copy(
+        thresholdLux = thresholdLux.coerceIn(1, 1000),
+        brightness = brightness.coerceIn(0, 100),
+    )
+}
+
 /** The whole device configuration; one versioned document persisted at filesDir/config.json. */
 @Serializable
 data class DashConfig(
@@ -120,6 +132,7 @@ data class DashConfig(
     val panelOptions: PanelOptions = PanelOptions(),
     val voice: VoiceSettings = VoiceSettings(),
     val media: MediaSettings = MediaSettings(),
+    val night: NightSettings = NightSettings(),
 ) {
     /** Every entity id referenced anywhere, first-seen order, de-duplicated (EntityHub watched set). */
     fun referencedEntityIds(): List<String> = buildList {
@@ -185,6 +198,7 @@ data class DashConfig(
             ),
             voice = voice.clamped(),
             media = media.clamped(),
+            night = night.clamped(),
         )
     }
 }

@@ -101,9 +101,13 @@ data class VoiceSettings(
 @Serializable
 data class MediaSettings(
     val companionEntity: String? = null,
+    val pausedDismissSeconds: Int = 60,
 ) {
-    /** Trim the companion entity id; blank -> null (unconfigured). */
-    fun clamped(): MediaSettings = copy(companionEntity = companionEntity?.trim()?.ifBlank { null })
+    /** Trim the companion entity id; blank -> null (unconfigured). Clamp the paused-dismiss delay. */
+    fun clamped(): MediaSettings = copy(
+        companionEntity = companionEntity?.trim()?.ifBlank { null },
+        pausedDismissSeconds = pausedDismissSeconds.coerceIn(5, 3600),
+    )
 }
 
 /** The whole device configuration; one versioned document persisted at filesDir/config.json. */

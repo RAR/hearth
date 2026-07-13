@@ -296,4 +296,18 @@ class DashConfigTest {
         )
         assertEquals(listOf("sensor.t", "media_player.ma_echo"), cfg.referencedEntityIds())
     }
+
+    @Test
+    fun pausedDismissDefaultsTo60AndRoundTrips() {
+        assertEquals(60, DashConfig().media.pausedDismissSeconds)
+        val cfg = DashConfig(media = MediaSettings(companionEntity = null, pausedDismissSeconds = 120))
+        val text = ConfigJson.json.encodeToString(DashConfig.serializer(), cfg)
+        assertEquals(120, decodeConfig(text).media.pausedDismissSeconds)
+    }
+
+    @Test
+    fun pausedDismissClampsToRange() {
+        assertEquals(5, DashConfig(media = MediaSettings(pausedDismissSeconds = 0)).clamped().media.pausedDismissSeconds)
+        assertEquals(3600, DashConfig(media = MediaSettings(pausedDismissSeconds = 99999)).clamped().media.pausedDismissSeconds)
+    }
 }

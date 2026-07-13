@@ -58,6 +58,7 @@ fun DashboardShell(
     photos: List<File>,
     nowPlaying: NowPlayingState,
     art: ArtBitmaps?,
+    takeoverVisible: Boolean,
     onToggle: (String) -> Unit,
     onSetTemperature: (String, Double) -> Unit,
     onSetHvacMode: (String, String) -> Unit,
@@ -117,6 +118,7 @@ fun DashboardShell(
                         onLogout = onLogout,
                         nowPlaying = nowPlaying,
                         art = art,
+                        takeoverVisible = takeoverVisible,
                         onMediaPlay = onMediaPlay,
                         onMediaPause = onMediaPause,
                         onMediaNext = onMediaNext,
@@ -157,7 +159,7 @@ fun DashboardShell(
 
         // While the home now-playing takeover is showing, the rail slides away so the player
         // owns the full width; any touch slides it back in, and it hides again after RAIL_HIDE_MS.
-        val takeover = current == DashView.HOME && nowPlaying.active
+        val takeover = current == DashView.HOME && takeoverVisible
         var railVisible by remember { mutableStateOf(true) }
         LaunchedEffect(takeover, railTouches) {
             if (takeover) {

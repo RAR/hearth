@@ -125,6 +125,7 @@ fun HomeView(
     onLogout: () -> Unit,
     nowPlaying: NowPlayingState,
     art: ArtBitmaps?,
+    takeoverVisible: Boolean,
     onMediaPlay: () -> Unit,
     onMediaPause: () -> Unit,
     onMediaNext: () -> Unit,
@@ -139,9 +140,9 @@ fun HomeView(
     val order = remember(photos) { photos.shuffled() }
     var photoIndex by remember(order) { mutableIntStateOf(0) }
     // Keying on photoIndex re-arms the countdown, so a manual swipe restarts the timer. Keying on
-    // nowPlaying.active pauses advancing while the now-playing takeover is showing and resumes after.
-    LaunchedEffect(order, photoIndex, slideshowSeconds, nowPlaying.active) {
-        if (order.size > 1 && !nowPlaying.active) {
+    // takeoverVisible pauses advancing while the now-playing takeover is showing and resumes after.
+    LaunchedEffect(order, photoIndex, slideshowSeconds, takeoverVisible) {
+        if (order.size > 1 && !takeoverVisible) {
             delay(slideshowSeconds * 1000L)
             photoIndex += 1
         }
@@ -163,7 +164,7 @@ fun HomeView(
                 ) { _, dragAmount -> dx += dragAmount }
             }
     ) {
-        Crossfade(targetState = nowPlaying.active, animationSpec = tween(1000), label = "home-backdrop") { active ->
+        Crossfade(targetState = takeoverVisible, animationSpec = tween(1000), label = "home-backdrop") { active ->
             if (active) {
                 NowPlayingHome(
                     state = nowPlaying,
@@ -182,7 +183,7 @@ fun HomeView(
             }
         }
 
-        if (nowPlaying.active) {
+        if (takeoverVisible) {
             // Compact time-only clock while the player owns the screen: the big bottom-left
             // clock sits where the takeover's volume slider is, and the pills crowd the art.
             val is24 = clockIs24(clockFormat, DateFormat.is24HourFormat(context))

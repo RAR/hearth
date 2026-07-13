@@ -381,11 +381,14 @@ function renderEntities() {
 function renderMedia() {
   const host = document.getElementById("media");
   clear(host);
-  if (!config.media) config.media = { companionEntity: null };
+  if (!config.media) config.media = { companionEntity: null, pausedDismissSeconds: 60 };
   const m = config.media;
+  if (typeof m.pausedDismissSeconds !== "number") m.pausedDismissSeconds = 60;
   // Same populated picker pattern as the AQI sensor: a shared media_player datalist; blank -> null.
   host.appendChild(labeledRow("Companion media player",
     entityPicker(["media_player"], m.companionEntity, v => m.companionEntity = v)));
+  host.appendChild(labeledRow("Dismiss player after paused (s)",
+    numberInput(m.pausedDismissSeconds, v => m.pausedDismissSeconds = Math.round(v || 0))));
   host.appendChild(el("div", "muted",
     "The HA media player entity that mirrors this device (pick your Music Assistant player for the Echo) — enables album art, track info, and next/previous."));
 }

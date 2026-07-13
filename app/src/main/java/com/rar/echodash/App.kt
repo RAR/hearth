@@ -348,6 +348,19 @@ fun EchoDashApp(deps: AppDeps) {
                         deps.nowPlaying.onEntity(config.media.companionEntity?.let { entities[it] })
                     }
 
+                    // After a configurable paused period, hide the home takeover (photos return)
+                    // while keeping the paused session alive underneath — resume brings it back.
+                    var pausedTimedOut by remember { mutableStateOf(false) }
+                    LaunchedEffect(nowPlayingState.active, nowPlayingState.playing, config.media.pausedDismissSeconds) {
+                        if (nowPlayingState.active && !nowPlayingState.playing) {
+                            delay(config.media.pausedDismissSeconds * 1000L)
+                            pausedTimedOut = true
+                        } else {
+                            pausedTimedOut = false
+                        }
+                    }
+                    val takeoverVisible = nowPlayingState.active && !pausedTimedOut
+
                     // Hold the screen awake while music is actively playing (not while paused, so a
                     // paused player still lets the backlight sleep). Only wakes the screen; the
                     // idle-return timer is intentionally NOT poked, so a panel still returns Home.
@@ -400,6 +413,7 @@ fun EchoDashApp(deps: AppDeps) {
                         photos = photos,
                         nowPlaying = nowPlayingState,
                         art = art,
+                        takeoverVisible = takeoverVisible,
                         onToggle = { id -> deps.entityHub.callService("homeassistant", "toggle", entityId = id) },
                         onSetTemperature = { id, temp ->
                             deps.entityHub.callService(

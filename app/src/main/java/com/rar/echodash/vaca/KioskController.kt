@@ -44,6 +44,8 @@ class KioskController(
     private var darkMode = true
     private var timeoutSeconds = 60
     private var timeoutJob: Job? = null
+    private var nightDim = false
+    private var lastLux = 0f
 
     /** Pushes settings feedback to HA; set by app wiring. */
     var sendFeedback: (JsonObject) -> Unit = {}
@@ -73,12 +75,12 @@ class KioskController(
                 }
                 "screen_brightness" -> value.asInt()?.let {
                     brightness = it.coerceIn(0, 100)
-                    if (!autoBrightness) device.setBrightness(brightness)
+                    if (!autoBrightness && !nightDim) device.setBrightness(brightness)
                     changed = true
                 }
                 "screen_auto_brightness" -> value.asBoolean()?.let {
                     autoBrightness = it
-                    if (!it) device.setBrightness(brightness)
+                    if (!it && !nightDim) device.setBrightness(brightness)
                     changed = true
                 }
                 "screen_always_on" -> value.asBoolean()?.let {
@@ -122,12 +124,28 @@ class KioskController(
         if (!screenOn) setScreen(true) else armTimeout()
     }
 
-    /** Ambient light in lux; drives brightness while auto-brightness is on. */
+    /** Ambient light in lux; drives brightness while auto-brightness is on (unless night-dim pins it).
+     *  lastLux is always tracked so setNightDim(false) can reapply the auto formula on the way out. */
     fun onLightLevel(lux: Float) {
-        if (!autoBrightness) return
-        val percent = (10 + (lux.coerceIn(0f, 400f) / 400f) * 90).toInt()
-        device.setBrightness(percent)
+        lastLux = lux
+        if (nightDim || !autoBrightness) return
+        device.setBrightness(autoPercent(lux))
     }
+
+    /** Night clock dimming: while active, pins brightness to [percent] and ignores auto-brightness
+     *  lux updates and HA screen_brightness changes; clearing restores the normal auto/manual value. */
+    fun setNightDim(active: Boolean, percent: Int) {
+        nightDim = active
+        if (active) {
+            device.setBrightness(percent)
+        } else if (autoBrightness) {
+            device.setBrightness(autoPercent(lastLux))
+        } else {
+            device.setBrightness(brightness)
+        }
+    }
+
+    private fun autoPercent(lux: Float): Int = (10 + (lux.coerceIn(0f, 400f) / 400f) * 90).toInt()
 
     fun currentSettings(): JsonObject = buildJsonObject {
         put("screen_on", screenOn)

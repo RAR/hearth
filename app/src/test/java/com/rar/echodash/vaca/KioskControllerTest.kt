@@ -176,4 +176,53 @@ class KioskControllerTest {
         kiosk.handleAction("update-custom-files", null) // ignored, no crash
         kiosk.cancelTimers()
     }
+
+    @Test
+    fun nightDimPinsBrightnessAndSuppressesAutoBrightness() = runTest {
+        val device = FakeDevice()
+        val kiosk = KioskController(this, device)          // auto-brightness on by default
+        kiosk.setNightDim(true, 0)
+        assertTrue(device.calls.contains("brightness:0"))
+        device.calls.clear()
+        kiosk.onLightLevel(400f)                           // would be brightness:100 normally
+        assertTrue("night-dim suppresses auto-brightness", device.calls.none { it.startsWith("brightness:") })
+        kiosk.cancelTimers()
+    }
+
+    @Test
+    fun clearingNightDimReappliesAutoOrManual() = runTest {
+        // auto: reapplies the formula from the last seen lux
+        val device = FakeDevice()
+        val kiosk = KioskController(this, device)
+        kiosk.onLightLevel(400f)                           // lastLux = 400 -> brightness:100
+        kiosk.setNightDim(true, 0)                         // brightness:0
+        device.calls.clear()
+        kiosk.setNightDim(false, 0)
+        assertTrue("auto reapplies formula from lastLux", device.calls.contains("brightness:100"))
+        kiosk.cancelTimers()
+
+        // manual: reapplies the stored manual value
+        val device2 = FakeDevice()
+        val kiosk2 = KioskController(this, device2)
+        kiosk2.applySettings(settings("""{"screen_auto_brightness":false,"screen_brightness":35}"""))
+        kiosk2.setNightDim(true, 0)                        // brightness:0
+        device2.calls.clear()
+        kiosk2.setNightDim(false, 0)
+        assertTrue("manual reapplies stored value", device2.calls.contains("brightness:35"))
+        kiosk2.cancelTimers()
+    }
+
+    @Test
+    fun haBrightnessDuringNightDimStoresWithoutApplyingThenAppliesOnClear() = runTest {
+        val device = FakeDevice()
+        val kiosk = KioskController(this, device)
+        kiosk.applySettings(settings("""{"screen_auto_brightness":false}"""))  // manual mode
+        kiosk.setNightDim(true, 0)                         // brightness:0
+        device.calls.clear()
+        kiosk.applySettings(settings("""{"screen_brightness":40}"""))          // stored, NOT applied
+        assertTrue("no brightness applied while night-dim", device.calls.none { it.startsWith("brightness:") })
+        kiosk.setNightDim(false, 0)                        // manual -> stored 40 applied
+        assertTrue(device.calls.contains("brightness:40"))
+        kiosk.cancelTimers()
+    }
 }

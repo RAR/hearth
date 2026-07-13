@@ -5,9 +5,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -22,7 +20,6 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rar.echodash.config.ClockFormat
 import java.text.SimpleDateFormat
@@ -46,7 +43,7 @@ private fun rememberNightMinuteTicker(): State<Long> {
 /**
  * The night clock: a huge dim-gray time on pure black, faded in/out on [active]. The overlay
  * consumes ALL touches — the waking tap fires [onWake] and must NOT reach the panels underneath.
- * Same 12/24-hour format as HomeView's clock (via clockIs24), AM/PM suffix smaller and dimmer.
+ * Same 12/24-hour format as HomeView's clock (via clockIs24); no AM/PM suffix.
  */
 @Composable
 fun NightClockOverlay(
@@ -74,20 +71,10 @@ fun NightClockOverlay(
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                Row {
-                    Text(
-                        SimpleDateFormat(if (is24) "HH:mm" else "h:mm", Locale.getDefault()).format(Date(now)),
-                        color = Color(0xFF777777), fontSize = 120.sp, fontWeight = FontWeight.Light,
-                        modifier = Modifier.alignByBaseline(),
-                    )
-                    if (!is24) {
-                        Text(
-                            SimpleDateFormat("a", Locale.getDefault()).format(Date(now)),
-                            color = Color(0xFF555555), fontSize = 28.sp,
-                            modifier = Modifier.alignByBaseline().padding(start = 12.dp),
-                        )
-                    }
-                }
+                Text(
+                    SimpleDateFormat(if (is24) "HH:mm" else "h:mm", Locale.getDefault()).format(Date(now)),
+                    color = Color(0xFF777777), fontSize = 120.sp, fontWeight = FontWeight.Light,
+                )
             }
         }
     }

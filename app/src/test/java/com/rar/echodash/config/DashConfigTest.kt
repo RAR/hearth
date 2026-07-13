@@ -422,4 +422,33 @@ class DashConfigTest {
         assertEquals(false, cfg.panelOptions.autoHideRail)
         assertEquals(true, DashConfig(panelOptions = PanelOptions(autoHideRail = true)).clamped().panelOptions.autoHideRail)
     }
+
+    @Test
+    fun wakeWordDefaultsAndClamps() {
+        assertEquals("okay_nabu", DashConfig().voice.wakeWord)
+        val cfg = decodeConfig("""{"version":1,"voice":{"enabled":true}}""")
+        assertEquals("okay_nabu", cfg.voice.wakeWord)               // old config -> default
+        assertEquals("hey_jarvis", DashConfig(voice = VoiceSettings(wakeWord = "hey_jarvis")).clamped().voice.wakeWord)
+        assertEquals("alexa", DashConfig(voice = VoiceSettings(wakeWord = "  alexa  ")).clamped().voice.wakeWord) // trimmed
+        assertEquals("okay_nabu", DashConfig(voice = VoiceSettings(wakeWord = "bogus")).clamped().voice.wakeWord) // unknown -> default
+    }
+
+    @Test
+    fun wakeThresholdDefaultsAndClamps() {
+        assertEquals(50, DashConfig().voice.wakeThreshold)
+        val cfg = decodeConfig("""{"version":1,"voice":{"enabled":true}}""")
+        assertEquals(50, cfg.voice.wakeThreshold)                  // old config -> default
+        assertEquals(95, DashConfig(voice = VoiceSettings(wakeThreshold = 200)).clamped().voice.wakeThreshold) // ceil 95
+        assertEquals(10, DashConfig(voice = VoiceSettings(wakeThreshold = 1)).clamped().voice.wakeThreshold)   // floor 10
+        assertEquals(70, DashConfig(voice = VoiceSettings(wakeThreshold = 70)).clamped().voice.wakeThreshold)
+    }
+
+    @Test
+    fun wakeSettingsRoundTrip() {
+        val cfg = DashConfig(voice = VoiceSettings(enabled = true, wakeWord = "alexa", wakeThreshold = 65))
+        val text = ConfigJson.json.encodeToString(DashConfig.serializer(), cfg)
+        assertEquals(cfg, decodeConfig(text))
+        assertEquals("alexa", decodeConfig(text).voice.wakeWord)
+        assertEquals(65, decodeConfig(text).voice.wakeThreshold)
+    }
 }

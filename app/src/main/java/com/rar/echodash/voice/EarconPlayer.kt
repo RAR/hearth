@@ -18,8 +18,17 @@ class EarconPlayer {
         if (volume <= 0) return
         thread(name = "Earcon", isDaemon = true) {
             val rate = 22050
-            val pcm = ToneGenerator.earcon(kind, volume, rate)
+            val tone = ToneGenerator.earcon(kind, volume, rate)
             val minBuf = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
+            // Trailing-silence pad, ≥300 ms and never below the track's own minimum buffer.
+            // Unlike the timer tones (whose rendered cycle ends in ~1 s of baked-in gap) a bare
+            // chirp has no tail: this HAL's deep buffer swallows a 160 ms chirp whole, the
+            // playback head hits the target immediately, and stop()+release() destroyed the
+            // native track before any audio left the speaker. The pad keeps the head-wait alive
+            // until the audible part has actually drained, and guarantees the primed buffer is
+            // never under-filled at play() (the other known silent-start mode on this HAL).
+            val pad = maxOf(rate * 300 / 1000, minBuf / 2 - tone.size)
+            val pcm = tone + ShortArray(pad)
             val track = try {
                 @Suppress("DEPRECATION")
                 AudioTrack(

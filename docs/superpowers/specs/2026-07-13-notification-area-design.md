@@ -121,7 +121,9 @@ New **Notifications** card:
   process-lifetime only).
 - Applied as a filter after `nwsNotifications()`; pruned each recompute to
   keys still present in the un-dismissed list's source (so the set can't grow
-  unboundedly).
+  unboundedly). Pruning is skipped while the sensor is not reporting a numeric
+  state (e.g. `unavailable` during an HA restart): an empty list then means
+  "unknown", not "no alerts", and pruning would resurrect dismissed alerts.
 - A dismissed alert reappears only if NWS reissues it under a new `ID`
   (or the app restarts) — intended behavior.
 

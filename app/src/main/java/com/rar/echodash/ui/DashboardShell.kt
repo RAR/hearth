@@ -132,7 +132,13 @@ fun DashboardShell(
                     }
                     val notifications = allNotifications.filter { it.key !in dismissedKeys }
                     // Prune dismissed keys no longer present so the set can't grow unboundedly.
-                    LaunchedEffect(allNotifications) {
+                    // Only while the sensor reports a numeric count: when it's unavailable (HA
+                    // restarting) an empty list means "unknown", not "no alerts" — pruning then
+                    // would resurrect dismissed-but-still-active alerts once the sensor recovers.
+                    val nwsLive = config.notifications.nwsAlerts
+                        ?.let { entities[it]?.state?.toIntOrNull() } != null
+                    LaunchedEffect(allNotifications, nwsLive) {
+                        if (!nwsLive) return@LaunchedEffect
                         val present = allNotifications.mapTo(HashSet()) { it.key }
                         val pruned = dismissedKeys intersect present
                         if (pruned != dismissedKeys) dismissedKeys = pruned

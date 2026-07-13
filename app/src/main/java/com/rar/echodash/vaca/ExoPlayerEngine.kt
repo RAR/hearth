@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
+import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
@@ -74,13 +75,13 @@ class ExoPlayerEngine(context: Context) : MediaEngine {
         // broadcast for system volume changes (hardware buttons, other apps).
         // The engine lives for the app's whole life (the app is the device launcher), so the
         // receiver is never unregistered — there is no teardown path to unregister it from.
-        context.registerReceiver(object : BroadcastReceiver() {
+        ContextCompat.registerReceiver(context, object : BroadcastReceiver() {
             override fun onReceive(c: Context?, intent: Intent?) {
                 if (intent?.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1) == AudioManager.STREAM_MUSIC) {
                     onVolumeChanged?.invoke(currentVolumePercent())
                 }
             }
-        }, IntentFilter("android.media.VOLUME_CHANGED_ACTION"))
+        }, IntentFilter("android.media.VOLUME_CHANGED_ACTION"), ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     private fun onMain(block: () -> Unit) {

@@ -179,7 +179,13 @@ class MediaBridge(
         applyDucking()
     }
 
-    private fun applyVolume() = engine.setVolume(volumePercent / 100f)
+    private fun applyVolume() {
+        engine.setVolume(volumePercent / 100f)
+        // The stream index is coarser than percent, and a request that lands on the current
+        // index fires no VOLUME_CHANGED broadcast to correct us — read back the quantized
+        // value so our state can never drift from the real system volume.
+        volumePercent = engine.currentVolumePercent()
+    }
 
     private fun applyDucking() = engine.setDucking(if (ducked) duckingVolume / 10f else 1f)
 

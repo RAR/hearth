@@ -27,7 +27,16 @@ class MediaBridgeTest {
         override fun resume() { calls += "resume" }
         override fun pause() { calls += "pause" }
         override fun stop() { calls += "stop" }
-        override fun setVolume(fraction: Float) { _volume = fraction; calls += "volume:$fraction" }
+        var volumeSteps: Int? = null // simulate a device with N discrete volume steps
+        // Mirrors the requested fraction back as the system volume (quantized to volumeSteps
+        // when set) — the bridge reads this back after every set, like the real AudioManager.
+        override fun setVolume(fraction: Float) {
+            _volume = fraction
+            val steps = volumeSteps
+            sysVolume = if (steps == null) Math.round(fraction * 100)
+            else Math.round(Math.round(fraction * steps) * 100f / steps)
+            calls += "volume:$fraction"
+        }
         override fun setDucking(fraction: Float) { duckGain = fraction; calls += "ducking:$fraction" }
         override fun currentVolumePercent() = sysVolume
     }
@@ -201,5 +210,16 @@ class MediaBridgeTest {
         engine.onPlayingChanged!!.invoke(true)
         assertTrue(store.state.value.active)
         assertTrue(store.state.value.playing)
+    }
+
+    @Test
+    fun setVolumeReadsBackQuantizedSystemPercent() {
+        // A device with 15 volume steps: a 50% request lands on index 8 = 53%. The bridge must
+        // report the real system value, not the requested one, or the two drift apart forever
+        // (a same-index request fires no VOLUME_CHANGED broadcast to correct it).
+        val engine = FakeEngine().apply { volumeSteps = 15 }
+        val bridge = MediaBridge(engine, NowPlayingStore()) {}
+        bridge.handleAction("set-volume", json("""{"volume":50}"""))
+        assertEquals(53, bridge.ui.value.volume)
     }
 }

@@ -182,68 +182,88 @@ fun HomeView(
             }
         }
 
-        Column(Modifier.align(Alignment.BottomStart).padding(start = 28.dp, bottom = 20.dp)) {
+        if (nowPlaying.active) {
+            // Compact time-only clock while the player owns the screen: the big bottom-left
+            // clock sits where the takeover's volume slider is, and the pills crowd the art.
             val is24 = clockIs24(clockFormat, DateFormat.is24HourFormat(context))
-            // Nudged down to tuck the time against the date line below it.
-            Row(Modifier.offset(y = 6.dp)) {
+            Row(Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 20.dp)) {
                 Text(
                     SimpleDateFormat(if (is24) "HH:mm" else "h:mm", Locale.getDefault()).format(Date(now)),
-                    color = Color.White, fontSize = 58.sp, fontWeight = FontWeight.Light,
+                    color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Light,
                     modifier = Modifier.alignByBaseline(),
                 )
                 if (!is24) {
                     Text(
                         SimpleDateFormat("a", Locale.getDefault()).format(Date(now)),
-                        color = Color.White.copy(alpha = 0.9f), fontSize = 22.sp,
-                        modifier = Modifier.alignByBaseline().padding(start = 8.dp),
+                        color = Color.White.copy(alpha = 0.9f), fontSize = 16.sp,
+                        modifier = Modifier.alignByBaseline().padding(start = 6.dp),
                     )
                 }
             }
-            Text(
-                dateLine(now),
-                color = Color.White.copy(alpha = 0.9f), fontSize = 22.sp,
-            )
-        }
-
-        if (pill != null || aqi != null) {
-            Row(
-                Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                if (pill != null) {
-                    Row(
-                        Modifier
-                            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        val dim = if (pill.stale) 0.4f else 0.95f
-                        Icon(
-                            imageVector = weatherIcon(pill.icon),
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = dim),
-                            modifier = Modifier.size(22.dp),
+        } else {
+            Column(Modifier.align(Alignment.BottomStart).padding(start = 28.dp, bottom = 20.dp)) {
+                val is24 = clockIs24(clockFormat, DateFormat.is24HourFormat(context))
+                // Nudged down to tuck the time against the date line below it.
+                Row(Modifier.offset(y = 6.dp)) {
+                    Text(
+                        SimpleDateFormat(if (is24) "HH:mm" else "h:mm", Locale.getDefault()).format(Date(now)),
+                        color = Color.White, fontSize = 58.sp, fontWeight = FontWeight.Light,
+                        modifier = Modifier.alignByBaseline(),
+                    )
+                    if (!is24) {
+                        Text(
+                            SimpleDateFormat("a", Locale.getDefault()).format(Date(now)),
+                            color = Color.White.copy(alpha = 0.9f), fontSize = 22.sp,
+                            modifier = Modifier.alignByBaseline().padding(start = 8.dp),
                         )
-                        val text = listOfNotNull(pill.conditionText, pill.temperature).joinToString(" · ")
-                        Text(text, color = Color.White.copy(alpha = dim), fontSize = 18.sp)
                     }
                 }
-                if (aqi != null) {
-                    Row(
-                        Modifier
-                            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        val dim = if (aqi.stale) 0.4f else 1f
-                        Text("AQI", color = Color.White.copy(alpha = 0.7f * dim), fontSize = 18.sp)
-                        Text(
-                            aqi.value.toString(),
-                            color = Color(aqi.band.colorArgb).copy(alpha = dim),
-                            fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
-                        )
+                Text(
+                    dateLine(now),
+                    color = Color.White.copy(alpha = 0.9f), fontSize = 22.sp,
+                )
+            }
+
+            if (pill != null || aqi != null) {
+                Row(
+                    Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (pill != null) {
+                        Row(
+                            Modifier
+                                .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            val dim = if (pill.stale) 0.4f else 0.95f
+                            Icon(
+                                imageVector = weatherIcon(pill.icon),
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = dim),
+                                modifier = Modifier.size(22.dp),
+                            )
+                            val text = listOfNotNull(pill.conditionText, pill.temperature).joinToString(" · ")
+                            Text(text, color = Color.White.copy(alpha = dim), fontSize = 18.sp)
+                        }
+                    }
+                    if (aqi != null) {
+                        Row(
+                            Modifier
+                                .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            val dim = if (aqi.stale) 0.4f else 1f
+                            Text("AQI", color = Color.White.copy(alpha = 0.7f * dim), fontSize = 18.sp)
+                            Text(
+                                aqi.value.toString(),
+                                color = Color(aqi.band.colorArgb).copy(alpha = dim),
+                                fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                     }
                 }
             }

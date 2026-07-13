@@ -1,15 +1,25 @@
 package com.rar.echodash.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.rar.echodash.camera.StreamResolver
@@ -31,7 +41,11 @@ import com.rar.echodash.ui.panels.WeatherPanel
 import com.rar.echodash.media.ArtBitmaps
 import com.rar.echodash.media.NowPlayingState
 import java.io.File
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonElement
+
+/** How long the icon rail stays on screen after a touch while the now-playing takeover is up. */
+private const val RAIL_HIDE_MS = 8_000L
 
 @Composable
 fun DashboardShell(
@@ -65,6 +79,7 @@ fun DashboardShell(
     val views = remember(config.panels, config.entities.cameras) {
         railViews(config.panels, config.entities.cameras.isNotEmpty())
     }
+    var railTouches by remember { mutableStateOf(0) }
 
     Box(
         Modifier
@@ -73,8 +88,9 @@ fun DashboardShell(
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
-                        awaitPointerEvent(PointerEventPass.Initial)
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
                         onInteraction()
+                        if (event.type == PointerEventType.Press) railTouches++
                     }
                 }
             }
@@ -139,11 +155,31 @@ fun DashboardShell(
             }
         }
 
-        IconRail(
-            current = current,
-            views = views,
-            onSelect = onSelect,
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp),
-        )
+        // While the home now-playing takeover is showing, the rail slides away so the player
+        // owns the full width; any touch slides it back in, and it hides again after RAIL_HIDE_MS.
+        val takeover = current == DashView.HOME && nowPlaying.active
+        var railVisible by remember { mutableStateOf(true) }
+        LaunchedEffect(takeover, railTouches) {
+            if (takeover) {
+                railVisible = true
+                delay(RAIL_HIDE_MS)
+                railVisible = false
+            } else {
+                railVisible = true
+            }
+        }
+        AnimatedVisibility(
+            visible = railVisible,
+            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.CenterEnd),
+        ) {
+            IconRail(
+                current = current,
+                views = views,
+                onSelect = onSelect,
+                modifier = Modifier.padding(end = 12.dp),
+            )
+        }
     }
 }

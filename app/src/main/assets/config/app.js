@@ -446,6 +446,41 @@ function renderNotifications() {
     "Point this at the nws_alerts integration's sensor (e.g. sensor.nws_alerts_alerts) to show active " +
     "alerts under the weather; swipe left to dismiss. Only alerts at or above the minimum severity " +
     "appear (Minor = show all)."));
+
+  // ---- Push from Home Assistant ----
+  // Rendered only when the app build exposes a notify token (older builds -> block absent).
+  // lastStatus is populated in tryLoad() before render() runs, so the token is present on first paint.
+  const token = lastStatus && lastStatus.notifyToken;
+  if (token) {
+    host.appendChild(el("h3", "subhead", "Push from Home Assistant"));
+
+    const tokenInput = el("input", "mono");
+    tokenInput.readOnly = true;
+    tokenInput.value = token;
+    tokenInput.setAttribute("aria-label", "Notify token");
+    tokenInput.addEventListener("focus", () => tokenInput.select());
+    host.appendChild(labeledRow("Token", tokenInput));
+
+    const yaml =
+      'rest_command:\n' +
+      '  echo_notify:\n' +
+      '    url: "' + location.origin + '/api/notify"\n' +
+      '    method: POST\n' +
+      '    headers:\n' +
+      '      authorization: "Bearer ' + token + '"\n' +
+      '    content_type: "application/json"\n' +
+      '    payload: >-\n' +
+      '      {"title": "{{ title }}", "message": "{{ message | default(\'\') }}",\n' +
+      '       "severity": "{{ severity | default(\'info\') }}",\n' +
+      '       "id": "{{ id | default(\'\') }}", "timeout": {{ timeout | default(0) }}}';
+    host.appendChild(el("pre", "yaml", yaml));
+
+    host.appendChild(el("div", "muted",
+      "Add this to configuration.yaml, then call rest_command.echo_notify from an automation " +
+      "(title required; message/severity/id/timeout optional). Reusing an id updates that row; " +
+      "timeout 0 or absent means it stays until dismissed. POST /api/notify/clear with " +
+      "{\"id\":\"…\"} or {\"all\":true} removes rows."));
+  }
 }
 
 function renderLightGroup(g, gi) {

@@ -343,3 +343,22 @@ button:active { transform: translateY(1px); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* =========================================================
+   Notify token + copy-paste rest_command YAML (Notifications card)
+   ========================================================= */
+input.mono, pre.yaml {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+pre.yaml {
+  background: var(--field);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: .7rem .8rem;
+  margin: .5rem 0 0;
+  font-size: .78rem;
+  line-height: 1.45;
+  overflow-x: auto;
+  white-space: pre;
+}

@@ -6,6 +6,9 @@ import android.provider.Settings
 import android.text.format.DateFormat
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -16,6 +19,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -51,6 +56,7 @@ import com.rar.echodash.ha.ConnState
 import com.rar.echodash.media.ArtBitmaps
 import com.rar.echodash.media.NowPlayingState
 import com.rar.echodash.ui.model.AqiPill
+import com.rar.echodash.ui.model.EvCard
 import com.rar.echodash.ui.model.WeatherPill
 import java.io.File
 import java.text.SimpleDateFormat
@@ -118,6 +124,7 @@ fun HomeView(
     slideshowSeconds: Int,
     pill: WeatherPill?,
     aqi: AqiPill?,
+    evs: List<EvCard> = emptyList(),
     clockFormat: ClockFormat,
     connState: ConnState,
     configUrl: String,
@@ -250,6 +257,17 @@ fun HomeView(
                     }
                 }
             }
+
+            AnimatedVisibility(
+                visible = evs.isNotEmpty(),
+                enter = fadeIn(tween(600)),
+                exit = fadeOut(tween(600)),
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 28.dp),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    evs.forEach { EvCardView(it) }
+                }
+            }
         }
 
         if (connState != ConnState.CONNECTED) {
@@ -278,6 +296,47 @@ fun HomeView(
                 text = { Text("Log out") },
                 onClick = { menuOpen = false; onLogout() },
             )
+        }
+    }
+}
+
+/** One EV charging pill: bolt+name, a battery gauge, and a status line — pill visual language. */
+@Composable
+private fun EvCardView(card: EvCard) {
+    Column(
+        Modifier
+            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            "⚡ " + card.name,
+            color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium,
+        )
+        val soc = card.socPct
+        if (soc != null) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Box(
+                    Modifier
+                        .size(width = 96.dp, height = 8.dp)
+                        .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(4.dp)),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(soc / 100f)
+                            .fillMaxHeight()
+                            .background(Color(0xFF7BC67E), RoundedCornerShape(4.dp)),
+                    )
+                }
+                Text("$soc%", color = Color.White, fontSize = 14.sp)
+            }
+        }
+        val status = card.statusLine
+        if (status != null) {
+            Text(status, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp)
         }
     }
 }

@@ -113,6 +113,25 @@ class SatelliteServerTest {
         }
     }
 
+    @Test fun bareDescribeProbeDoesNotDisplaceActiveConnection() {
+        TestClient(server.boundPort).use { ha ->
+            ha.send(WyomingEvent("run-satellite"))
+            ha.read(); ha.read()          // run-pipeline, streaming-started
+            assertEquals("start-mic", out.next())
+            // Zeroconf-style probe (HA's wyoming config_flow on every mDNS refresh):
+            // connects, describes, leaves. Must be answered without displacing HA.
+            TestClient(server.boundPort).use { probe ->
+                probe.send(WyomingEvent("describe"))
+                assertEquals("info", probe.read()!!.type)
+            }
+            // The original connection is still the active satellite: mic audio still flows.
+            server.submitMicChunk(ByteArray(960) { 3 })
+            val chunk = ha.read()!!
+            assertEquals("audio-chunk", chunk.type)
+            assertEquals(960, chunk.payload.size)
+        }
+    }
+
     @Test fun survivesGarbageConnection() {
         Socket("127.0.0.1", server.boundPort).use { g ->
             g.getOutputStream().apply { write("not wyoming\n".toByteArray()); flush() }

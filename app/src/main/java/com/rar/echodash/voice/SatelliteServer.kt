@@ -18,7 +18,9 @@ import kotlin.concurrent.thread
 
 /**
  * Wyoming TCP server for the voice satellite (port 10600). HA connects inbound.
- * Newest connection wins. Reader runs off the lock; the active [SatelliteSession]
+ * Newest *real* connection wins: a connection only displaces the active one on its first
+ * event other than describe/ping, so zeroconf identify-probes (bare describe) pass through
+ * harmlessly. Reader runs off the lock; the active [SatelliteSession]
  * and all socket writes are serialized on [lock], so pongs are never starved by
  * blocking playback (playback is offloaded to an AnnouncePlayer via [out]). Note:
  * outbound mic-chunk writes share the same socket and can still stall pongs under
@@ -162,18 +164,26 @@ class SatelliteServer(
             runCatching { socket.close() }
             return
         }
-        synchronized(lock) {
-            active?.let { runCatching { it.socket.close() } }  // newest wins
-            active = conn
-            dispatch(conn, session.onConnected())
-        }
+        // Promotion to the active connection is deferred until the first event other than
+        // describe/ping. HA's wyoming config_flow probes the advertised _wyoming._tcp service
+        // with a bare describe on every mDNS refresh; promoting those probes killed the live
+        // satellite connection (HA saw a reset, silently restarted its loop, and the device
+        // went deaf for the ~3s reconnect — wake words chirped but never reached HA).
+        // describe/ping are stateless and answered on the probing connection itself.
+        var promoted = false
         try {
             val input = socket.getInputStream().buffered()
             while (true) {
                 val event = WyomingCodec.read(input) ?: break
                 if (event.type != "ping") Log.d(TAG, "recv ${event.type} ${event.data}")
                 synchronized(lock) {
-                    if (active !== conn) return           // superseded
+                    if (!promoted && event.type != "describe" && event.type != "ping") {
+                        active?.let { runCatching { it.socket.close() } }  // newest real client wins
+                        active = conn
+                        promoted = true
+                        dispatch(conn, session.onConnected())
+                    }
+                    if (promoted && active !== conn) return           // superseded
                     dispatch(conn, session.onEvent(event, System.currentTimeMillis()))
                 }
             }

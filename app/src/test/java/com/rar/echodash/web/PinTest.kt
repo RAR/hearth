@@ -14,4 +14,13 @@ class PinTest {
             assertTrue(pin.all { c -> c.isDigit() })
         }
     }
+
+    @Test
+    fun notifyTokenIs32LowercaseHex() {
+        repeat(50) {
+            val t = generateNotifyToken()
+            assertEquals(32, t.length)
+            assertTrue(t.all { c -> c in '0'..'9' || c in 'a'..'f' })
+        }
+    }
 }

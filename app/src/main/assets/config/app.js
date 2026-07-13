@@ -32,6 +32,12 @@ const WAKE_WORD_OPTIONS = [
   ["alexa", "Alexa"],
 ];
 
+const SEVERITY_OPTIONS = [
+  ["minor", "Minor"],
+  ["moderate", "Moderate"],
+  ["severe", "Severe"],
+];
+
 // ---------- inline SVG glyphs (currentColor) ----------
 const ICONS = {
   lights: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.5.5.8 1 .8 1.6V16h6v-.8c0-.6.3-1.1.8-1.6A6 6 0 0 0 12 3Z"/></svg>',
@@ -282,6 +288,7 @@ function render() {
   renderPanels();
   renderEntities();
   renderMedia();
+  renderNotifications();
   renderHome();
   renderOptions();
   renderVoice();
@@ -408,6 +415,33 @@ function renderMedia() {
     numberInput(m.pausedDismissSeconds, v => m.pausedDismissSeconds = Math.round(v || 0))));
   host.appendChild(el("div", "muted",
     "The HA media player entity that mirrors this device (pick your Music Assistant player for the Echo) — enables album art, track info, and next/previous."));
+}
+
+function renderNotifications() {
+  const host = document.getElementById("notifications");
+  clear(host);
+  // Defensive defaults for configs saved before notifications existed (same pattern as Media/Night).
+  if (!config.notifications) config.notifications = { nwsAlerts: null, nwsMinSeverity: "minor" };
+  const n = config.notifications;
+  if (n.nwsMinSeverity == null) n.nwsMinSeverity = "minor";
+
+  // Same populated picker pattern as the AQI sensor: shared sensor datalist; blank -> null.
+  host.appendChild(labeledRow("NWS alerts sensor",
+    entityPicker(["sensor"], n.nwsAlerts, v => n.nwsAlerts = v)));
+
+  const sev = el("select");
+  SEVERITY_OPTIONS.forEach(([val, lbl]) => {
+    const o = el("option", null, lbl); o.value = val;
+    if (n.nwsMinSeverity === val) o.selected = true;
+    sev.appendChild(o);
+  });
+  sev.addEventListener("change", () => n.nwsMinSeverity = sev.value);
+  host.appendChild(labeledRow("Minimum severity", sev));
+
+  host.appendChild(el("div", "muted",
+    "Point this at the nws_alerts integration's sensor (e.g. sensor.nws_alerts_alerts) to show active " +
+    "alerts under the weather; swipe left to dismiss. Only alerts at or above the minimum severity " +
+    "appear (Minor = show all)."));
 }
 
 function renderLightGroup(g, gi) {

@@ -8,34 +8,48 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/** One charging EV's card. Fields are pre-formatted display strings; null = omit that line. */
+/** One EV's card. Fields are pre-formatted display strings; null = omit that line. */
 data class EvCard(
     val name: String,        // config name, or "EV" when blank
+    val charging: Boolean,   // true while actually charging: animates the gauge + shows the status line
     val socPct: Int?,        // 0..100 for the gauge + "%" text; null hides the gauge row
-    val statusLine: String?, // "7.2 kW · 1h05 left" / "7.2 kW" / "1h05 left"; null hides the row
+    val statusLine: String?, // "7.2 kW · 4.3 kWh · 1h05 left"; null hides the row (always null when idle)
 )
 
-/** States (lowercased, trimmed) that mean "charging" across binary_sensor and EVCC/string sensors. */
-private val TRUTHY = setOf("on", "true", "charging")
+/** States (lowercased, trimmed) that mean "plugged in" (cable connected), incl. EVCC status B/C. */
+private val PLUGGED_TRUTHY = setOf("on", "true", "connected", "charging", "b", "c")
+
+/** States (lowercased, trimmed) that mean "actively charging", incl. EVCC status C. */
+private val CHARGING_TRUTHY = setOf("on", "true", "charging", "c")
 
 /**
- * Build a card per config slot that is currently charging. The `charging` entity is the trigger:
- * no charging entity, missing entity, or non-truthy state -> no card. Order follows config order;
- * idle slots are skipped.
+ * Build a card per config slot whose car is plugged in OR charging. Either trigger entity may be
+ * unconfigured; a slot with only `charging` behaves exactly as v1. The card is shown when the
+ * `plugged` entity is plugged-truthy or the `charging` entity is charging-truthy. Order follows
+ * config order; slots that are neither plugged nor charging are skipped. The status line (power ·
+ * energy · eta) is built only while charging — idle readings are noise.
  */
 fun evCards(cfgs: List<EvConfig>, entities: Map<String, EntityState>, nowMs: Long): List<EvCard> =
     cfgs.mapNotNull { cfg ->
-        val chargingId = cfg.charging ?: return@mapNotNull null
-        val charging = entities[chargingId] ?: return@mapNotNull null
-        if (charging.state.trim().lowercase(Locale.US) !in TRUTHY) return@mapNotNull null
+        val pluggedState = cfg.plugged?.let { entities[it] }?.state?.trim()?.lowercase(Locale.US)
+        val chargingState = cfg.charging?.let { entities[it] }?.state?.trim()?.lowercase(Locale.US)
+        val charging = chargingState != null && chargingState in CHARGING_TRUTHY
+        val plugged = pluggedState != null && pluggedState in PLUGGED_TRUTHY
+        if (!plugged && !charging) return@mapNotNull null
 
         val socPct = cfg.soc?.let { entities[it] }?.state?.toDoubleOrNull()?.roundToInt()?.coerceIn(0, 100)
-        val power = cfg.power?.let { entities[it] }?.let { formatPower(it) }
-        val eta = cfg.eta?.let { entities[it] }?.let { formatEta(it, nowMs) }
-        val statusLine = listOfNotNull(power, eta?.let { "$it left" }).joinToString(" · ").ifBlank { null }
+        val statusLine = if (charging) {
+            val power = cfg.power?.let { entities[it] }?.let { formatPower(it) }
+            val energy = cfg.energy?.let { entities[it] }?.let { formatEnergy(it) }
+            val eta = cfg.eta?.let { entities[it] }?.let { formatEta(it, nowMs) }
+            listOfNotNull(power, energy, eta?.let { "$it left" }).joinToString(" · ").ifBlank { null }
+        } else {
+            null
+        }
 
         EvCard(
             name = cfg.name.trim().ifBlank { "EV" },
+            charging = charging,
             socPct = socPct,
             statusLine = statusLine,
         )
@@ -47,6 +61,14 @@ private fun formatPower(state: EntityState): String? {
     val v = state.state.toDoubleOrNull() ?: return null
     val kw = if (unit.equals("kW", ignoreCase = true)) abs(v) else abs(v) / 1000.0
     return if (kw < 10.0) String.format(Locale.US, "%.1f kW", kw) else "${kw.roundToInt()} kW"
+}
+
+/** Session energy as kWh: unit-aware ("kWh" as-is, else Wh/1000). One decimal below 10 kWh, integer at/above. */
+private fun formatEnergy(state: EntityState): String? {
+    val unit = state.attr("unit_of_measurement") ?: "Wh"
+    val v = state.state.toDoubleOrNull() ?: return null
+    val kwh = if (unit.equals("kWh", ignoreCase = true)) abs(v) else abs(v) / 1000.0
+    return if (kwh < 10.0) String.format(Locale.US, "%.1f kWh", kwh) else "${kwh.roundToInt()} kWh"
 }
 
 /** Remaining time as "1h05" / "45m"; null when unparseable or zero/negative (EVCC reports 0 near end). */

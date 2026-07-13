@@ -33,12 +33,14 @@ data class SolarConfig(
 @Serializable
 data class EvConfig(
     val name: String = "",
-    val charging: String? = null, // entity whose truthy state shows the card
+    val plugged: String? = null,  // entity whose truthy state shows the card (cable connected)
+    val charging: String? = null, // entity whose truthy state shows the card + drives the animation
     val soc: String? = null,      // battery % sensor
     val power: String? = null,    // charge power sensor (W or kW, unit-aware)
+    val energy: String? = null,   // session energy sensor (Wh or kWh, unit-aware)
     val eta: String? = null,      // time-to-finish sensor (minutes, H:MM:SS, or timestamp)
 ) {
-    fun ids(): List<String> = listOfNotNull(charging, soc, power, eta)
+    fun ids(): List<String> = listOfNotNull(plugged, charging, soc, power, energy, eta)
 }
 
 @Serializable
@@ -183,9 +185,11 @@ data class DashConfig(
             .map { ev ->
                 ev.copy(
                     name = ev.name.trim(),
+                    plugged = ev.plugged?.trim()?.ifBlank { null },
                     charging = ev.charging?.trim()?.ifBlank { null },
                     soc = ev.soc?.trim()?.ifBlank { null },
                     power = ev.power?.trim()?.ifBlank { null },
+                    energy = ev.energy?.trim()?.ifBlank { null },
                     eta = ev.eta?.trim()?.ifBlank { null },
                 )
             }

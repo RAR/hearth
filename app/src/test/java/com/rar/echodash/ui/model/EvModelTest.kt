@@ -136,6 +136,66 @@ class EvModelTest {
     }
 
     @Test
+    fun pluggedShowsCardWithoutChargingAndHidesStatus() {
+        val cards = evCards(
+            listOf(EvConfig(name = "Car", plugged = "binary_sensor.plug", power = "sensor.p", soc = "sensor.soc")),
+            mapOf(
+                "binary_sensor.plug" to st("binary_sensor.plug", "on"),
+                "sensor.p" to st("sensor.p", "7240", "W"),
+                "sensor.soc" to st("sensor.soc", "50", "%"),
+            ),
+            0L,
+        )
+        assertEquals(1, cards.size)
+        assertEquals(false, cards[0].charging)
+        assertNull(cards[0].statusLine) // plugged-idle: power reads 0 W noise -> no status line
+        assertEquals(50, cards[0].socPct)
+    }
+
+    @Test
+    fun statusLetterEntityDrivesBothStates() {
+        fun cards(state: String) = evCards(
+            listOf(EvConfig(name = "Car", plugged = "sensor.status", charging = "sensor.status")),
+            mapOf("sensor.status" to st("sensor.status", state)),
+            0L,
+        )
+        val b = cards("B")
+        assertEquals(1, b.size)
+        assertEquals(false, b[0].charging)
+        val c = cards("C")
+        assertEquals(1, c.size)
+        assertEquals(true, c[0].charging)
+        assertEquals(emptyList<EvCard>(), cards("A"))
+    }
+
+    @Test
+    fun energyUnitAwareInStatusLine() {
+        fun status(energyState: String, unit: String?) = evCards(
+            listOf(EvConfig(charging = "binary_sensor.c", power = "sensor.p", energy = "sensor.e", eta = "sensor.eta")),
+            mapOf(
+                "binary_sensor.c" to st("binary_sensor.c", "on"),
+                "sensor.p" to st("sensor.p", "7240", "W"),
+                "sensor.e" to st("sensor.e", energyState, unit),
+                "sensor.eta" to st("sensor.eta", "65"),
+            ),
+            0L,
+        ).single().statusLine
+        assertEquals("7.2 kW · 4.3 kWh · 1h05 left", status("4300", null)) // Wh -> kWh
+        assertEquals("7.2 kW · 4.3 kWh · 1h05 left", status("4.3", "kWh"))
+        assertEquals("7.2 kW · 12 kWh · 1h05 left", status("12.4", "kWh")) // integer at >= 10
+    }
+
+    @Test
+    fun chargingFlagSetWhileCharging() {
+        val card = evCards(
+            listOf(EvConfig(charging = "binary_sensor.c")),
+            mapOf("binary_sensor.c" to st("binary_sensor.c", "on")),
+            0L,
+        ).single()
+        assertEquals(true, card.charging)
+    }
+
+    @Test
     fun twoChargingKeepConfigOrderAndSkipIdle() {
         val oneOn = mapOf(
             "binary_sensor.a" to st("binary_sensor.a", "off"),

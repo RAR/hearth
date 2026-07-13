@@ -358,17 +358,21 @@ class DashConfigTest {
         val cfg = DashConfig(
             entities = Entities(
                 evs = listOf(
-                    EvConfig(name = "  Ioniq  ", charging = "  binary_sensor.charging  ",
-                        soc = "sensor.soc", power = "  ", eta = null),
-                    EvConfig(name = "", charging = "switch.c2", soc = "", power = null, eta = "  "),
+                    EvConfig(name = "  Ioniq  ", plugged = "  binary_sensor.plug  ", charging = "  binary_sensor.charging  ",
+                        soc = "sensor.soc", power = "  ", energy = "  sensor.energy  ", eta = null),
+                    EvConfig(name = "", plugged = "", charging = "switch.c2", soc = "", power = null, energy = " ", eta = "  "),
                     EvConfig(name = "Kona", charging = "sensor.c3"),                 // 3rd valid -> capped out
-                    EvConfig(name = "   ", charging = "  ", soc = " ", power = null, eta = ""), // all blank -> dropped
+                    EvConfig(name = "   ", plugged = "  ", charging = "  ", soc = " ", power = null, energy = "", eta = ""), // all blank -> dropped
                 ),
             ),
         ).clamped()
         assertEquals(2, cfg.entities.evs.size)
-        assertEquals(EvConfig("Ioniq", "binary_sensor.charging", "sensor.soc", null, null), cfg.entities.evs[0])
-        assertEquals(EvConfig("", "switch.c2", null, null, null), cfg.entities.evs[1])
+        assertEquals(
+            EvConfig(name = "Ioniq", plugged = "binary_sensor.plug", charging = "binary_sensor.charging",
+                soc = "sensor.soc", power = null, energy = "sensor.energy", eta = null),
+            cfg.entities.evs[0],
+        )
+        assertEquals(EvConfig(name = "", charging = "switch.c2"), cfg.entities.evs[1])
     }
 
     @Test
@@ -377,14 +381,15 @@ class DashConfigTest {
             entities = Entities(
                 tempSensor = "sensor.t",
                 evs = listOf(
-                    EvConfig(name = "Ioniq", charging = "binary_sensor.charging",
-                        soc = "sensor.soc", power = "sensor.power", eta = "sensor.eta"),
+                    EvConfig(name = "Ioniq", plugged = "binary_sensor.plug", charging = "binary_sensor.charging",
+                        soc = "sensor.soc", power = "sensor.power", energy = "sensor.energy", eta = "sensor.eta"),
                     EvConfig(charging = "switch.c2"),
                 ),
             ),
         )
         assertEquals(
-            listOf("sensor.t", "binary_sensor.charging", "sensor.soc", "sensor.power", "sensor.eta", "switch.c2"),
+            listOf("sensor.t", "binary_sensor.plug", "binary_sensor.charging", "sensor.soc",
+                "sensor.power", "sensor.energy", "sensor.eta", "switch.c2"),
             cfg.referencedEntityIds(),
         )
     }

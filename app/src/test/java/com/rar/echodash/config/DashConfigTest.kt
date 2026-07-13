@@ -388,4 +388,12 @@ class DashConfigTest {
             cfg.referencedEntityIds(),
         )
     }
+
+    @Test
+    fun autoHideRailDefaultsFalseAndSurvivesClamped() {
+        // old config document with no "autoHideRail" key -> defaults to false
+        val cfg = decodeConfig("""{"version":1,"home":{"photoFolder":"nas"}}""")
+        assertEquals(false, cfg.panelOptions.autoHideRail)
+        assertEquals(true, DashConfig(panelOptions = PanelOptions(autoHideRail = true)).clamped().panelOptions.autoHideRail)
+    }
 }

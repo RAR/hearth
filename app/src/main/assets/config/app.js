@@ -523,7 +523,12 @@ function renderOptions() {
   host.appendChild(labeledRow("Forecast days", numberInput(o.forecastDays, v => o.forecastDays = Math.round(v))));
   host.appendChild(labeledRow("Sensor decimal places", numberInput(o.sensorDecimals, v => o.sensorDecimals = Math.round(v))));
   host.appendChild(labeledRow("Doorbell popup (s)", numberInput(o.doorbellPopupSeconds, v => o.doorbellPopupSeconds = Math.round(v))));
-  host.appendChild(el("div", "muted", "Step 0.1–5.0, forecast 1–5, doorbell popup 5–120 (clamped on save)."));
+  const autoHide = el("input"); autoHide.type = "checkbox"; autoHide.checked = !!o.autoHideRail;
+  autoHide.setAttribute("aria-label", "Auto-hide panel bar");
+  autoHide.addEventListener("change", () => o.autoHideRail = autoHide.checked);
+  host.appendChild(labeledRow("Auto-hide panel bar", autoHide));
+  host.appendChild(el("div", "muted", "Step 0.1–5.0, forecast 1–5, doorbell popup 5–120 (clamped on save). " +
+    "Auto-hide slides the panel bar away; any touch brings it back for 8 s."));
 }
 
 function renderVoice() {

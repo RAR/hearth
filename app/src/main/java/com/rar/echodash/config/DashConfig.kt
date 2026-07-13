@@ -89,6 +89,7 @@ data class PanelOptions(
     val forecastDays: Int = 5,
     val sensorDecimals: Int = 1,
     val doorbellPopupSeconds: Int = 30,
+    val autoHideRail: Boolean = false,
 )
 
 @Serializable

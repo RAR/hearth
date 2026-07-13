@@ -166,10 +166,11 @@ fun DashboardShell(
 
         // While the home now-playing takeover is showing, the rail slides away so the player
         // owns the full width; any touch slides it back in, and it hides again after RAIL_HIDE_MS.
-        val takeover = current == DashView.HOME && takeoverVisible
+        // The rail also auto-hides everywhere when the auto-hide option is on.
+        val autoHide = (current == DashView.HOME && takeoverVisible) || config.panelOptions.autoHideRail
         var railVisible by remember { mutableStateOf(true) }
-        LaunchedEffect(takeover, railTouches) {
-            if (takeover) {
+        LaunchedEffect(autoHide, railTouches) {
+            if (autoHide) {
                 railVisible = true
                 delay(RAIL_HIDE_MS)
                 railVisible = false

@@ -26,10 +26,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -51,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -69,6 +72,7 @@ import com.rar.echodash.media.NowPlayingState
 import com.rar.echodash.ui.model.AqiPill
 import com.rar.echodash.ui.model.BattFlow
 import com.rar.echodash.ui.model.EvCard
+import com.rar.echodash.ui.model.NotificationItem
 import com.rar.echodash.ui.model.SolarCard
 import com.rar.echodash.ui.model.WeatherPill
 import java.io.File
@@ -139,6 +143,8 @@ fun HomeView(
     aqi: AqiPill?,
     evs: List<EvCard> = emptyList(),
     solar: SolarCard? = null,
+    notifications: List<NotificationItem> = emptyList(),
+    onDismiss: (String) -> Unit = {},
     clockFormat: ClockFormat,
     connState: ConnState,
     configUrl: String,
@@ -282,6 +288,27 @@ fun HomeView(
                     evs.forEach { EvCardView(it) }
                     if (solar != null) SolarCardView(solar)
                 }
+            }
+
+            // Notification area: just below the weather/AQI pill row (top = 70dp), width-capped so
+            // it never collides with the EV/solar stack, height-capped + clipped so the bottom-left
+            // clock is never covered.
+            AnimatedVisibility(
+                visible = notifications.isNotEmpty(),
+                enter = fadeIn(tween(600)),
+                exit = fadeOut(tween(600)),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 28.dp, top = 70.dp),
+            ) {
+                NotificationArea(
+                    notifications = notifications,
+                    onDismiss = onDismiss,
+                    modifier = Modifier
+                        .widthIn(max = 640.dp)
+                        .heightIn(max = 280.dp)
+                        .clipToBounds(),
+                )
             }
         }
 

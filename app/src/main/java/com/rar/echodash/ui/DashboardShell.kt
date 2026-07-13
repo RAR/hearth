@@ -30,6 +30,8 @@ import com.rar.echodash.ha.RegistryIndex
 import com.rar.echodash.ui.model.aqiPill
 import com.rar.echodash.ui.model.evCards
 import com.rar.echodash.ui.model.lightSections
+import com.rar.echodash.ui.model.notifSeverityOf
+import com.rar.echodash.ui.model.nwsNotifications
 import com.rar.echodash.ui.model.solarCard
 import com.rar.echodash.ui.model.solarFlow
 import com.rar.echodash.ui.model.thermostats
@@ -85,6 +87,10 @@ fun DashboardShell(
         railViews(config.panels, config.entities.cameras.isNotEmpty())
     }
     var railTouches by remember { mutableStateOf(0) }
+    // Process-lifetime notification dismissals. Held here (NOT inside the Crossfade HOME branch) so
+    // the set survives view switches and takeover unmounts; a dismissed alert returns only if NWS
+    // reissues it under a new ID or the app restarts.
+    var dismissedKeys by remember { mutableStateOf(setOf<String>()) }
 
     Box(
         Modifier
@@ -116,6 +122,21 @@ fun DashboardShell(
                     val solar = remember(entities, config.entities.solar) {
                         solarCard(config.entities.solar, entities)
                     }
+                    val allNotifications = remember(entities, config.notifications) {
+                        nwsNotifications(
+                            config.notifications.nwsAlerts,
+                            notifSeverityOf(config.notifications.nwsMinSeverity),
+                            entities,
+                            System.currentTimeMillis(),
+                        )
+                    }
+                    val notifications = allNotifications.filter { it.key !in dismissedKeys }
+                    // Prune dismissed keys no longer present so the set can't grow unboundedly.
+                    LaunchedEffect(allNotifications) {
+                        val present = allNotifications.mapTo(HashSet()) { it.key }
+                        val pruned = dismissedKeys intersect present
+                        if (pruned != dismissedKeys) dismissedKeys = pruned
+                    }
                     HomeView(
                         photos = if (config.home.slideshowEnabled) photos else emptyList(),
                         slideshowSeconds = config.home.slideshowSeconds,
@@ -123,6 +144,8 @@ fun DashboardShell(
                         aqi = aqi,
                         evs = evs,
                         solar = solar,
+                        notifications = notifications,
+                        onDismiss = { key -> dismissedKeys = dismissedKeys + key },
                         clockFormat = config.home.clockFormat,
                         connState = connState,
                         configUrl = configUrl,

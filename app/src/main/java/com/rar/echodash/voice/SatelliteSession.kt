@@ -198,8 +198,13 @@ class SatelliteSession(
      * The on-device detector fired for wake word [name]. Emits, in wire order:
      * detection -> run-pipeline(asr..tts, restart_on_end=false) -> streaming-started,
      * then the local WAKE earcon and LISTENING overlay; begins streaming mic audio.
+     *
+     * Guarded on DETECTING: the detector thread runs inference outside the session lock, so a
+     * detection that was already in flight when a pause/transcript/restart changed the state
+     * must be dropped, not allowed to start a pipeline.
      */
     fun onWakeDetected(name: String, nowMs: Long): List<SatelliteAction> {
+        if (wakeState != WakeState.DETECTING) return emptyList()
         wakeState = WakeState.STREAMING
         micTimestampMs = 0L
         return listOf(

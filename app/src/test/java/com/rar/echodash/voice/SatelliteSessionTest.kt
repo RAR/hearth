@@ -276,6 +276,22 @@ class SatelliteSessionTest {
     }
 
     @Test
+    fun onWakeDetectedDroppedUnlessDetecting() {
+        val s = wakeSession()
+        // Before run-satellite (IDLE): stale detection is dropped.
+        assertEquals(emptyList<SatelliteAction>(), s.onWakeDetected("alexa", 0))
+        // While paused: dropped, and a later mic chunk still goes nowhere.
+        s.onEvent(event("run-satellite"))
+        s.onEvent(event("pause-satellite"))
+        assertEquals(emptyList<SatelliteAction>(), s.onWakeDetected("alexa", 0))
+        assertEquals(emptyList<SatelliteAction>(), s.onMicChunk(ByteArray(960) { 1 }))
+        // While already streaming: a second in-flight detection is dropped.
+        s.onEvent(event("run-satellite"))
+        s.onWakeDetected("alexa", 0)
+        assertEquals(emptyList<SatelliteAction>(), s.onWakeDetected("alexa", 1))
+    }
+
+    @Test
     fun localWakeMicChunkStreamsAudioAfterDetection() {
         val s = wakeSession()
         s.onEvent(event("run-satellite"))

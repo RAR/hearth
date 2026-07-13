@@ -225,4 +225,31 @@ class KioskControllerTest {
         assertTrue(device.calls.contains("brightness:40"))
         kiosk.cancelTimers()
     }
+
+    @Test
+    fun lastLuxTracksWhileNightDimSuppressed() = runTest {
+        val device = FakeDevice()
+        val kiosk = KioskController(this, device)          // auto-brightness on
+        kiosk.setNightDim(true, 0)
+        kiosk.onLightLevel(400f)                           // suppressed, but must still record lastLux
+        device.calls.clear()
+        kiosk.setNightDim(false, 0)
+        assertTrue("clear reapplies auto formula from lux seen during suppression",
+            device.calls.contains("brightness:100"))
+        kiosk.cancelTimers()
+    }
+
+    @Test
+    fun pushToDeviceRepinsNightDim() = runTest {
+        val device = FakeDevice()
+        val kiosk = KioskController(this, device)
+        kiosk.applySettings(settings("""{"screen_auto_brightness":false,"screen_brightness":50}"""))
+        kiosk.setNightDim(true, 0)
+        device.calls.clear()
+        kiosk.pushToDevice()                               // window re-attach must not lift the pin
+        assertTrue("re-attach re-pins the night value", device.calls.contains("brightness:0"))
+        assertTrue("manual brightness must not override the pin",
+            !device.calls.contains("brightness:50"))
+        kiosk.cancelTimers()
+    }
 }

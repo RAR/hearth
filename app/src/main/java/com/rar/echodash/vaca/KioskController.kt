@@ -45,6 +45,7 @@ class KioskController(
     private var timeoutSeconds = 60
     private var timeoutJob: Job? = null
     private var nightDim = false
+    private var nightDimPercent = 0
     private var lastLux = 0f
 
     /** Pushes settings feedback to HA; set by app wiring. */
@@ -59,7 +60,7 @@ class KioskController(
     /** Re-apply state to the device (call after the window bridge attaches, and after restore). */
     fun pushToDevice() {
         device.setScreenOn(screenOn)
-        if (!autoBrightness) device.setBrightness(brightness)
+        if (nightDim) device.setBrightness(nightDimPercent) else if (!autoBrightness) device.setBrightness(brightness)
         device.setKeepScreenOn(alwaysOn)
         device.setScreensaver(screensaver)
         device.setDarkMode(darkMode)
@@ -137,6 +138,7 @@ class KioskController(
     fun setNightDim(active: Boolean, percent: Int) {
         nightDim = active
         if (active) {
+            nightDimPercent = percent
             device.setBrightness(percent)
         } else if (autoBrightness) {
             device.setBrightness(autoPercent(lastLux))

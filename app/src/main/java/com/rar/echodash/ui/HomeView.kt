@@ -187,38 +187,20 @@ fun HomeView(
             // Compact time-only clock while the player owns the screen: the big bottom-left
             // clock sits where the takeover's volume slider is, and the pills crowd the art.
             val is24 = clockIs24(clockFormat, DateFormat.is24HourFormat(context))
-            Row(Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 8.dp)) {
-                Text(
-                    SimpleDateFormat(if (is24) "HH:mm" else "h:mm", Locale.getDefault()).format(Date(now)),
-                    color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Light,
-                    modifier = Modifier.alignByBaseline(),
-                )
-                if (!is24) {
-                    Text(
-                        SimpleDateFormat("a", Locale.getDefault()).format(Date(now)),
-                        color = Color.White.copy(alpha = 0.9f), fontSize = 16.sp,
-                        modifier = Modifier.alignByBaseline().padding(start = 6.dp),
-                    )
-                }
-            }
+            Text(
+                SimpleDateFormat(if (is24) "HH:mm" else "h:mm", Locale.getDefault()).format(Date(now)),
+                color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Light,
+                modifier = Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 8.dp),
+            )
         } else {
             Column(Modifier.align(Alignment.BottomStart).padding(start = 28.dp, bottom = 20.dp)) {
                 val is24 = clockIs24(clockFormat, DateFormat.is24HourFormat(context))
                 // Nudged down to tuck the time against the date line below it.
-                Row(Modifier.offset(y = 6.dp)) {
-                    Text(
-                        SimpleDateFormat(if (is24) "HH:mm" else "h:mm", Locale.getDefault()).format(Date(now)),
-                        color = Color.White, fontSize = 58.sp, fontWeight = FontWeight.Light,
-                        modifier = Modifier.alignByBaseline(),
-                    )
-                    if (!is24) {
-                        Text(
-                            SimpleDateFormat("a", Locale.getDefault()).format(Date(now)),
-                            color = Color.White.copy(alpha = 0.9f), fontSize = 22.sp,
-                            modifier = Modifier.alignByBaseline().padding(start = 8.dp),
-                        )
-                    }
-                }
+                Text(
+                    SimpleDateFormat(if (is24) "HH:mm" else "h:mm", Locale.getDefault()).format(Date(now)),
+                    color = Color.White, fontSize = 58.sp, fontWeight = FontWeight.Light,
+                    modifier = Modifier.offset(y = 6.dp),
+                )
                 Text(
                     dateLine(now),
                     color = Color.White.copy(alpha = 0.9f), fontSize = 22.sp,

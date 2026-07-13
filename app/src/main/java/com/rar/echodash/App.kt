@@ -1,6 +1,7 @@
 package com.rar.echodash
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -47,6 +48,7 @@ import com.rar.echodash.vaca.LightSensorReporter
 import com.rar.echodash.vaca.MediaBridge
 import com.rar.echodash.media.NowPlayingStore
 import com.rar.echodash.media.ArtFetcher
+import com.rar.echodash.night.NightModeController
 import com.rar.echodash.vaca.NsdAdvertiser
 import com.rar.echodash.vaca.VacaOutgoing
 import com.rar.echodash.vaca.VacaServer
@@ -82,6 +84,9 @@ import okhttp3.OkHttpClient
 /** Process-wide dependencies; owned by EchoDashApplication, created on the main thread. */
 class AppDeps(context: Context) {
     private val appContext = context.applicationContext
+
+    /** Latest ambient-light reading (lux) for the config page's live display; null when no sensor. */
+    @Volatile var lastLux: Int? = null
 
     val settings: SettingsStore = PrefsSettingsStore(appContext)
     val client = OkHttpClient()
@@ -150,6 +155,7 @@ class AppDeps(context: Context) {
         persist = { settings.vacaSettingsJson = it },
         restoredJson = settings.vacaSettingsJson,
     )
+    val nightMode = NightModeController()
     private val mediaEngine = ExoPlayerEngine(appContext)
     val nowPlaying = NowPlayingStore()
     val artFetcher = ArtFetcher(
@@ -168,7 +174,11 @@ class AppDeps(context: Context) {
         setDucking = { ducked -> mainScope.launch { media.setDucked(ducked) } },
     )
     val lightSensor = LightSensorReporter(appContext) { lux ->
-        mainScope.launch { kiosk.onLightLevel(lux) }
+        lastLux = lux.toInt()
+        mainScope.launch {
+            kiosk.onLightLevel(lux)
+            nightMode.onLux(lux, SystemClock.elapsedRealtime())
+        }
         scope.launch {
             vaca.sendStatus(buildJsonObject {
                 putJsonObject("sensors") { put("light", lux.toInt()) }
@@ -400,6 +410,28 @@ fun EchoDashApp(deps: AppDeps) {
                         }
                     }
 
+                    val nightActive by deps.nightMode.nightActive.collectAsStateWithLifecycle()
+                    val nightTicking by deps.nightMode.ticking.collectAsStateWithLifecycle()
+                    LaunchedEffect(config.night) {
+                        deps.nightMode.onConfig(config.night.enabled, config.night.thresholdLux)
+                    }
+                    // Re-evaluation ticker: only runs while night is active or an entry is being
+                    // held off (touch-hold/override in a dark room), so touch-hold expiry still
+                    // fires when the room is silent and dark. No ticker when fully off.
+                    LaunchedEffect(nightTicking) {
+                        if (nightTicking) {
+                            while (true) {
+                                deps.nightMode.onTick(SystemClock.elapsedRealtime())
+                                delay(5_000)
+                            }
+                        }
+                    }
+                    // Brightness mirror: KioskController pins/releases the backlight as night flips
+                    // or the configured night brightness changes.
+                    LaunchedEffect(nightActive, config.night.brightness) {
+                        deps.kiosk.setNightDim(nightActive, config.night.brightness)
+                    }
+
                     DashboardShell(
                         current = view,
                         onSelect = { v ->
@@ -458,12 +490,31 @@ fun EchoDashApp(deps: AppDeps) {
                         onInteraction = {
                             deps.kiosk.onUserInteraction()
                             idleTimer.onInteraction()
+                            deps.nightMode.onUserInteraction(SystemClock.elapsedRealtime())
                         },
                         streamResolver = deps.streamResolver,
+                        nightActive = nightActive,
+                        onNightWake = {
+                            deps.kiosk.onUserInteraction()
+                            idleTimer.onInteraction()
+                            deps.nightMode.onUserInteraction(SystemClock.elapsedRealtime())
+                        },
                     )
 
                     val voiceOverlayState by deps.voiceOverlay.collectAsStateWithLifecycle()
                     val timersState by deps.timersUi.collectAsStateWithLifecycle()
+                    // Overrides suppress night mode at normal brightness: music takeover, doorbell
+                    // popup, voice interaction, or any active/alerting timer.
+                    LaunchedEffect(takeoverVisible, doorbellPopup, voiceOverlayState, timersState) {
+                        deps.nightMode.onOverride(
+                            takeoverVisible ||
+                                doorbellPopup != null ||
+                                voiceOverlayState.phase != VoiceOverlayPhase.HIDDEN ||
+                                timersState.chips.isNotEmpty() ||
+                                timersState.alert != null,
+                            SystemClock.elapsedRealtime(),
+                        )
+                    }
                     LaunchedEffect(voiceOverlayState.phase) {
                         if (voiceOverlayState.phase != VoiceOverlayPhase.HIDDEN) {
                             deps.kiosk.onUserInteraction()   // wakes screen + counts as activity

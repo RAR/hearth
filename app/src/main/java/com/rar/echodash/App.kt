@@ -328,9 +328,9 @@ fun EchoDashApp(deps: AppDeps) {
                     val entities by deps.entityHub.entities.collectAsStateWithLifecycle()
                     val registry by deps.entityHub.registry.collectAsStateWithLifecycle()
                     val photos by deps.photoStore.photos.collectAsStateWithLifecycle()
-                    val mediaUi by deps.media.ui.collectAsStateWithLifecycle()
                     val config by deps.configStore.config.collectAsStateWithLifecycle()
                     val nowPlayingState by deps.nowPlaying.state.collectAsStateWithLifecycle()
+                    val art by deps.artFetcher.art.collectAsStateWithLifecycle()
                     val configUrl = remember { deps.configUrl() }
                     val configPinValue = remember { deps.configPin() }
                     var view by remember { mutableStateOf(DashView.HOME) }
@@ -386,7 +386,8 @@ fun EchoDashApp(deps: AppDeps) {
                         registry = registry,
                         connState = connState,
                         photos = photos,
-                        mediaUi = mediaUi,
+                        nowPlaying = nowPlayingState,
+                        art = art,
                         onToggle = { id -> deps.entityHub.callService("homeassistant", "toggle", entityId = id) },
                         onSetTemperature = { id, temp ->
                             deps.entityHub.callService(
@@ -405,6 +406,16 @@ fun EchoDashApp(deps: AppDeps) {
                         onMediaPlay = { deps.mainScope.launch { deps.media.handleAction("play", null) } },
                         onMediaPause = { deps.mainScope.launch { deps.media.handleAction("pause", null) } },
                         onMediaStop = { deps.mainScope.launch { deps.media.handleAction("stop", null) } },
+                        onMediaNext = {
+                            config.media.companionEntity?.let {
+                                deps.entityHub.callService("media_player", "media_next_track", entityId = it)
+                            }
+                        },
+                        onMediaPrev = {
+                            config.media.companionEntity?.let {
+                                deps.entityHub.callService("media_player", "media_previous_track", entityId = it)
+                            }
+                        },
                         onMediaVolume = { vol ->
                             deps.mainScope.launch {
                                 deps.media.handleAction("set-volume", buildJsonObject { put("volume", vol) })

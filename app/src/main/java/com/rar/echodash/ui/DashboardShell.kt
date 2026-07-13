@@ -28,7 +28,8 @@ import com.rar.echodash.ui.panels.LightsPanel
 import com.rar.echodash.ui.panels.MediaPanel
 import com.rar.echodash.ui.panels.SolarPanel
 import com.rar.echodash.ui.panels.WeatherPanel
-import com.rar.echodash.vaca.MediaUiState
+import com.rar.echodash.media.ArtBitmaps
+import com.rar.echodash.media.NowPlayingState
 import java.io.File
 import kotlinx.serialization.json.JsonElement
 
@@ -41,13 +42,16 @@ fun DashboardShell(
     registry: RegistryIndex,
     connState: ConnState,
     photos: List<File>,
-    mediaUi: MediaUiState,
+    nowPlaying: NowPlayingState,
+    art: ArtBitmaps?,
     onToggle: (String) -> Unit,
     onSetTemperature: (String, Double) -> Unit,
     onSetHvacMode: (String, String) -> Unit,
     onMediaPlay: () -> Unit,
     onMediaPause: () -> Unit,
     onMediaStop: () -> Unit,
+    onMediaNext: () -> Unit,
+    onMediaPrev: () -> Unit,
     onMediaVolume: (Int) -> Unit,
     fetchForecast: suspend (String) -> JsonElement?,
     configUrl: String,
@@ -109,7 +113,10 @@ fun DashboardShell(
                     }
                     ClimatePanel(list, connected, onSetTemperature, onSetHvacMode)
                 }
-                DashView.MEDIA -> MediaPanel(mediaUi, onMediaPlay, onMediaPause, onMediaStop, onMediaVolume)
+                DashView.MEDIA -> MediaPanel(
+                    nowPlaying, art, onMediaPlay, onMediaPause, onMediaStop,
+                    onMediaNext, onMediaPrev, onMediaVolume,
+                )
                 DashView.WEATHER -> WeatherPanel(
                     weather = weatherEntityId?.let { entities[it] },
                     weatherEntityId = weatherEntityId,

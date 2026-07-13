@@ -17,14 +17,19 @@ class MediaBridgeTest {
         val calls = mutableListOf<String>()
         private var _volume = -1f
         val volume get() = _volume
+        var duckGain = -1f
+        var sysVolume = 90
         override var onPlayingChanged: ((Boolean) -> Unit)? = null
         override var onMeta: ((String?, ByteArray?) -> Unit)? = null
         override var onEnded: (() -> Unit)? = null
+        override var onVolumeChanged: ((Int) -> Unit)? = null
         override fun play(url: String) { calls += "play:$url" }
         override fun resume() { calls += "resume" }
         override fun pause() { calls += "pause" }
         override fun stop() { calls += "stop" }
         override fun setVolume(fraction: Float) { _volume = fraction; calls += "volume:$fraction" }
+        override fun setDucking(fraction: Float) { duckGain = fraction; calls += "ducking:$fraction" }
+        override fun currentVolumePercent() = sysVolume
     }
 
     private fun json(s: String) = Json.parseToJsonElement(s)
@@ -56,23 +61,47 @@ class MediaBridgeTest {
     }
 
     @Test
-    fun duckingScalesVolumeAndRestores() {
+    fun duckingScalesEngineGainAndRestores() {
         val engine = FakeEngine()
         val bridge = MediaBridge(engine, NowPlayingStore()) {}
         bridge.handleAction("set-volume", json("""{"volume":90}"""))
+        assertEquals(0.9f, engine.volume, 0.001f)
         bridge.applySettings(json("""{"ducking_volume":1}""").jsonObject)
+        // Ducking is an engine-side gain (duckingVolume/10); it never touches the system volume.
         bridge.setDucked(true)
-        assertEquals(0.09f, engine.volume, 0.001f)
+        assertEquals(0.1f, engine.duckGain, 0.001f)
+        assertEquals(0.9f, engine.volume, 0.001f)
         bridge.setDucked(false)
+        assertEquals(1.0f, engine.duckGain, 0.001f)
         assertEquals(0.9f, engine.volume, 0.001f)
     }
 
     @Test
-    fun musicVolumeSettingSetsBaseVolume() {
+    fun musicVolumeSettingSetsSystemVolume() {
         val engine = FakeEngine()
         val bridge = MediaBridge(engine, NowPlayingStore()) {}
-        bridge.applySettings(json("""{"music_volume":4}""").jsonObject)
-        assertEquals(0.4f, engine.volume, 0.001f)
+        bridge.applySettings(json("""{"music_volume":5}""").jsonObject)
+        assertEquals(0.5f, engine.volume, 0.001f)
+    }
+
+    @Test
+    fun constructionSeedsVolumeFromEngine() {
+        val engine = FakeEngine().apply { sysVolume = 60 }
+        val bridge = MediaBridge(engine, NowPlayingStore()) {}
+        assertEquals(60, bridge.ui.value.volume)
+    }
+
+    @Test
+    fun hardwareVolumeChangeUpdatesStateWithoutFeedback() {
+        val engine = FakeEngine()
+        val store = NowPlayingStore()
+        val bridge = MediaBridge(engine, store) {}
+        engine.calls.clear()
+        engine.onVolumeChanged!!.invoke(30)
+        assertEquals(30, bridge.ui.value.volume)
+        assertEquals(30, store.state.value.volume)
+        assertTrue("a system-volume change must not call setVolume back into the engine",
+            engine.calls.none { it.startsWith("volume:") })
     }
 
     @Test
@@ -92,6 +121,7 @@ class MediaBridgeTest {
     fun nonMediaActionsReturnFalseUntouched() {
         val engine = FakeEngine()
         val bridge = MediaBridge(engine, NowPlayingStore()) {}
+        engine.calls.clear() // drop the construction-time seed (setDucking)
         assertFalse(bridge.handleAction("screen-wake", null))
         assertFalse(bridge.handleAction("toast-message", null))
         assertEquals(0, engine.calls.size)

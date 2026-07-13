@@ -95,7 +95,7 @@ fun NowPlayingHome(
         ) {
             Text(
                 state.title ?: "Playing",
-                color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.SemiBold,
+                color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
             val sub = listOfNotNull(state.artist, state.album).joinToString(" — ")

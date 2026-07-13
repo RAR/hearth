@@ -20,7 +20,19 @@ interface MediaEngine {
     fun resume()
     fun pause()
     fun stop()
+
+    /** Set the device's system media volume; fraction 0..1 of max. */
     fun setVolume(fraction: Float)
+
+    /** Set the playback engine's own gain — used ONLY for ducking; 0..1. */
+    fun setDucking(fraction: Float)
+
+    /** Current system media volume as a percent 0..100. */
+    fun currentVolumePercent(): Int
+
+    /** System media volume changed (e.g. hardware buttons); percent 0..100. */
+    var onVolumeChanged: ((Int) -> Unit)?
+
     var onPlayingChanged: ((Boolean) -> Unit)?
 
     /** Local metadata callback: ICY StreamTitle (or tag title) and embedded artwork bytes. */
@@ -40,6 +52,11 @@ data class MediaUiState(
 /**
  * Drives the HA media_player entity: play-media/play/pause/stop/set-volume
  * actions, music_volume + ducking_volume settings, playing-state status.
+ *
+ * `volume` is the device's SYSTEM media volume (AudioManager STREAM_MUSIC, what
+ * the hardware buttons control) — set-volume and music_volume drive it, and it
+ * tracks hardware-button changes via the engine's onVolumeChanged callback.
+ * Ducking is a separate engine-side gain applied only while ducked.
  */
 class MediaBridge(
     private val engine: MediaEngine,
@@ -62,6 +79,20 @@ class MediaBridge(
     val ui: StateFlow<MediaUiState> = _ui
 
     init {
+        // Seed from the system: the slider should start at the device's real media volume,
+        // and the engine gain starts ungated (1f) since we are not ducking yet.
+        volumePercent = engine.currentVolumePercent()
+        _ui.update { it.copy(volume = volumePercent) }
+        applyDucking()
+        pushEngine()
+
+        // Hardware buttons / other apps moved the system volume: reflect it in our state.
+        // Do NOT call applyVolume() here — the system volume is already what changed.
+        engine.onVolumeChanged = { pct ->
+            volumePercent = pct
+            _ui.update { it.copy(volume = pct) }
+            pushEngine()
+        }
         engine.onPlayingChanged = { isPlaying ->
             playing = isPlaying
             // A stale onEnded for a just-finished track can race a new play-media on the
@@ -132,25 +163,25 @@ class MediaBridge(
         var changed = false
         (settings["music_volume"] as? JsonPrimitive)?.intOrNull?.let {
             volumePercent = (it.coerceIn(0, 10)) * 10
+            applyVolume()
             changed = true
         }
         (settings["ducking_volume"] as? JsonPrimitive)?.intOrNull?.let {
             duckingVolume = it.coerceIn(0, 10)
+            applyDucking()
             changed = true
         }
-        if (changed) { applyVolume(); _ui.update { it.copy(volume = volumePercent) }; pushEngine() }
+        if (changed) { _ui.update { it.copy(volume = volumePercent) }; pushEngine() }
     }
 
     fun setDucked(ducked: Boolean) {
         this.ducked = ducked
-        applyVolume()
+        applyDucking()
     }
 
-    private fun applyVolume() {
-        val base = volumePercent / 100f
-        val fraction = if (ducked) base * (duckingVolume / 10f) else base
-        engine.setVolume(fraction.coerceIn(0f, 1f))
-    }
+    private fun applyVolume() = engine.setVolume(volumePercent / 100f)
+
+    private fun applyDucking() = engine.setDucking(if (ducked) duckingVolume / 10f else 1f)
 
     private fun payloadVolume(payload: JsonElement?): Int? =
         ((payload as? JsonObject)?.get("volume") as? JsonPrimitive)?.doubleOrNull?.toInt()

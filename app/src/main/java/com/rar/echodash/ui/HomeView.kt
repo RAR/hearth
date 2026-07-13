@@ -186,7 +186,7 @@ fun HomeView(
             // Compact time-only clock while the player owns the screen: the big bottom-left
             // clock sits where the takeover's volume slider is, and the pills crowd the art.
             val is24 = clockIs24(clockFormat, DateFormat.is24HourFormat(context))
-            Row(Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 20.dp)) {
+            Row(Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 8.dp)) {
                 Text(
                     SimpleDateFormat(if (is24) "HH:mm" else "h:mm", Locale.getDefault()).format(Date(now)),
                     color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Light,

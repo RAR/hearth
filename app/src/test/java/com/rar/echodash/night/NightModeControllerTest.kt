@@ -155,4 +155,16 @@ class NightModeControllerTest {
         c.onTick(91_001)                 // touch-hold also expired
         assertFalse("bright room, hold expired -> no ticker", c.ticking.value)
     }
+
+    @Test
+    fun tickingArmsDuringEntryDwellSoASilentSensorStillLatches() {
+        // Lights flicked off: one dark sample arrives, then the on-change sensor goes silent.
+        // The entry dwell must arm the ticker so onTick alone completes the entry.
+        val c = NightModeController()
+        enabled(c)
+        c.onLux(5f, 0)
+        assertTrue("entry dwell must arm the ticker", c.ticking.value)
+        c.onTick(30_000)
+        assertTrue("ticker completes entry with no further lux events", c.nightActive.value)
+    }
 }

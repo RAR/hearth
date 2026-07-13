@@ -515,7 +515,7 @@ fun EchoDashApp(deps: AppDeps) {
                             takeoverVisible ||
                                 doorbellPopup != null ||
                                 voiceOverlayState.phase != VoiceOverlayPhase.HIDDEN ||
-                                timersState.chips.isNotEmpty() ||
+                                timersState.chips.any { it.active } ||
                                 timersState.alert != null,
                             SystemClock.elapsedRealtime(),
                         )

@@ -18,7 +18,9 @@ class NightModeController {
     /**
      * True while App must run the 5 s re-evaluation ticker: night is active, or an otherwise-ready
      * entry is being suppressed by an override or the post-touch hold (so touch-hold expiry in a
-     * silent, dark room still nudges a re-entry). False when the feature is off or fully idle.
+     * silent, dark room still nudges a re-entry), or a dark sample has started the entry dwell (an
+     * on-change sensor can go silent after the lights go out — the ticker completes the dwell).
+     * False when the feature is off or fully idle.
      */
     val ticking: StateFlow<Boolean> = _ticking
 
@@ -76,7 +78,7 @@ class NightModeController {
         }
         val withinTouchHold = lastTouchMs?.let { nowMs - it < TOUCH_HOLD_MS } ?: false
         _nightActive.value = enabled && darkLatch && !overrideActive && !withinTouchHold
-        _ticking.value = enabled && (darkLatch || overrideActive || withinTouchHold)
+        _ticking.value = enabled && (darkLatch || overrideActive || withinTouchHold || belowSinceMs != null)
     }
 
     private fun exitThreshold(): Int = maxOf(thresholdLux * 2, thresholdLux + 10)

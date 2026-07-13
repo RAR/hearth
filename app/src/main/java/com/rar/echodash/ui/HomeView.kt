@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Power
+import androidx.compose.material.icons.outlined.SolarPower
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -67,6 +68,7 @@ import com.rar.echodash.media.ArtBitmaps
 import com.rar.echodash.media.NowPlayingState
 import com.rar.echodash.ui.model.AqiPill
 import com.rar.echodash.ui.model.EvCard
+import com.rar.echodash.ui.model.SolarCard
 import com.rar.echodash.ui.model.WeatherPill
 import java.io.File
 import java.text.SimpleDateFormat
@@ -135,6 +137,7 @@ fun HomeView(
     pill: WeatherPill?,
     aqi: AqiPill?,
     evs: List<EvCard> = emptyList(),
+    solar: SolarCard? = null,
     clockFormat: ClockFormat,
     connState: ConnState,
     configUrl: String,
@@ -269,13 +272,14 @@ fun HomeView(
             }
 
             AnimatedVisibility(
-                visible = evs.isNotEmpty(),
+                visible = evs.isNotEmpty() || solar != null,
                 enter = fadeIn(tween(600)),
                 exit = fadeOut(tween(600)),
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 28.dp),
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     evs.forEach { EvCardView(it) }
+                    if (solar != null) SolarCardView(solar)
                 }
             }
         }
@@ -337,68 +341,113 @@ private fun EvCardView(card: EvCard) {
             }
         }
         if (card.socPct != null) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .size(width = 216.dp, height = 8.dp)
-                    .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(4.dp)),
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxWidth(card.socPct / 100f)
-                        .fillMaxHeight()
-                        // clip() is required: background() draws a rounded shape but does
-                        // not clip children, so the shimmer band would bleed past the fill.
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFF7BC67E)),
-                ) {
-                    // Only run the infinite animation while actually charging.
-                    if (card.charging) {
-                        val shimmer = rememberInfiniteTransition(label = "evShimmer")
-                        val fraction by shimmer.animateFloat(
-                            initialValue = 0f,
-                            targetValue = 1f,
-                            animationSpec = infiniteRepeatable(
-                                animation = tween(1800, easing = LinearEasing),
-                                repeatMode = RepeatMode.Restart,
-                            ),
-                            label = "evShimmerX",
-                        )
-                        Box(
-                            Modifier
-                                // Sweep a 24dp band left-to-right across the full 216dp track
-                                // width; the fill's clip keeps it inside the filled region.
-                                .offset(x = (fraction * (216 + 24)).dp - 24.dp)
-                                .width(24.dp)
-                                .fillMaxHeight()
-                                .background(
-                                    Brush.horizontalGradient(
-                                        listOf(
-                                            Color.Transparent,
-                                            Color.White.copy(alpha = 0.35f),
-                                            Color.Transparent,
-                                        ),
-                                    ),
-                                ),
-                        )
-                    }
-                }
-                if (card.limitPct != null) {
-                    Box(
-                        Modifier
-                            // 2dp tick at the vehicle's charge limit; -1dp centers it on the fraction.
-                            .offset(x = (216 * card.limitPct / 100 - 1).dp)
-                            .width(2.dp)
-                            .fillMaxHeight()
-                            .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(1.dp)),
-                    )
-                }
-            }
+            GaugeBar(card.socPct, card.charging, card.limitPct)
         }
         val stats = listOfNotNull(card.chargeLine, card.etaText).joinToString(" · ")
         if (stats.isNotEmpty()) {
             Text(
                 stats, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** 216dp gauge track: green fill, optional charging shimmer, optional limit tick. */
+@Composable
+private fun GaugeBar(fillPct: Int, shimmer: Boolean, tickPct: Int? = null) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .size(width = 216.dp, height = 8.dp)
+            .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(4.dp)),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth(fillPct / 100f)
+                .fillMaxHeight()
+                // clip() is required: background() draws a rounded shape but does
+                // not clip children, so the shimmer band would bleed past the fill.
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color(0xFF7BC67E)),
+        ) {
+            // Only run the infinite animation while actually charging.
+            if (shimmer) {
+                val transition = rememberInfiniteTransition(label = "gaugeShimmer")
+                val fraction by transition.animateFloat(
+                    initialValue = 0f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1800, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart,
+                    ),
+                    label = "gaugeShimmerX",
+                )
+                Box(
+                    Modifier
+                        // Sweep a 24dp band left-to-right across the full 216dp track
+                        // width; the fill's clip keeps it inside the filled region.
+                        .offset(x = (fraction * (216 + 24)).dp - 24.dp)
+                        .width(24.dp)
+                        .fillMaxHeight()
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color.Transparent,
+                                    Color.White.copy(alpha = 0.35f),
+                                    Color.Transparent,
+                                ),
+                            ),
+                        ),
+                )
+            }
+        }
+        if (tickPct != null) {
+            Box(
+                Modifier
+                    // 2dp tick at the vehicle's charge limit; -1dp centers it on the fraction.
+                    .offset(x = (216 * tickPct / 100 - 1).dp)
+                    .width(2.dp)
+                    .fillMaxHeight()
+                    .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(1.dp)),
+            )
+        }
+    }
+}
+
+/** Home solar pill: sun icon + PV output, battery gauge, home/grid line. */
+@Composable
+private fun SolarCardView(card: SolarCard) {
+    Column(
+        Modifier
+            .width(248.dp)
+            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                Icons.Outlined.SolarPower, contentDescription = null,
+                tint = Color.White, modifier = Modifier.size(18.dp),
+            )
+            Text(
+                if (card.pvText != null) "Solar ${card.pvText}" else "Solar",
+                color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f),
+            )
+            if (card.socPct != null) {
+                Text("${card.socPct}%", color = Color.White, fontSize = 14.sp)
+            }
+        }
+        if (card.socPct != null) {
+            GaugeBar(card.socPct, card.battCharging)
+        }
+        if (card.statsLine != null) {
+            Text(
+                card.statsLine, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }

@@ -30,6 +30,7 @@ import com.rar.echodash.ha.RegistryIndex
 import com.rar.echodash.ui.model.aqiPill
 import com.rar.echodash.ui.model.evCards
 import com.rar.echodash.ui.model.lightSections
+import com.rar.echodash.ui.model.solarCard
 import com.rar.echodash.ui.model.solarFlow
 import com.rar.echodash.ui.model.thermostats
 import com.rar.echodash.ui.model.weatherPill
@@ -112,12 +113,16 @@ fun DashboardShell(
                     val evs = remember(entities, config.entities.evs) {
                         evCards(config.entities.evs, entities, System.currentTimeMillis())
                     }
+                    val solar = remember(entities, config.entities.solar) {
+                        solarCard(config.entities.solar, entities)
+                    }
                     HomeView(
                         photos = if (config.home.slideshowEnabled) photos else emptyList(),
                         slideshowSeconds = config.home.slideshowSeconds,
                         pill = pill,
                         aqi = aqi,
                         evs = evs,
+                        solar = solar,
                         clockFormat = config.home.clockFormat,
                         connState = connState,
                         configUrl = configUrl,

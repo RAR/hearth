@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -25,6 +26,8 @@ class ExoPlayerEngine(context: Context) : MediaEngine {
 
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+
+    private val resumePolicy = ResumePolicy { SystemClock.elapsedRealtime() }
 
     private val player: ExoPlayer = ExoPlayer.Builder(context).build().apply {
         addListener(object : Player.Listener {
@@ -46,13 +49,38 @@ class ExoPlayerEngine(context: Context) : MediaEngine {
     }
 
     override fun play(url: String) = onMain {
+        resumePolicy.onPlay()
         player.setMediaItem(MediaItem.fromUri(url))
         player.prepare()
         player.play()
     }
 
-    override fun resume() = onMain { player.play() }
-    override fun pause() = onMain { player.pause() }
+    /**
+     * A stream paused for [ResumePolicy.STALE_MS]+ likely has a dead socket: the server drops a
+     * long-paused client, and ExoPlayer reads that FIN as a clean end-of-stream (no error) once the
+     * leftover buffer plays out. Re-prepare in that case, and whenever the player already sits in
+     * IDLE/ENDED, so resume rebuilds the source instead of silently deactivating the session.
+     */
+    override fun resume() = onMain {
+        val mustReprepare = resumePolicy.isStale() ||
+            player.playbackState == Player.STATE_IDLE ||
+            player.playbackState == Player.STATE_ENDED
+        resumePolicy.onPlay()
+        if (mustReprepare && player.currentMediaItem != null) {
+            // stop() keeps the media item; prepare() opens a fresh connection. Seekable content
+            // returns to where it was; live streams rejoin at the live edge.
+            val position = player.currentPosition
+            val seekable = player.isCurrentMediaItemSeekable
+            player.stop()
+            player.prepare()
+            if (seekable && position > 0) player.seekTo(position)
+        }
+        player.play()
+    }
+    override fun pause() = onMain {
+        resumePolicy.onPause()
+        player.pause()
+    }
     override fun stop() = onMain {
         player.stop()
         player.clearMediaItems()

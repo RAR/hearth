@@ -70,6 +70,7 @@ data class Entities(
     val tempSensor: String? = null,
     val weather: String? = null,
     val aqiSensor: String? = null,
+    val rainEvent: String? = null,  // event-rain total sensor; > 0 shows the home rain pill
     val climate: List<String> = emptyList(),
     val solar: SolarConfig = SolarConfig(),
     val lightGroups: List<LightGroup> = emptyList(),
@@ -186,6 +187,7 @@ data class DashConfig(
         entities.tempSensor?.let { add(it) }
         entities.weather?.let { add(it) }
         entities.aqiSensor?.let { add(it) }
+        entities.rainEvent?.let { add(it) }
         addAll(entities.climate)
         addAll(entities.solar.ids())
         entities.lightGroups.forEach { addAll(it.entities) }
@@ -235,6 +237,7 @@ data class DashConfig(
                 tempSensor = entities.tempSensor?.trim()?.ifBlank { null },
                 weather = entities.weather?.trim()?.ifBlank { null },
                 aqiSensor = entities.aqiSensor?.trim()?.ifBlank { null },
+                rainEvent = entities.rainEvent?.trim()?.ifBlank { null },
                 climate = entities.climate.filter { it.isNotBlank() },
                 solar = entities.solar.copy(
                     pv = entities.solar.pv?.trim()?.ifBlank { null },

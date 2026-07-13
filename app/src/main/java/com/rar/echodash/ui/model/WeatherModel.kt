@@ -84,6 +84,22 @@ fun weatherPill(
     )
 }
 
+data class RainPill(val text: String, val stale: Boolean)
+
+/** Event-rain pill; visible only while the running event total is > 0 (the sensor resets to 0
+ *  when the station considers the rain event over, so > 0 IS the "it's raining" signal). */
+fun rainPill(rainSensorId: String?, entities: Map<String, EntityState>, nowMs: Long): RainPill? {
+    val sensor = rainSensorId?.let { entities[it] } ?: return null
+    val value = sensor.state.toDoubleOrNull() ?: return null
+    if (value <= 0.0) return null
+    val unit = sensor.attr("unit_of_measurement")
+    val amount = formatSensor(value, 2)
+    return RainPill(
+        text = if (unit != null) "$amount $unit" else amount,
+        stale = nowMs - sensor.lastUpdatedMs > STALE_AFTER_MS,
+    )
+}
+
 data class DailyForecast(val dayOfWeek: String, val icon: WeatherIcon, val high: Double?, val low: Double?)
 
 /** Parse a weather.get_forecasts result into up to 5 daily columns for [entityId]. */

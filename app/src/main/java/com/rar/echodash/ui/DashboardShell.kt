@@ -35,6 +35,7 @@ import com.rar.echodash.ui.model.nwsNotifications
 import com.rar.echodash.ui.model.solarCard
 import com.rar.echodash.ui.model.solarFlow
 import com.rar.echodash.ui.model.thermostats
+import com.rar.echodash.ui.model.rainPill
 import com.rar.echodash.ui.model.weatherPill
 import com.rar.echodash.ui.panels.CamerasPanel
 import com.rar.echodash.ui.panels.ClimatePanel
@@ -116,6 +117,9 @@ fun DashboardShell(
                     val aqi = remember(entities, config.entities) {
                         aqiPill(config.entities.aqiSensor, entities, System.currentTimeMillis())
                     }
+                    val rain = remember(entities, config.entities) {
+                        rainPill(config.entities.rainEvent, entities, System.currentTimeMillis())
+                    }
                     val evs = remember(entities, config.entities.evs) {
                         evCards(config.entities.evs, entities, System.currentTimeMillis())
                     }
@@ -148,6 +152,7 @@ fun DashboardShell(
                         slideshowSeconds = config.home.slideshowSeconds,
                         pill = pill,
                         aqi = aqi,
+                        rain = rain,
                         evs = evs,
                         solar = solar,
                         notifications = notifications,

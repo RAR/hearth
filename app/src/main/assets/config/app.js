@@ -345,6 +345,10 @@ function renderEntities() {
     entityPicker(["weather"], e.weather, v => e.weather = v)));
   host.appendChild(labeledRow("Air quality (AQI)",
     entityPicker(["sensor"], e.aqiSensor, v => e.aqiSensor = v)));
+  host.appendChild(labeledRow("Event rain sensor",
+    entityPicker(["sensor"], e.rainEvent, v => e.rainEvent = v)));
+  host.appendChild(el("div", "muted",
+    "Event-rain total (resets to 0 when the rain event ends). While above 0, a rain pill shows the running total on the home screen."));
 
   // climate list
   host.appendChild(subhead("climate", "Thermostats"));

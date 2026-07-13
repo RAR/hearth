@@ -73,7 +73,9 @@ import com.rar.echodash.ui.model.AqiPill
 import com.rar.echodash.ui.model.BattFlow
 import com.rar.echodash.ui.model.EvCard
 import com.rar.echodash.ui.model.NotificationItem
+import com.rar.echodash.ui.model.RainPill
 import com.rar.echodash.ui.model.SolarCard
+import com.rar.echodash.ui.model.WeatherIcon
 import com.rar.echodash.ui.model.WeatherPill
 import java.io.File
 import java.text.SimpleDateFormat
@@ -141,6 +143,7 @@ fun HomeView(
     slideshowSeconds: Int,
     pill: WeatherPill?,
     aqi: AqiPill?,
+    rain: RainPill? = null,
     evs: List<EvCard> = emptyList(),
     solar: SolarCard? = null,
     notifications: List<NotificationItem> = emptyList(),
@@ -234,7 +237,7 @@ fun HomeView(
                 )
             }
 
-            if (pill != null || aqi != null) {
+            if (pill != null || aqi != null || rain != null) {
                 Row(
                     Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -273,6 +276,24 @@ fun HomeView(
                                 color = Color(aqi.band.colorArgb).copy(alpha = dim),
                                 fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
                             )
+                        }
+                    }
+                    if (rain != null) {
+                        Row(
+                            Modifier
+                                .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            val dim = if (rain.stale) 0.4f else 0.95f
+                            Icon(
+                                imageVector = weatherIcon(WeatherIcon.RAIN),
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = dim),
+                                modifier = Modifier.size(22.dp),
+                            )
+                            Text(rain.text, color = Color.White.copy(alpha = dim), fontSize = 18.sp)
                         }
                     }
                 }

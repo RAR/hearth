@@ -515,4 +515,14 @@ class DashConfigTest {
         )
         assertEquals(listOf("sensor.t", "sensor.nws_alerts_alerts"), cfg.referencedEntityIds())
     }
+
+    @Test
+    fun rainEventClampsAndJoinsWatchList() {
+        val cfg = DashConfig(entities = Entities(rainEvent = "  sensor.rain  ")).clamped()
+        assertEquals("sensor.rain", cfg.entities.rainEvent)
+        assertEquals(listOf("sensor.rain"), cfg.referencedEntityIds())
+        assertEquals(null, DashConfig(entities = Entities(rainEvent = "   ")).clamped().entities.rainEvent)
+        // Old stored docs without the key decode to the default.
+        assertEquals(null, decodeConfig("""{"version":1}""").entities.rainEvent)
+    }
 }

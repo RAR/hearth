@@ -451,4 +451,68 @@ class DashConfigTest {
         assertEquals("alexa", decodeConfig(text).voice.wakeWord)
         assertEquals(65, decodeConfig(text).voice.wakeThreshold)
     }
+
+    @Test
+    fun notificationsDefaults() {
+        val n = DashConfig().notifications
+        assertEquals(null, n.nwsAlerts)
+        assertEquals("minor", n.nwsMinSeverity)
+        // absent from JSON -> defaults, unknown-key tolerant
+        val cfg = decodeConfig("""{"version":1}""")
+        assertEquals(null, cfg.notifications.nwsAlerts)
+        assertEquals("minor", cfg.notifications.nwsMinSeverity)
+    }
+
+    @Test
+    fun notificationsRoundTrips() {
+        val cfg = DashConfig(
+            notifications = NotificationsConfig(nwsAlerts = "sensor.nws_alerts_alerts", nwsMinSeverity = "severe"),
+        )
+        val text = ConfigJson.json.encodeToString(DashConfig.serializer(), cfg)
+        assertEquals(cfg, decodeConfig(text))
+        assertEquals("sensor.nws_alerts_alerts", decodeConfig(text).notifications.nwsAlerts)
+        assertEquals("severe", decodeConfig(text).notifications.nwsMinSeverity)
+    }
+
+    @Test
+    fun notificationsClampedTrimsSensorAndClampsSeverity() {
+        val cfg = DashConfig(
+            notifications = NotificationsConfig(nwsAlerts = "  sensor.a  ", nwsMinSeverity = "  Moderate  "),
+        ).clamped().notifications
+        assertEquals("sensor.a", cfg.nwsAlerts)      // trimmed
+        assertEquals("moderate", cfg.nwsMinSeverity) // lower-cased, kept
+    }
+
+    @Test
+    fun notificationsClampedBlankSensorToNullAndBadSeverityToMinor() {
+        val blank = DashConfig(
+            notifications = NotificationsConfig(nwsAlerts = "   ", nwsMinSeverity = "bogus"),
+        ).clamped().notifications
+        assertEquals(null, blank.nwsAlerts)
+        assertEquals("minor", blank.nwsMinSeverity)  // unknown -> minor
+        val empty = DashConfig(
+            notifications = NotificationsConfig(nwsAlerts = "", nwsMinSeverity = ""),
+        ).clamped().notifications
+        assertEquals(null, empty.nwsAlerts)
+        assertEquals("minor", empty.nwsMinSeverity)
+    }
+
+    @Test
+    fun notificationsSurvivesClampedAndDefaultsOnOldConfig() {
+        assertEquals("severe",
+            DashConfig(notifications = NotificationsConfig(nwsMinSeverity = "severe")).clamped().notifications.nwsMinSeverity)
+        // old config document with no "notifications" key -> defaults fill in
+        val cfg = decodeConfig("""{"version":1,"home":{"photoFolder":"nas"}}""")
+        assertEquals(null, cfg.notifications.nwsAlerts)
+        assertEquals("minor", cfg.notifications.nwsMinSeverity)
+    }
+
+    @Test
+    fun referencedEntityIdsIncludesNwsSensor() {
+        val cfg = DashConfig(
+            entities = Entities(tempSensor = "sensor.t"),
+            notifications = NotificationsConfig(nwsAlerts = "sensor.nws_alerts_alerts"),
+        )
+        assertEquals(listOf("sensor.t", "sensor.nws_alerts_alerts"), cfg.referencedEntityIds())
+    }
 }

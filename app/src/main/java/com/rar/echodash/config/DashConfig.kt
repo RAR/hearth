@@ -151,6 +151,23 @@ data class NightSettings(
     )
 }
 
+@Serializable
+data class NotificationsConfig(
+    val nwsAlerts: String? = null,        // NWS alerts sensor entity id (nws_alerts integration)
+    val nwsMinSeverity: String = "minor", // "minor" | "moderate" | "severe"
+) {
+    /** Trim the sensor id (blank -> null) and clamp the min-severity to the valid set (default minor). */
+    fun clamped(): NotificationsConfig = copy(
+        nwsAlerts = nwsAlerts?.trim()?.ifBlank { null },
+        nwsMinSeverity = nwsMinSeverity.trim().lowercase().let { if (it in MIN_SEVERITIES) it else "minor" },
+    )
+
+    companion object {
+        /** The three recognized minimum-severity ids. */
+        val MIN_SEVERITIES: Set<String> = setOf("minor", "moderate", "severe")
+    }
+}
+
 /** The whole device configuration; one versioned document persisted at filesDir/config.json. */
 @Serializable
 data class DashConfig(
@@ -162,6 +179,7 @@ data class DashConfig(
     val voice: VoiceSettings = VoiceSettings(),
     val media: MediaSettings = MediaSettings(),
     val night: NightSettings = NightSettings(),
+    val notifications: NotificationsConfig = NotificationsConfig(),
 ) {
     /** Every entity id referenced anywhere, first-seen order, de-duplicated (EntityHub watched set). */
     fun referencedEntityIds(): List<String> = buildList {
@@ -175,6 +193,7 @@ data class DashConfig(
         entities.doorbells.forEach { d -> d.trigger?.let { add(it) } }
         entities.evs.forEach { addAll(it.ids()) }
         media.companionEntity?.let { add(it) }
+        notifications.nwsAlerts?.let { add(it) }
     }.distinct()
 
     /**
@@ -247,6 +266,7 @@ data class DashConfig(
             voice = voice.clamped(),
             media = media.clamped(),
             night = night.clamped(),
+            notifications = notifications.clamped(),
         )
     }
 }

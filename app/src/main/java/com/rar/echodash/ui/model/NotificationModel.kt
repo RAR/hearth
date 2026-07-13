@@ -1,6 +1,7 @@
 package com.rar.echodash.ui.model
 
 import com.rar.echodash.ha.EntityState
+import com.rar.echodash.notify.PushedNotification
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -108,3 +109,26 @@ fun nwsNotifications(
         )
         .map { it.item }
 }
+
+/** Key prefix distinguishing HA-pushed rows from NWS rows in the merged notification list. */
+const val PUSH_KEY_PREFIX = "push:"
+
+/** Map HA-pushed notifications (already newest-first) to display rows. Key = [PUSH_KEY_PREFIX] + id,
+ *  detail = message (null -> not expandable). */
+fun pushedNotificationItems(items: List<PushedNotification>): List<NotificationItem> =
+    items.map {
+        NotificationItem(
+            key = PUSH_KEY_PREFIX + it.id,
+            severity = it.severity,
+            title = it.title,
+            detail = it.message,
+        )
+    }
+
+/**
+ * Merge pushed + NWS rows for the notification area: concatenate pushed-then-NWS, then STABLE-sort by
+ * severity descending (CRITICAL first). Kotlin's [sortedByDescending] is stable, so within a severity
+ * band pushed rows keep their newest-first order ahead of the NWS rows, and NWS keeps its own order.
+ */
+fun mergeNotifications(pushed: List<NotificationItem>, nws: List<NotificationItem>): List<NotificationItem> =
+    (pushed + nws).sortedByDescending { it.severity.ordinal }

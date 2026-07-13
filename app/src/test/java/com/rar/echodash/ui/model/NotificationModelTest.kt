@@ -1,6 +1,7 @@
 package com.rar.echodash.ui.model
 
 import com.rar.echodash.ha.EntityState
+import com.rar.echodash.notify.PushedNotification
 import java.util.TimeZone
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
@@ -237,5 +238,41 @@ class NotificationModelTest {
         assertEquals(1, items.size)
         assertEquals("g", items.single().key)
         assertEquals("Good", items.single().title)
+    }
+
+    // ---- pushed mapping + merge ----
+
+    @Test
+    fun pushedItemsMapKeyAndDetail() {
+        val items = listOf(
+            PushedNotification("a", NotifSeverity.WARNING, "Title A", "Msg A", null),
+            PushedNotification("b", NotifSeverity.INFO, "Title B", null, 123L),
+        )
+        val rows = pushedNotificationItems(items)
+        assertEquals(listOf("push:a", "push:b"), rows.map { it.key })
+        assertEquals("Msg A", rows[0].detail)
+        assertNull(rows[1].detail)
+        assertEquals("Title A", rows[0].title)
+        assertEquals(NotifSeverity.WARNING, rows[0].severity)
+    }
+
+    @Test
+    fun mergeSortsBySeverityPushedFirstWithinBandStable() {
+        val pushed = listOf(
+            NotificationItem("push:p1", NotifSeverity.INFO, "P1", null),
+            NotificationItem("push:p2", NotifSeverity.CRITICAL, "P2", null),
+        )
+        val nws = listOf(
+            NotificationItem("n1", NotifSeverity.CRITICAL, "N1", null),
+            NotificationItem("n2", NotifSeverity.INFO, "N2", null),
+        )
+        val merged = mergeNotifications(pushed, nws)
+        // CRITICAL band first (pushed p2 before nws n1), then INFO band (pushed p1 before nws n2).
+        assertEquals(listOf("push:p2", "n1", "push:p1", "n2"), merged.map { it.key })
+    }
+
+    @Test
+    fun mergeConstant() {
+        assertEquals("push:", PUSH_KEY_PREFIX)
     }
 }

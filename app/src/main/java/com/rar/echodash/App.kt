@@ -39,6 +39,7 @@ import com.rar.echodash.ui.TimerChips
 import com.rar.echodash.ui.TimerFinishedOverlay
 import com.rar.echodash.ui.VoiceOverlay
 import com.rar.echodash.ui.WakeGlow
+import com.rar.echodash.ui.model.pushedNotificationItems
 import com.rar.echodash.ui.theme.EchoTheme
 import com.rar.echodash.vaca.AndroidKioskDevice
 import com.rar.echodash.vaca.AnnouncePlayer
@@ -375,6 +376,23 @@ fun EchoDashApp(deps: AppDeps) {
                     val config by deps.configStore.config.collectAsStateWithLifecycle()
                     val nowPlayingState by deps.nowPlaying.state.collectAsStateWithLifecycle()
                     val art by deps.artFetcher.art.collectAsStateWithLifecycle()
+                    val pushedRaw by deps.pushStore.items.collectAsStateWithLifecycle()
+                    val pushed = remember(pushedRaw) { pushedNotificationItems(pushedRaw) }
+                    // Prune expired pushes: while any has an expiry, wake at the nearest one (capped
+                    // at 30 s so a far-future expiry still gets re-checked), then prune. A prune that
+                    // changes the list re-emits and relaunches this effect; the 30 s cap re-check is
+                    // handled by re-reading the store's current value each loop iteration.
+                    LaunchedEffect(pushedRaw) {
+                        while (true) {
+                            val current = deps.pushStore.items.value
+                            val expiries = current.mapNotNull { it.expiresAtMs }
+                            if (expiries.isEmpty()) break
+                            val wait = (expiries.min() - System.currentTimeMillis())
+                                .coerceAtMost(30_000L).coerceAtLeast(250L)
+                            delay(wait)
+                            deps.pushStore.prune(System.currentTimeMillis())
+                        }
+                    }
                     val configUrl = remember { deps.configUrl() }
                     val configPinValue = remember { deps.configPin() }
                     var view by remember { mutableStateOf(DashView.HOME) }
@@ -537,6 +555,8 @@ fun EchoDashApp(deps: AppDeps) {
                             idleTimer.onInteraction()
                             deps.nightMode.onUserInteraction(SystemClock.elapsedRealtime())
                         },
+                        pushed = pushed,
+                        onPushDismiss = { id -> deps.pushStore.dismiss(id) },
                     )
 
                     val voiceOverlayState by deps.voiceOverlay.collectAsStateWithLifecycle()

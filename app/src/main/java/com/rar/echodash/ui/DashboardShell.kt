@@ -27,9 +27,12 @@ import com.rar.echodash.config.DashConfig
 import com.rar.echodash.ha.ConnState
 import com.rar.echodash.ha.EntityState
 import com.rar.echodash.ha.RegistryIndex
+import com.rar.echodash.ui.model.NotificationItem
+import com.rar.echodash.ui.model.PUSH_KEY_PREFIX
 import com.rar.echodash.ui.model.aqiPill
 import com.rar.echodash.ui.model.evCards
 import com.rar.echodash.ui.model.lightSections
+import com.rar.echodash.ui.model.mergeNotifications
 import com.rar.echodash.ui.model.notifSeverityOf
 import com.rar.echodash.ui.model.nwsNotifications
 import com.rar.echodash.ui.model.solarCard
@@ -81,6 +84,8 @@ fun DashboardShell(
     streamResolver: StreamResolver,
     nightActive: Boolean = false,
     onNightWake: () -> Unit = {},
+    pushed: List<NotificationItem> = emptyList(),
+    onPushDismiss: (String) -> Unit = {},
 ) {
     val connected = connState == ConnState.CONNECTED
     val weatherEntityId = config.entities.weather
@@ -126,7 +131,7 @@ fun DashboardShell(
                     val solar = remember(entities, config.entities.solar) {
                         solarCard(config.entities.solar, entities)
                     }
-                    val allNotifications = remember(entities, config.notifications) {
+                    val nwsItems = remember(entities, config.notifications) {
                         nwsNotifications(
                             config.notifications.nwsAlerts,
                             notifSeverityOf(config.notifications.nwsMinSeverity),
@@ -134,16 +139,21 @@ fun DashboardShell(
                             System.currentTimeMillis(),
                         )
                     }
+                    val allNotifications = remember(pushed, nwsItems) {
+                        mergeNotifications(pushed, nwsItems)
+                    }
                     val notifications = allNotifications.filter { it.key !in dismissedKeys }
                     // Prune dismissed keys no longer present so the set can't grow unboundedly.
                     // Only while the sensor reports a numeric count: when it's unavailable (HA
                     // restarting) an empty list means "unknown", not "no alerts" — pruning then
                     // would resurrect dismissed-but-still-active alerts once the sensor recovers.
+                    // Keyed on the NWS-only list: pushed keys never enter dismissedKeys (removal from
+                    // the store IS their dismissal), so they must not participate in this guard.
                     val nwsLive = config.notifications.nwsAlerts
                         ?.let { entities[it]?.state?.toIntOrNull() } != null
-                    LaunchedEffect(allNotifications, nwsLive) {
+                    LaunchedEffect(nwsItems, nwsLive) {
                         if (!nwsLive) return@LaunchedEffect
-                        val present = allNotifications.mapTo(HashSet()) { it.key }
+                        val present = nwsItems.mapTo(HashSet()) { it.key }
                         val pruned = dismissedKeys intersect present
                         if (pruned != dismissedKeys) dismissedKeys = pruned
                     }
@@ -156,7 +166,10 @@ fun DashboardShell(
                         evs = evs,
                         solar = solar,
                         notifications = notifications,
-                        onDismiss = { key -> dismissedKeys = dismissedKeys + key },
+                        onDismiss = { key ->
+                            if (key.startsWith(PUSH_KEY_PREFIX)) onPushDismiss(key.removePrefix(PUSH_KEY_PREFIX))
+                            else dismissedKeys = dismissedKeys + key
+                        },
                         clockFormat = config.home.clockFormat,
                         connState = connState,
                         configUrl = configUrl,

@@ -359,7 +359,7 @@ class DashConfigTest {
             entities = Entities(
                 evs = listOf(
                     EvConfig(name = "  Ioniq  ", plugged = "  binary_sensor.plug  ", charging = "  binary_sensor.charging  ",
-                        soc = "sensor.soc", power = "  ", energy = "  sensor.energy  ", eta = null),
+                        soc = "sensor.soc", limit = "  sensor.limit  ", power = "  ", energy = "  sensor.energy  ", eta = null),
                     EvConfig(name = "", plugged = "", charging = "switch.c2", soc = "", power = null, energy = " ", eta = "  "),
                     EvConfig(name = "Kona", charging = "sensor.c3"),                 // 3rd valid -> capped out
                     EvConfig(name = "   ", plugged = "  ", charging = "  ", soc = " ", power = null, energy = "", eta = ""), // all blank -> dropped
@@ -369,7 +369,7 @@ class DashConfigTest {
         assertEquals(2, cfg.entities.evs.size)
         assertEquals(
             EvConfig(name = "Ioniq", plugged = "binary_sensor.plug", charging = "binary_sensor.charging",
-                soc = "sensor.soc", power = null, energy = "sensor.energy", eta = null),
+                soc = "sensor.soc", limit = "sensor.limit", power = null, energy = "sensor.energy", eta = null),
             cfg.entities.evs[0],
         )
         assertEquals(EvConfig(name = "", charging = "switch.c2"), cfg.entities.evs[1])
@@ -382,13 +382,13 @@ class DashConfigTest {
                 tempSensor = "sensor.t",
                 evs = listOf(
                     EvConfig(name = "Ioniq", plugged = "binary_sensor.plug", charging = "binary_sensor.charging",
-                        soc = "sensor.soc", power = "sensor.power", energy = "sensor.energy", eta = "sensor.eta"),
+                        soc = "sensor.soc", limit = "sensor.limit", power = "sensor.power", energy = "sensor.energy", eta = "sensor.eta"),
                     EvConfig(charging = "switch.c2"),
                 ),
             ),
         )
         assertEquals(
-            listOf("sensor.t", "binary_sensor.plug", "binary_sensor.charging", "sensor.soc",
+            listOf("sensor.t", "binary_sensor.plug", "binary_sensor.charging", "sensor.soc", "sensor.limit",
                 "sensor.power", "sensor.energy", "sensor.eta", "switch.c2"),
             cfg.referencedEntityIds(),
         )

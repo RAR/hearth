@@ -383,6 +383,16 @@ private fun EvCardView(card: EvCard) {
                         )
                     }
                 }
+                if (card.limitPct != null) {
+                    Box(
+                        Modifier
+                            // 2dp tick at the vehicle's charge limit; -1dp centers it on the fraction.
+                            .offset(x = (216 * card.limitPct / 100 - 1).dp)
+                            .width(2.dp)
+                            .fillMaxHeight()
+                            .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(1.dp)),
+                    )
+                }
             }
         }
         val stats = listOfNotNull(card.chargeLine, card.etaText).joinToString(" · ")

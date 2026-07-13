@@ -58,6 +58,36 @@ class EvModelTest {
     }
 
     @Test
+    fun limitParsedClampedAndRounded() {
+        fun limit(v: String?) = evCards(
+            listOf(EvConfig(charging = "binary_sensor.c", limit = v?.let { "sensor.limit" })),
+            buildMap {
+                put("binary_sensor.c", st("binary_sensor.c", "on"))
+                if (v != null) put("sensor.limit", st("sensor.limit", v, "%"))
+            },
+            0L,
+        ).single().limitPct
+        assertEquals(80, limit("79.6"))
+        assertEquals(100, limit("150"))
+        assertNull(limit("n/a"))
+        assertNull(limit(null)) // unconfigured
+    }
+
+    @Test
+    fun limitShownWhileIdleToo() {
+        val card = evCards(
+            listOf(EvConfig(name = "Car", plugged = "binary_sensor.plug", limit = "sensor.limit")),
+            mapOf(
+                "binary_sensor.plug" to st("binary_sensor.plug", "on"),
+                "sensor.limit" to st("sensor.limit", "80", "%"),
+            ),
+            0L,
+        ).single()
+        assertEquals(false, card.charging)
+        assertEquals(80, card.limitPct)
+    }
+
+    @Test
     fun powerUnitAwareFormatting() {
         fun chargeLine(state: String, unit: String) = evCards(
             listOf(EvConfig(charging = "binary_sensor.c", power = "sensor.p")),

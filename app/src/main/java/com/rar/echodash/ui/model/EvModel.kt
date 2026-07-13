@@ -13,6 +13,7 @@ data class EvCard(
     val name: String,        // config name, or "EV" when blank
     val charging: Boolean,   // true while actually charging: animates the gauge + shows the charge/eta lines
     val socPct: Int?,        // 0..100 for the gauge + "%" text; null hides the gauge row
+    val limitPct: Int?,      // 0..100 tick position on the gauge; null hides the tick
     val chargeLine: String?, // "7.2 kW · 4.3 kWh" (power · energy); null when idle or neither sensor readable
     val etaText: String?,    // "1h05" / "45m"; null when idle or unparseable
 )
@@ -39,6 +40,7 @@ fun evCards(cfgs: List<EvConfig>, entities: Map<String, EntityState>, nowMs: Lon
         if (!plugged && !charging) return@mapNotNull null
 
         val socPct = cfg.soc?.let { entities[it] }?.state?.toDoubleOrNull()?.roundToInt()?.coerceIn(0, 100)
+        val limitPct = cfg.limit?.let { entities[it] }?.state?.toDoubleOrNull()?.roundToInt()?.coerceIn(0, 100)
         val chargeLine: String?
         val etaText: String?
         if (charging) {
@@ -55,6 +57,7 @@ fun evCards(cfgs: List<EvConfig>, entities: Map<String, EntityState>, nowMs: Lon
             name = cfg.name.trim().ifBlank { "EV" },
             charging = charging,
             socPct = socPct,
+            limitPct = limitPct,
             chargeLine = chargeLine,
             etaText = etaText,
         )

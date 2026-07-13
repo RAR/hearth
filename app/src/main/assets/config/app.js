@@ -628,6 +628,8 @@ function renderEv() {
       entityPicker(["binary_sensor", "sensor", "switch"], slot.charging, v => slot.charging = v)));
     box.appendChild(labeledRow("Battery %",
       entityPicker(["sensor"], slot.soc, v => slot.soc = v)));
+    box.appendChild(labeledRow("Charge limit %",
+      entityPicker(["sensor", "number", "input_number"], slot.limit, v => slot.limit = v)));
     box.appendChild(labeledRow("Charge power",
       entityPicker(["sensor"], slot.power, v => slot.power = v)));
     box.appendChild(labeledRow("Session energy",
@@ -644,7 +646,7 @@ function renderEv() {
     "and animates the bar while power flows. Charge power (W or kW), session energy (Wh or kWh), " +
     "and time remaining (minutes, H:MM:SS, or a timestamp) only display while charging. Battery % " +
     "shows whenever the card is up. EVCC’s status sensor (A/B/C) can drive both trigger pickers. " +
-    "Empty slots are dropped on save."));
+    "Empty slots are dropped on save. A charge-limit entity draws a tick on the battery bar."));
 }
 
 function updateNightLux(status) {

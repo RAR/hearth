@@ -622,12 +622,16 @@ function renderEv() {
     name.addEventListener("change", () => slot.name = name.value.trim());
     box.appendChild(labeledRow("Name", name));
 
+    box.appendChild(labeledRow("Plugged in when on",
+      entityPicker(["binary_sensor", "sensor", "switch"], slot.plugged, v => slot.plugged = v)));
     box.appendChild(labeledRow("Charging when on",
       entityPicker(["binary_sensor", "sensor", "switch"], slot.charging, v => slot.charging = v)));
     box.appendChild(labeledRow("Battery %",
       entityPicker(["sensor"], slot.soc, v => slot.soc = v)));
     box.appendChild(labeledRow("Charge power",
       entityPicker(["sensor"], slot.power, v => slot.power = v)));
+    box.appendChild(labeledRow("Session energy",
+      entityPicker(["sensor"], slot.energy, v => slot.energy = v)));
     box.appendChild(labeledRow("Time remaining",
       entityPicker(["sensor"], slot.eta, v => slot.eta = v)));
 
@@ -635,9 +639,12 @@ function renderEv() {
   });
 
   host.appendChild(el("div", "muted",
-    "A card shows on the home screen while a car charges. “Charging when on” is required — its " +
-    "on/charging state triggers the card. Battery %, charge power (W or kW), and time remaining " +
-    "(minutes, H:MM:SS, or a timestamp) are optional. Empty slots are dropped on save."));
+    "A card shows on the home screen while a car is plugged in or charging. Set either trigger — " +
+    "“Plugged in when on” shows the card once the cable is connected; “Charging when on” shows it " +
+    "and animates the bar while power flows. Charge power (W or kW), session energy (Wh or kWh), " +
+    "and time remaining (minutes, H:MM:SS, or a timestamp) only display while charging. Battery % " +
+    "shows whenever the card is up. EVCC’s status sensor (A/B/C) can drive both trigger pickers. " +
+    "Empty slots are dropped on save."));
 }
 
 function updateNightLux(status) {

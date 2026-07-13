@@ -64,6 +64,17 @@ class SatelliteSessionTest {
     }
 
     @Test
+    fun detectionAndTranscriptEmitEarconsBeforeOverlay() {
+        val s = SatelliteSession("1.0")
+        val wake = s.onEvent(event("detection", """{"name":"ok_nabu"}"""))
+        assertEquals(SatelliteAction.Earcon(EarconKind.WAKE), wake.first())
+        assertTrue(wake.last() is SatelliteAction.Overlay)
+        val done = s.onEvent(event("transcript", """{"text":"turn on the light"}"""))
+        assertEquals(SatelliteAction.Earcon(EarconKind.DONE), done.first())
+        assertTrue(done.last() is SatelliteAction.Overlay)
+    }
+
+    @Test
     fun detectionTranscriptSynthesizeDriveOverlay() {
         val s = session()
         s.onEvent(event("run-satellite"))

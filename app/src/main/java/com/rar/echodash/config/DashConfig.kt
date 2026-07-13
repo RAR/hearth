@@ -102,12 +102,14 @@ data class VoiceSettings(
     val enabled: Boolean = false,
     val timerTone: String = "twotone",
     val timerVolume: Int = 80,
+    val wakeSoundVolume: Int = 80,
 ) {
     /** Normalize the timer-alarm fields: trim + unknown/blank tone falls to "twotone",
      *  volume coerced into 0..100. Shared by DashConfig.clamped and the preview endpoint. */
     fun clamped(): VoiceSettings = copy(
         timerTone = timerTone.trim().let { if (it in TONES) it else "twotone" },
         timerVolume = timerVolume.coerceIn(0, 100),
+        wakeSoundVolume = wakeSoundVolume.coerceIn(0, 100),
     )
 
     companion object {

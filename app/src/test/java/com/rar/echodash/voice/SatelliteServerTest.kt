@@ -30,6 +30,7 @@ class SatelliteServerTest {
         override fun onPlaybackStop() { calls.put("pb-stop") }
         override fun onOverlay(state: VoiceOverlayState) { calls.put(state) }
         override fun onTimers(state: TimersUiState) { calls.put(state) }
+        override fun onEarcon(kind: EarconKind) { calls.put(kind) }
         fun next(): Any? = calls.poll(5, TimeUnit.SECONDS)
     }
     private class TestClient(port: Int) : AutoCloseable {

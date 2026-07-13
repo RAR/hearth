@@ -276,6 +276,16 @@ class DashConfigTest {
     }
 
     @Test
+    fun wakeSoundVolumeDefaultsAndClamps() {
+        assertEquals(80, DashConfig().voice.wakeSoundVolume)
+        // absent from JSON -> default, unknown-key tolerant
+        val cfg = decodeConfig("""{"version":1,"voice":{"enabled":true}}""")
+        assertEquals(80, cfg.voice.wakeSoundVolume)
+        assertEquals(100, DashConfig(voice = VoiceSettings(wakeSoundVolume = 150)).clamped().voice.wakeSoundVolume)
+        assertEquals(0, DashConfig(voice = VoiceSettings(wakeSoundVolume = -5)).clamped().voice.wakeSoundVolume)
+    }
+
+    @Test
     fun mediaDefaultsToNoCompanion() {
         assertEquals(null, DashConfig().media.companionEntity)
         // absent from JSON -> default, unknown-key tolerant

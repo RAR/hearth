@@ -36,6 +36,7 @@ class SatelliteServer(
         fun onPlaybackStop()
         fun onOverlay(state: VoiceOverlayState)
         fun onTimers(state: TimersUiState)
+        fun onEarcon(kind: EarconKind)
     }
 
     companion object {
@@ -185,6 +186,7 @@ class SatelliteServer(
             SatelliteAction.PlaybackStop -> out.onPlaybackStop()
             is SatelliteAction.Overlay -> out.onOverlay(a.state)
             is SatelliteAction.Timers -> out.onTimers(a.state)
+            is SatelliteAction.Earcon -> out.onEarcon(a.kind)
         }
     }
 }

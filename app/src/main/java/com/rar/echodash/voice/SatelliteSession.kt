@@ -12,6 +12,9 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
+/** Which acknowledgment chirp to play. */
+enum class EarconKind { WAKE, DONE }
+
 /** Actions the pure session asks the outside world to perform. */
 sealed interface SatelliteAction {
     data class Send(val event: WyomingEvent) : SatelliteAction
@@ -25,6 +28,7 @@ sealed interface SatelliteAction {
     data object PlaybackStop : SatelliteAction
     data class Overlay(val state: VoiceOverlayState) : SatelliteAction
     data class Timers(val state: TimersUiState) : SatelliteAction
+    data class Earcon(val kind: EarconKind) : SatelliteAction
 }
 
 /**
@@ -78,8 +82,14 @@ class SatelliteSession(private val appVersion: String) {
             streaming = false
             listOf(SatelliteAction.StopMic, SatelliteAction.Send(WyomingEvent("streaming-stopped")))
         }
-        "detection" -> listOf(overlayAction(VoiceOverlayState(VoiceOverlayPhase.LISTENING)))
-        "transcript" -> listOf(overlayAction(VoiceOverlayState(VoiceOverlayPhase.TRANSCRIPT, textOf(event))))
+        "detection" -> listOf(
+            SatelliteAction.Earcon(EarconKind.WAKE),
+            overlayAction(VoiceOverlayState(VoiceOverlayPhase.LISTENING)),
+        )
+        "transcript" -> listOf(
+            SatelliteAction.Earcon(EarconKind.DONE),
+            overlayAction(VoiceOverlayState(VoiceOverlayPhase.TRANSCRIPT, textOf(event))),
+        )
         "synthesize" -> listOf(overlayAction(VoiceOverlayState(VoiceOverlayPhase.RESPONSE, textOf(event))))
         "audio-start" -> listOf(
             SatelliteAction.PlaybackStart(

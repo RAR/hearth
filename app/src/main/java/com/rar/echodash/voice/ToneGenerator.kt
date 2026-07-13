@@ -6,8 +6,9 @@ import kotlin.math.sin
 /**
  * Pure-JVM synthesizer for the timer-alarm presets. [render] returns ONE full cycle
  * (audible portion followed by the trailing silence gap) of 16-bit mono PCM at [rate] Hz, so a
- * player can loop the single buffer with a gap between repeats. No Android imports, so this is
- * unit-testable. Playback (AudioTrack) lives in TimerChime.
+ * player can loop the single buffer with a gap between repeats, plus one-shot wake/done
+ * acknowledgment chirps ([earcon]). No Android imports, so this is unit-testable. Playback
+ * (AudioTrack) lives in TimerChime.
  *
  * Amplitude is (volume / 100) * 0.6 * Short.MAX_VALUE: volume 100 matches the historic fixed
  * 0.6-headroom loudness, volume 0 renders pure silence. Unknown tones fall back to "twotone".
@@ -71,5 +72,34 @@ object ToneGenerator {
             out[i] = (sin(2 * PI * freq * i / rate) * amp).toInt().toShort()
         }
         return out
+    }
+
+    /**
+     * One-shot voice acknowledgment chirps (no trailing gap — these are not looping alarm
+     * cycles). "wake" rises (660→880 Hz), "done" falls (880→660 Hz), "preview" is
+     * wake + 150 ms silence + done for the config page. Unknown kinds fall back to "wake".
+     */
+    fun earcon(kind: String, volume: Int, rate: Int): ShortArray {
+        val amp = (volume / 100.0) * 0.6 * Short.MAX_VALUE
+        return when (kind) {
+            "done" -> chirp(amp, rate, 880.0 to 100, 660.0 to 120)
+            "preview" -> earcon("wake", volume, rate) +
+                ShortArray(rate * 150 / 1000) +
+                earcon("done", volume, rate)
+            else -> chirp(amp, rate, 660.0 to 130, 880.0 to 150) // "wake" and any unknown value
+        }
+    }
+
+    /** Two consecutive notes, each (frequency Hz to duration ms), with 8 ms linear ramps. */
+    private fun chirp(amp: Double, rate: Int, first: Pair<Double, Int>, second: Pair<Double, Int>): ShortArray {
+        val ramp = rate * 8 / 1000
+        fun note(freq: Double, ms: Int): ShortArray {
+            val n = rate * ms / 1000
+            return ShortArray(n) { i ->
+                val env = minOf(1.0, i.toDouble() / ramp, (n - 1 - i).toDouble() / ramp)
+                (sin(2 * PI * freq * i / rate) * amp * env).toInt().toShort()
+            }
+        }
+        return note(first.first, first.second) + note(second.first, second.second)
     }
 }

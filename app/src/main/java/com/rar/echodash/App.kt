@@ -52,6 +52,7 @@ import com.rar.echodash.night.NightModeController
 import com.rar.echodash.vaca.NsdAdvertiser
 import com.rar.echodash.vaca.VacaOutgoing
 import com.rar.echodash.vaca.VacaServer
+import com.rar.echodash.voice.EarconKind
 import com.rar.echodash.voice.MicStreamer
 import com.rar.echodash.voice.SatelliteServer
 import com.rar.echodash.voice.TimerChime
@@ -251,6 +252,7 @@ class AppDeps(context: Context) {
             override fun onPlaybackStop() = voicePlayer.onAudioStop()
             override fun onOverlay(state: VoiceOverlayState) { voiceOverlay.value = state }
             override fun onTimers(state: TimersUiState) { timersUi.value = state }
+            override fun onEarcon(kind: EarconKind) { } // wired to EarconPlayer in the next commit
         },
     )
     private val voiceNsd = NsdAdvertiser(appContext, SatelliteServer.PORT, "_wyoming._tcp.")

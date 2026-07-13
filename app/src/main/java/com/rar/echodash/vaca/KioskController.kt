@@ -136,6 +136,7 @@ class KioskController(
     /** Night clock dimming: while active, pins brightness to [percent] and ignores auto-brightness
      *  lux updates and HA screen_brightness changes; clearing restores the normal auto/manual value. */
     fun setNightDim(active: Boolean, percent: Int) {
+        if (!active && !nightDim) return   // clearing when never pinned: don't disturb brightness
         nightDim = active
         if (active) {
             nightDimPercent = percent

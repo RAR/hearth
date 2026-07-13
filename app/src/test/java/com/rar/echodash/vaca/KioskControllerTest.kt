@@ -252,4 +252,15 @@ class KioskControllerTest {
             !device.calls.contains("brightness:50"))
         kiosk.cancelTimers()
     }
+
+    @Test
+    fun clearingNightDimWhenNeverPinnedTouchesNothing() = runTest {
+        val device = FakeDevice()
+        val kiosk = KioskController(this, device)          // auto-brightness on, no lux seen yet
+        device.calls.clear()
+        kiosk.setNightDim(false, 0)                        // first-composition mirror fires this
+        assertTrue("must not force autoPercent(0)=10% at startup",
+            device.calls.none { it.startsWith("brightness:") })
+        kiosk.cancelTimers()
+    }
 }

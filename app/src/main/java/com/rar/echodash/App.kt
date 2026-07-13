@@ -427,9 +427,13 @@ fun EchoDashApp(deps: AppDeps) {
                         }
                     }
                     // Brightness mirror: KioskController pins/releases the backlight as night flips
-                    // or the configured night brightness changes.
+                    // or the configured night brightness changes. Released on dispose so leaving the
+                    // Dashboard (logout -> Setup) never strands the screen at night brightness.
                     LaunchedEffect(nightActive, config.night.brightness) {
                         deps.kiosk.setNightDim(nightActive, config.night.brightness)
+                    }
+                    DisposableEffect(Unit) {
+                        onDispose { deps.kiosk.setNightDim(false, 0) }
                     }
 
                     DashboardShell(

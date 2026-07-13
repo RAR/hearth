@@ -31,6 +31,17 @@ data class SolarConfig(
 }
 
 @Serializable
+data class EvConfig(
+    val name: String = "",
+    val charging: String? = null, // entity whose truthy state shows the card
+    val soc: String? = null,      // battery % sensor
+    val power: String? = null,    // charge power sensor (W or kW, unit-aware)
+    val eta: String? = null,      // time-to-finish sensor (minutes, H:MM:SS, or timestamp)
+) {
+    fun ids(): List<String> = listOfNotNull(charging, soc, power, eta)
+}
+
+@Serializable
 data class LightGroup(val name: String, val entities: List<String> = emptyList())
 
 /** A configured camera. Valid with an [rtspUrl] alone (raw go2rtc stream HA doesn't know) or an
@@ -59,6 +70,7 @@ data class Entities(
     val lightGroups: List<LightGroup> = emptyList(),
     val cameras: List<CameraConfig> = emptyList(),
     val doorbells: List<DoorbellConfig> = emptyList(),
+    val evs: List<EvConfig> = emptyList(),
 )
 
 @Serializable
@@ -144,6 +156,7 @@ data class DashConfig(
         entities.lightGroups.forEach { addAll(it.entities) }
         entities.cameras.forEach { c -> c.entity?.let { add(it) } }
         entities.doorbells.forEach { d -> d.trigger?.let { add(it) } }
+        entities.evs.forEach { addAll(it.ids()) }
         media.companionEntity?.let { add(it) }
     }.distinct()
 
@@ -165,6 +178,18 @@ data class DashConfig(
         val cleanedDoorbells = entities.doorbells
             .map { it.copy(trigger = it.trigger?.trim()?.ifBlank { null }, camera = it.camera.trim()) }
             .filter { it.trigger != null && it.camera in cameraNames }
+        val cleanedEvs = entities.evs
+            .map { ev ->
+                ev.copy(
+                    name = ev.name.trim(),
+                    charging = ev.charging?.trim()?.ifBlank { null },
+                    soc = ev.soc?.trim()?.ifBlank { null },
+                    power = ev.power?.trim()?.ifBlank { null },
+                    eta = ev.eta?.trim()?.ifBlank { null },
+                )
+            }
+            .filter { it.name.isNotBlank() || it.ids().isNotEmpty() }
+            .take(2)
         return copy(
             version = 1,
             entities = entities.copy(
@@ -184,6 +209,7 @@ data class DashConfig(
                     .filter { it.entities.isNotEmpty() || it.name.isNotBlank() },
                 cameras = cleanedCameras,
                 doorbells = cleanedDoorbells,
+                evs = cleanedEvs,
             ),
             home = home.copy(
                 idleReturnSeconds = home.idleReturnSeconds.coerceIn(15, 3600),

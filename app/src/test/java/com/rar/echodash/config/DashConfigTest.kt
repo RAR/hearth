@@ -352,4 +352,40 @@ class DashConfigTest {
         assertEquals(false, cfg.night.enabled)
         assertEquals(10, cfg.night.thresholdLux)
     }
+
+    @Test
+    fun evSlotsClampedTrimmedAndCapped() {
+        val cfg = DashConfig(
+            entities = Entities(
+                evs = listOf(
+                    EvConfig(name = "  Ioniq  ", charging = "  binary_sensor.charging  ",
+                        soc = "sensor.soc", power = "  ", eta = null),
+                    EvConfig(name = "", charging = "switch.c2", soc = "", power = null, eta = "  "),
+                    EvConfig(name = "Kona", charging = "sensor.c3"),                 // 3rd valid -> capped out
+                    EvConfig(name = "   ", charging = "  ", soc = " ", power = null, eta = ""), // all blank -> dropped
+                ),
+            ),
+        ).clamped()
+        assertEquals(2, cfg.entities.evs.size)
+        assertEquals(EvConfig("Ioniq", "binary_sensor.charging", "sensor.soc", null, null), cfg.entities.evs[0])
+        assertEquals(EvConfig("", "switch.c2", null, null, null), cfg.entities.evs[1])
+    }
+
+    @Test
+    fun referencedEntityIdsIncludeEvEntities() {
+        val cfg = DashConfig(
+            entities = Entities(
+                tempSensor = "sensor.t",
+                evs = listOf(
+                    EvConfig(name = "Ioniq", charging = "binary_sensor.charging",
+                        soc = "sensor.soc", power = "sensor.power", eta = "sensor.eta"),
+                    EvConfig(charging = "switch.c2"),
+                ),
+            ),
+        )
+        assertEquals(
+            listOf("sensor.t", "binary_sensor.charging", "sensor.soc", "sensor.power", "sensor.eta", "switch.c2"),
+            cfg.referencedEntityIds(),
+        )
+    }
 }

@@ -328,10 +328,16 @@ private fun EvCardView(card: EvCard) {
                 Icons.Outlined.Power, contentDescription = null,
                 tint = Color.White, modifier = Modifier.size(18.dp),
             )
-            Text(card.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            Text(
+                card.name, color = Color.White, fontSize = 16.sp,
+                fontWeight = FontWeight.Medium, lineHeight = 17.sp,
+            )
         }
         if (card.chargeLine != null) {
-            Text(card.chargeLine, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp)
+            Text(
+                card.chargeLine, color = Color.White.copy(alpha = 0.9f),
+                fontSize = 14.sp, lineHeight = 15.sp,
+            )
         }
         val soc = card.socPct
         if (soc != null || card.etaText != null) {
@@ -389,7 +395,7 @@ private fun EvCardView(card: EvCard) {
                 }
                 Text(
                     listOfNotNull(soc?.let { "$it%" }, card.etaText).joinToString(" · "),
-                    color = Color.White, fontSize = 14.sp,
+                    color = Color.White, fontSize = 14.sp, lineHeight = 15.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }

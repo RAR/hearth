@@ -46,6 +46,7 @@ import com.rar.echodash.vaca.KioskController
 import com.rar.echodash.vaca.LightSensorReporter
 import com.rar.echodash.vaca.MediaBridge
 import com.rar.echodash.media.NowPlayingStore
+import com.rar.echodash.media.ArtFetcher
 import com.rar.echodash.vaca.NsdAdvertiser
 import com.rar.echodash.vaca.VacaOutgoing
 import com.rar.echodash.vaca.VacaServer
@@ -151,6 +152,12 @@ class AppDeps(context: Context) {
     )
     private val mediaEngine = ExoPlayerEngine(appContext)
     val nowPlaying = NowPlayingStore()
+    val artFetcher = ArtFetcher(
+        scope = scope,
+        http = client,
+        baseUrl = { settings.baseUrl },
+        token = { runCatching { auth.validAccessToken() }.getOrNull() },
+    )
     val media = MediaBridge(mediaEngine, nowPlaying) { status ->
         scope.launch { vaca.sendStatus(status) }
     }
@@ -239,6 +246,7 @@ class AppDeps(context: Context) {
 
     init {
         kiosk.sendFeedback = { s -> scope.launch { vaca.sendSettingsFeedback(s) } }
+        artFetcher.start(nowPlaying.state)
     }
 
     /** Start the HA connection, entity hub, and photo sync. */

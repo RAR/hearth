@@ -57,8 +57,10 @@ import com.rar.echodash.voice.EarconKind
 import com.rar.echodash.voice.EarconPlayer
 import com.rar.echodash.voice.MicStreamer
 import com.rar.echodash.voice.SatelliteServer
+import com.rar.echodash.voice.TfliteWakeGraphs
 import com.rar.echodash.voice.TimerChime
 import com.rar.echodash.voice.TimersUiState
+import com.rar.echodash.voice.WakeDetector
 import com.rar.echodash.voice.VoiceOverlayPhase
 import com.rar.echodash.voice.VoiceOverlayState
 import com.rar.echodash.web.ConfigServer
@@ -282,20 +284,35 @@ class AppDeps(context: Context) {
         lightSensor.start()
     }
 
-    /** Reactively run the voice satellite while config.voice.enabled; no app restart needed. */
+    /**
+     * Reactively (re)run the voice satellite. Restarts on any change to voice.enabled,
+     * voice.wakeWord, or voice.wakeThreshold: it rebuilds the TFLite graphs + WakeDetector and
+     * starts the satellite in local-wake mode. If the models fail to load, it logs one warning
+     * and falls back to localWake=false (HA-side wake, the original always-streaming behavior).
+     */
     fun startVoice() {
         scope.launch {
             configStore.config
-                .map { it.voice.enabled }
+                .map { Triple(it.voice.enabled, it.voice.wakeWord, it.voice.wakeThreshold) }
                 .distinctUntilChanged()
-                .collect { enabled ->
+                .collect { (enabled, wakeWord, threshold) ->
+                    // Tear down any running instance first so a config change fully restarts it.
+                    voiceNsd.unregister()
+                    satellite.stop()
+                    micStreamer.stop()
                     if (enabled) {
-                        satellite.start()
+                        val graphs = TfliteWakeGraphs.load(appContext.assets, wakeWord)
+                        val detector = if (graphs != null) {
+                            WakeDetector(graphs.first, graphs.second, graphs.third, threshold) {
+                                System.currentTimeMillis()
+                            }
+                        } else {
+                            android.util.Log.w("AppDeps", "wake models failed to load; falling back to HA-side wake")
+                            null
+                        }
+                        satellite.start(localWake = detector != null, detector = detector, wakeWord = wakeWord)
                         voiceNsd.register()
                     } else {
-                        voiceNsd.unregister()
-                        satellite.stop()
-                        micStreamer.stop()
                         timerChime.stop()
                         voiceOverlay.value = VoiceOverlayState()
                         timersUi.value = TimersUiState()

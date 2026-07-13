@@ -26,6 +26,12 @@ const TONE_OPTIONS = [
   ["trill", "Trill"],
 ];
 
+const WAKE_WORD_OPTIONS = [
+  ["okay_nabu", "Okay Nabu"],
+  ["hey_jarvis", "Hey Jarvis"],
+  ["alexa", "Alexa"],
+];
+
 // ---------- inline SVG glyphs (currentColor) ----------
 const ICONS = {
   lights: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.5.5.8 1 .8 1.6V16h6v-.8c0-.6.3-1.1.8-1.6A6 6 0 0 0 12 3Z"/></svg>',
@@ -543,11 +549,26 @@ function renderVoice() {
   if (v.timerTone == null) v.timerTone = "twotone";
   if (v.timerVolume == null) v.timerVolume = 80;
   if (v.wakeSoundVolume == null) v.wakeSoundVolume = 80;
+  if (v.wakeWord == null) v.wakeWord = "okay_nabu";
+  if (v.wakeThreshold == null) v.wakeThreshold = 50;
 
   const toggle = el("input"); toggle.type = "checkbox"; toggle.checked = !!v.enabled;
   toggle.setAttribute("aria-label", "Voice satellite enabled");
   toggle.addEventListener("change", () => v.enabled = toggle.checked);
   host.appendChild(labeledRow("Voice satellite (Wyoming)", toggle));
+
+  const wakeSel = el("select");
+  WAKE_WORD_OPTIONS.forEach(([val, lbl]) => {
+    const o = el("option", null, lbl); o.value = val;
+    if (v.wakeWord === val) o.selected = true;
+    wakeSel.appendChild(o);
+  });
+  wakeSel.addEventListener("change", () => v.wakeWord = wakeSel.value);
+  host.appendChild(labeledRow("Wake word", wakeSel));
+
+  const sens = el("input"); sens.type = "number"; sens.min = 10; sens.max = 95; sens.value = v.wakeThreshold;
+  sens.addEventListener("change", () => v.wakeThreshold = Math.round(parseFloat(sens.value) || 50));
+  host.appendChild(labeledRow("Wake sensitivity", sens));
 
   const toneSel = el("select");
   TONE_OPTIONS.forEach(([val, lbl]) => {
@@ -591,8 +612,11 @@ function renderVoice() {
   host.appendChild(wakePreview);
 
   host.appendChild(el("div", "muted",
-    "Home Assistant should auto-discover the satellite; otherwise add the Wyoming Protocol integration at <this-device-ip>:10600. Pick the pipeline and wake word in HA's Assist satellite settings." +
-    " Wake sound: chirps when the wake word is heard and when it stops listening; volume 0 disables it."));
+    "Home Assistant should auto-discover the satellite; otherwise add the Wyoming Protocol integration at <this-device-ip>:10600. " +
+    "The wake word is now detected on-device — pick it above (sensitivity 10–95, higher = stricter, clamped on save). " +
+    "HA's own streaming wake-word setting is no longer used, and mic audio only reaches HA after the wake word is heard. " +
+    "Wake sound: chirps when the wake word is heard and when it stops listening; volume 0 disables it. " +
+    "If the on-device models fail to load, the satellite silently falls back to HA-side wake."));
 }
 
 function renderNight() {

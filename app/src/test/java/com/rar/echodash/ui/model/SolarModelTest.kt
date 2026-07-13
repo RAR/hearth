@@ -5,10 +5,8 @@ import com.rar.echodash.ha.EntityState
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SolarModelTest {
@@ -64,7 +62,7 @@ class SolarModelTest {
         val card = solarCard(cfg, entities)!!
         assertEquals("3.2 kW", card.pvText)
         assertEquals(78, card.socPct)
-        assertTrue(card.battCharging)
+        assertEquals(BattFlow.CHARGING, card.battFlow)
         assertEquals("Home 1.4 kW · Export 1.8 kW", card.statsLine)
     }
 
@@ -79,16 +77,18 @@ class SolarModelTest {
     }
 
     @Test
-    fun battChargingSignAndDeadband() {
+    fun battFlowSignAndDeadband() {
         val cfg = SolarConfig(battSoc = "sensor.soc", battPower = "sensor.batt")
         fun cardWith(state: String, unit: String) = solarCard(cfg, mapOf(
             "sensor.soc" to st("sensor.soc", "50", "%"),
             "sensor.batt" to st("sensor.batt", state, unit),
         ))!!
-        assertTrue(cardWith("-200", "W").battCharging)
-        assertFalse(cardWith("-20", "W").battCharging)   // inside deadband
-        assertFalse(cardWith("500", "W").battCharging)   // discharging
-        assertTrue(cardWith("-0.2", "kW").battCharging)  // kW unit-aware
+        assertEquals(BattFlow.CHARGING, cardWith("-200", "W").battFlow)
+        assertEquals(BattFlow.IDLE, cardWith("-20", "W").battFlow)     // inside deadband
+        assertEquals(BattFlow.IDLE, cardWith("30", "W").battFlow)     // inside deadband
+        assertEquals(BattFlow.DISCHARGING, cardWith("500", "W").battFlow)
+        assertEquals(BattFlow.CHARGING, cardWith("-0.2", "kW").battFlow)   // kW unit-aware
+        assertEquals(BattFlow.DISCHARGING, cardWith("0.4", "kW").battFlow)
     }
 
     @Test
@@ -104,6 +104,7 @@ class SolarModelTest {
         assertNotNull(badSoc)
         assertNull(badSoc!!.socPct)
         assertNull(badSoc.statsLine)
+        assertEquals(BattFlow.IDLE, badSoc.battFlow)
         // SOC clamped to 0..100.
         val over = solarCard(SolarConfig(battSoc = "sensor.soc"),
             mapOf("sensor.soc" to st("sensor.soc", "104", "%")))!!

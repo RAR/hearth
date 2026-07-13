@@ -359,7 +359,7 @@ function renderEntities() {
     host.appendChild(labeledRow(lbl, entityPicker(["sensor"], e.solar[k], v => e.solar[k] = v)));
   });
   host.appendChild(el("div", "muted",
-    "Battery % and battery power add a solar card to the home screen (gauge shimmers while the battery charges). " +
+    "Battery % and battery power add a solar card to the home screen (gauge shimmers green while charging, amber in reverse while discharging). " +
     "Battery power: negative = charging (evcc convention). Grid power: positive = importing."));
 
   // light groups

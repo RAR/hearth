@@ -67,6 +67,7 @@ import com.rar.echodash.ha.ConnState
 import com.rar.echodash.media.ArtBitmaps
 import com.rar.echodash.media.NowPlayingState
 import com.rar.echodash.ui.model.AqiPill
+import com.rar.echodash.ui.model.BattFlow
 import com.rar.echodash.ui.model.EvCard
 import com.rar.echodash.ui.model.SolarCard
 import com.rar.echodash.ui.model.WeatherPill
@@ -353,9 +354,18 @@ private fun EvCardView(card: EvCard) {
     }
 }
 
-/** 216dp gauge track: green fill, optional charging shimmer, optional limit tick. */
+private val GaugeGreen = Color(0xFF7BC67E)
+private val GaugeAmber = Color(0xFFE0A030) // matches the connection-status dot
+
+/** 216dp gauge track: colored fill, optional directional shimmer, optional limit tick. */
 @Composable
-private fun GaugeBar(fillPct: Int, shimmer: Boolean, tickPct: Int? = null) {
+private fun GaugeBar(
+    fillPct: Int,
+    shimmer: Boolean,
+    tickPct: Int? = null,
+    fill: Color = GaugeGreen,
+    reverse: Boolean = false,
+) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -369,7 +379,7 @@ private fun GaugeBar(fillPct: Int, shimmer: Boolean, tickPct: Int? = null) {
                 // clip() is required: background() draws a rounded shape but does
                 // not clip children, so the shimmer band would bleed past the fill.
                 .clip(RoundedCornerShape(4.dp))
-                .background(Color(0xFF7BC67E)),
+                .background(fill),
         ) {
             // Only run the infinite animation while actually charging.
             if (shimmer) {
@@ -387,7 +397,7 @@ private fun GaugeBar(fillPct: Int, shimmer: Boolean, tickPct: Int? = null) {
                     Modifier
                         // Sweep a 24dp band left-to-right across the full 216dp track
                         // width; the fill's clip keeps it inside the filled region.
-                        .offset(x = (fraction * (216 + 24)).dp - 24.dp)
+                        .offset(x = ((if (reverse) 1f - fraction else fraction) * (216 + 24)).dp - 24.dp)
                         .width(24.dp)
                         .fillMaxHeight()
                         .background(
@@ -443,7 +453,18 @@ private fun SolarCardView(card: SolarCard) {
             }
         }
         if (card.socPct != null) {
-            GaugeBar(card.socPct, card.battCharging)
+            // Idle gauge keeps the color of the last non-idle direction (green until first activity).
+            var lastFlow by remember { mutableStateOf(BattFlow.CHARGING) }
+            LaunchedEffect(card.battFlow) {
+                if (card.battFlow != BattFlow.IDLE) lastFlow = card.battFlow
+            }
+            val tint = if (card.battFlow != BattFlow.IDLE) card.battFlow else lastFlow
+            GaugeBar(
+                card.socPct,
+                shimmer = card.battFlow != BattFlow.IDLE,
+                fill = if (tint == BattFlow.DISCHARGING) GaugeAmber else GaugeGreen,
+                reverse = card.battFlow == BattFlow.DISCHARGING,
+            )
         }
         if (card.statsLine != null) {
             Text(

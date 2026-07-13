@@ -45,12 +45,15 @@ fun solarFlow(cfg: SolarConfig, entities: Map<String, EntityState>): SolarFlow {
     )
 }
 
+/** Active battery flow, deadband-filtered: drives the gauge shimmer and its direction. */
+enum class BattFlow { CHARGING, DISCHARGING, IDLE }
+
 /** Home solar/battery pill card. Null when no solar entities resolve (card hidden). */
 data class SolarCard(
-    val pvText: String?,       // formatted PV output for the header; null = no pv sensor
-    val socPct: Int?,          // battery SOC 0-100; null = no gauge
-    val battCharging: Boolean, // battery power below -CHARGE_DEADBAND_W (evcc: negative = charging)
-    val statsLine: String?,    // "Home 1.4 kW · Export 1.8 kW"; null when empty
+    val pvText: String?,     // formatted PV output for the header; null = no pv sensor
+    val socPct: Int?,        // battery SOC 0-100; null = no gauge
+    val battFlow: BattFlow,  // |power| > CHARGE_DEADBAND_W; negative = charging (evcc convention)
+    val statsLine: String?,  // "Home 1.4 kW · Export 1.8 kW"; null when empty
 )
 
 private const val CHARGE_DEADBAND_W = 50.0
@@ -75,7 +78,12 @@ fun solarCard(cfg: SolarConfig, entities: Map<String, EntityState>): SolarCard? 
     return SolarCard(
         pvText = pv?.let { formatWatts(it) },
         socPct = soc?.state?.toDoubleOrNull()?.roundToInt()?.coerceIn(0, 100),
-        battCharging = battWatts != null && battWatts < -CHARGE_DEADBAND_W,
+        battFlow = when {
+            battWatts == null -> BattFlow.IDLE
+            battWatts < -CHARGE_DEADBAND_W -> BattFlow.CHARGING
+            battWatts > CHARGE_DEADBAND_W -> BattFlow.DISCHARGING
+            else -> BattFlow.IDLE
+        },
         statsLine = statsLine,
     )
 }

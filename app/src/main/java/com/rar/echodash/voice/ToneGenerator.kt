@@ -86,7 +86,9 @@ object ToneGenerator {
             "preview" -> earcon("wake", volume, rate) +
                 ShortArray(rate * 150 / 1000) +
                 earcon("done", volume, rate)
-            else -> chirp(amp, rate, 660.0 to 130, 880.0 to 150) // "wake" and any unknown value
+            // Kept short: with no AEC the mic streams this chirp into STT, so leave as
+            // little tone as possible for Whisper to chew on while staying audible.
+            else -> chirp(amp, rate, 660.0 to 70, 880.0 to 90) // "wake" and any unknown value
         }
     }
 

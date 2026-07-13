@@ -76,7 +76,7 @@ class ToneGeneratorTest {
         val wake = ToneGenerator.earcon("wake", 80, rate)
         val done = ToneGenerator.earcon("done", 80, rate)
         val preview = ToneGenerator.earcon("preview", 80, rate)
-        assertEquals(rate * 130 / 1000 + rate * 150 / 1000, wake.size)
+        assertEquals(rate * 70 / 1000 + rate * 90 / 1000, wake.size)
         assertEquals(rate * 100 / 1000 + rate * 120 / 1000, done.size)
         assertEquals(wake.size + rate * 150 / 1000 + done.size, preview.size)
         // Audible at volume 80, pure silence at 0, unknown kind falls back to wake.

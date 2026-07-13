@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -103,21 +104,29 @@ fun NowPlayingHome(
                 Text(sub, color = Color.White.copy(alpha = 0.7f), fontSize = 22.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (state.canSkip) NpTransportButton(Icons.Outlined.SkipPrevious) { onPrev() }
-                NpTransportButton(if (state.playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow) {
-                    if (state.playing) onPause() else onPlay()
+            // Fixed group width = the full three-button transport row, so the volume bar sits
+            // centered under the buttons whether or not prev/next are showing.
+            Column(
+                Modifier.width(224.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (state.canSkip) NpTransportButton(Icons.Outlined.SkipPrevious) { onPrev() }
+                    NpTransportButton(if (state.playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow) {
+                        if (state.playing) onPause() else onPlay()
+                    }
+                    if (state.canSkip) NpTransportButton(Icons.Outlined.SkipNext) { onNext() }
                 }
-                if (state.canSkip) NpTransportButton(Icons.Outlined.SkipNext) { onNext() }
+                var slider by remember(state.volume) { mutableFloatStateOf(state.volume.toFloat()) }
+                Slider(
+                    value = slider,
+                    onValueChange = { slider = it },
+                    onValueChangeFinished = { onVolume(slider.toInt()) },
+                    valueRange = 0f..100f,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
-            var slider by remember(state.volume) { mutableFloatStateOf(state.volume.toFloat()) }
-            Slider(
-                value = slider,
-                onValueChange = { slider = it },
-                onValueChangeFinished = { onVolume(slider.toInt()) },
-                valueRange = 0f..100f,
-                modifier = Modifier.fillMaxWidth(0.7f),
-            )
         }
     }
 }

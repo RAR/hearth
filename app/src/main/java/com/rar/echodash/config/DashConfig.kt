@@ -26,8 +26,10 @@ data class SolarConfig(
     val grid: String? = null,
     val pvToday: String? = null,
     val loadToday: String? = null,
+    val battSoc: String? = null,   // home battery % sensor
+    val battPower: String? = null, // battery power W/kW; negative = charging (evcc convention)
 ) {
-    fun ids(): List<String> = listOfNotNull(pv, load, grid, pvToday, loadToday)
+    fun ids(): List<String> = listOfNotNull(pv, load, grid, pvToday, loadToday, battSoc, battPower)
 }
 
 @Serializable
@@ -210,6 +212,8 @@ data class DashConfig(
                     grid = entities.solar.grid?.trim()?.ifBlank { null },
                     pvToday = entities.solar.pvToday?.trim()?.ifBlank { null },
                     loadToday = entities.solar.loadToday?.trim()?.ifBlank { null },
+                    battSoc = entities.solar.battSoc?.trim()?.ifBlank { null },
+                    battPower = entities.solar.battPower?.trim()?.ifBlank { null },
                 ),
                 lightGroups = entities.lightGroups
                     .map { it.copy(entities = it.entities.filter { id -> id.isNotBlank() }) }

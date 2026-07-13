@@ -108,13 +108,24 @@ class DashConfigTest {
     }
 
     @Test
+    fun solarBattFieldsClampedAndTrimmed() {
+        val cfg = DashConfig(
+            entities = Entities(
+                solar = SolarConfig(battSoc = " sensor.soc ", battPower = ""),
+            ),
+        ).clamped()
+        assertEquals("sensor.soc", cfg.entities.solar.battSoc)
+        assertEquals(null, cfg.entities.solar.battPower)
+    }
+
+    @Test
     fun referencedEntityIdsCollectsEverySlotDistinct() {
         val cfg = DashConfig(
             entities = Entities(
                 tempSensor = "sensor.t",
                 weather = "weather.home",
                 climate = listOf("climate.hall", "climate.hall"),
-                solar = SolarConfig(pv = "sensor.pv", grid = "sensor.grid"),
+                solar = SolarConfig(pv = "sensor.pv", grid = "sensor.grid", battSoc = "sensor.soc", battPower = "sensor.batt"),
                 lightGroups = listOf(
                     LightGroup("A", listOf("light.k", "sensor.t")), // sensor.t dup with tempSensor
                     LightGroup("B", listOf("light.l")),
@@ -122,7 +133,7 @@ class DashConfigTest {
             ),
         )
         assertEquals(
-            listOf("sensor.t", "weather.home", "climate.hall", "sensor.pv", "sensor.grid", "light.k", "light.l"),
+            listOf("sensor.t", "weather.home", "climate.hall", "sensor.pv", "sensor.grid", "sensor.soc", "sensor.batt", "light.k", "light.l"),
             cfg.referencedEntityIds(),
         )
     }

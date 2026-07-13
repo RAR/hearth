@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Power
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -300,43 +302,50 @@ fun HomeView(
     }
 }
 
-/** One EV charging pill: bolt+name, a battery gauge, and a status line — pill visual language. */
+/** One EV charging pill: plug icon + name, then a battery gauge with one combined detail line. */
 @Composable
 private fun EvCardView(card: EvCard) {
     Column(
         Modifier
             .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
             .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(
-            "⚡ " + card.name,
-            color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium,
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                Icons.Outlined.Power, contentDescription = null,
+                tint = Color.White, modifier = Modifier.size(18.dp),
+            )
+            Text(card.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+        }
         val soc = card.socPct
-        if (soc != null) {
+        val detail = listOfNotNull(soc?.let { "$it%" }, card.statusLine).joinToString(" · ")
+        if (soc != null || detail.isNotEmpty()) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Box(
-                    Modifier
-                        .size(width = 96.dp, height = 8.dp)
-                        .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(4.dp)),
-                ) {
+                if (soc != null) {
                     Box(
                         Modifier
-                            .fillMaxWidth(soc / 100f)
-                            .fillMaxHeight()
-                            .background(Color(0xFF7BC67E), RoundedCornerShape(4.dp)),
-                    )
+                            .size(width = 96.dp, height = 8.dp)
+                            .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(4.dp)),
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth(soc / 100f)
+                                .fillMaxHeight()
+                                .background(Color(0xFF7BC67E), RoundedCornerShape(4.dp)),
+                        )
+                    }
                 }
-                Text("$soc%", color = Color.White, fontSize = 14.sp)
+                if (detail.isNotEmpty()) {
+                    Text(detail, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp)
+                }
             }
-        }
-        val status = card.statusLine
-        if (status != null) {
-            Text(status, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp)
         }
     }
 }

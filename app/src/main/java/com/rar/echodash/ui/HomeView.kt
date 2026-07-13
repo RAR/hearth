@@ -5,6 +5,11 @@ import android.graphics.BitmapFactory
 import android.provider.Settings
 import android.text.format.DateFormat
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -24,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -43,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -338,8 +345,42 @@ private fun EvCardView(card: EvCard) {
                             Modifier
                                 .fillMaxWidth(soc / 100f)
                                 .fillMaxHeight()
-                                .background(Color(0xFF7BC67E), RoundedCornerShape(4.dp)),
-                        )
+                                // clip() is required: background() draws a rounded shape but does
+                                // not clip children, so the shimmer band would bleed past the fill.
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFF7BC67E)),
+                        ) {
+                            // Only run the infinite animation while actually charging.
+                            if (card.charging) {
+                                val shimmer = rememberInfiniteTransition(label = "evShimmer")
+                                val fraction by shimmer.animateFloat(
+                                    initialValue = 0f,
+                                    targetValue = 1f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(1800, easing = LinearEasing),
+                                        repeatMode = RepeatMode.Restart,
+                                    ),
+                                    label = "evShimmerX",
+                                )
+                                Box(
+                                    Modifier
+                                        // Sweep a 24dp band left-to-right across the full track
+                                        // width; the fill's clip keeps it inside the filled region.
+                                        .offset(x = (fraction * (96 + 24)).dp - 24.dp)
+                                        .width(24.dp)
+                                        .fillMaxHeight()
+                                        .background(
+                                            Brush.horizontalGradient(
+                                                listOf(
+                                                    Color.Transparent,
+                                                    Color.White.copy(alpha = 0.35f),
+                                                    Color.Transparent,
+                                                ),
+                                            ),
+                                        ),
+                                )
+                            }
+                        }
                     }
                 }
                 if (detail.isNotEmpty()) {

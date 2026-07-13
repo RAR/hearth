@@ -74,6 +74,8 @@ fun DashboardShell(
     onLogout: () -> Unit,
     onInteraction: () -> Unit,
     streamResolver: StreamResolver,
+    nightActive: Boolean = false,
+    onNightWake: () -> Unit = {},
 ) {
     val connected = connState == ConnState.CONNECTED
     val weatherEntityId = config.entities.weather
@@ -183,5 +185,11 @@ fun DashboardShell(
                 modifier = Modifier.padding(end = 12.dp),
             )
         }
+
+        NightClockOverlay(
+            active = nightActive,
+            clockFormat = config.home.clockFormat,
+            onWake = onNightWake,
+        )
     }
 }

@@ -118,6 +118,11 @@ private fun NotificationRow(
                             scope.launch { offsetX.animateTo(0f, tween(200)) }
                         }
                     },
+                    // A cancelled drag (ancestor claims the gesture, extra pointer) never reaches
+                    // onDragEnd — snap back so the row can't be left stranded mid-swipe.
+                    onDragCancel = {
+                        scope.launch { offsetX.animateTo(0f, tween(200)) }
+                    },
                 ) { change, dragAmount ->
                     change.consume()
                     // Only left drags move the row; right drags clamp back to 0.

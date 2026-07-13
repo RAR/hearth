@@ -11,6 +11,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -229,5 +230,128 @@ class SatelliteSessionTest {
         assertEquals(240L, timers(s.onTick(nowMs = 60_000)).chips[0].remainingSec)
         s.onConnected()
         assertEquals(210L, timers(s.onTick(nowMs = 90_000)).chips[0].remainingSec)
+    }
+
+    private fun wakeSession() = SatelliteSession(appVersion = "9.9", localWake = true)
+
+    @Test
+    fun localWakeRunSatelliteArmsMicWithoutRunPipeline() {
+        val a = wakeSession().onEvent(event("run-satellite"))
+        assertTrue(a.contains(SatelliteAction.StartMic))
+        assertTrue(a.contains(SatelliteAction.ResetDetector))
+        val types = sends(a).map { it.type }
+        assertFalse(types.contains("run-pipeline"))
+        assertFalse(types.contains("streaming-started"))
+        assertTrue(types.contains("streaming-stopped"))
+    }
+
+    @Test
+    fun localWakeMicChunkFeedsDetectorWhileDetecting() {
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"))
+        val a = s.onMicChunk(ByteArray(960) { 5 })
+        assertEquals(1, a.size)
+        assertEquals(SatelliteAction.FeedDetector(ByteArray(960) { 5 }), a.first())
+    }
+
+    @Test
+    fun onWakeDetectedEmitsDetectionThenRunPipelineThenStreamingStarted() {
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"))
+        val a = s.onWakeDetected("alexa", nowMs = 0)
+        val ev = sends(a)
+        assertEquals("detection", ev[0].type)
+        assertEquals("alexa", ev[0].data["name"]!!.jsonPrimitive.content)
+        assertEquals("run-pipeline", ev[1].type)
+        assertEquals("asr", ev[1].data["start_stage"]!!.jsonPrimitive.content)
+        assertEquals("tts", ev[1].data["end_stage"]!!.jsonPrimitive.content)
+        assertEquals(false, ev[1].data["restart_on_end"]!!.jsonPrimitive.boolean)
+        assertEquals("streaming-started", ev[2].type)
+        val earconIdx = a.indexOfFirst { it is SatelliteAction.Earcon }
+        val overlayIdx = a.indexOfFirst { it is SatelliteAction.Overlay }
+        assertTrue(earconIdx in 0 until overlayIdx)                       // earcon before overlay
+        assertEquals(SatelliteAction.Earcon(EarconKind.WAKE), a[earconIdx])
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.LISTENING),
+            (a[overlayIdx] as SatelliteAction.Overlay).state)
+    }
+
+    @Test
+    fun localWakeMicChunkStreamsAudioAfterDetection() {
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"))
+        s.onWakeDetected("alexa", 0)
+        val e = sends(s.onMicChunk(ByteArray(960) { 7 })).single()
+        assertEquals("audio-chunk", e.type)
+        assertArrayEquals(ByteArray(960) { 7 }, e.payload)
+    }
+
+    @Test
+    fun localWakeTranscriptStopsStreamingResetsDetectorAndReArms() {
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"))
+        s.onWakeDetected("alexa", 0)
+        val a = s.onEvent(event("transcript", """{"text":"hi"}"""))
+        assertEquals(SatelliteAction.Earcon(EarconKind.DONE), a.first())
+        assertTrue(a.any { it is SatelliteAction.Overlay })
+        assertTrue(sends(a).map { it.type }.contains("streaming-stopped"))
+        assertTrue(a.contains(SatelliteAction.ResetDetector))
+        // Back to detecting: the next mic chunk feeds the detector again.
+        assertEquals(SatelliteAction.FeedDetector(ByteArray(960) { 1 }),
+            s.onMicChunk(ByteArray(960) { 1 }).first())
+    }
+
+    @Test
+    fun localWakeErrorStopsStreamingAndReArms() {
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"))
+        s.onWakeDetected("alexa", 0)
+        val a = s.onEvent(event("error", """{"text":"boom"}"""))
+        assertTrue(sends(a).map { it.type }.contains("streaming-stopped"))
+        assertTrue(a.contains(SatelliteAction.ResetDetector))
+        assertEquals(SatelliteAction.FeedDetector(ByteArray(960) { 1 }),
+            s.onMicChunk(ByteArray(960) { 1 }).first())
+    }
+
+    @Test
+    fun localWakePauseStopsMicAndDropsMicChunks() {
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"))
+        val a = s.onEvent(event("pause-satellite"))
+        assertTrue(a.contains(SatelliteAction.StopMic))
+        assertTrue(a.contains(SatelliteAction.ResetDetector))
+        assertTrue(sends(a).map { it.type }.contains("streaming-stopped"))
+        assertTrue(s.onMicChunk(ByteArray(960) { 1 }).isEmpty())        // paused -> dropped
+    }
+
+    @Test
+    fun localWakeDropsDetectorFeedDuringTtsWindow() {
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"))
+        s.onEvent(event("audio-start", """{"rate":22050,"width":2,"channels":1}"""))
+        assertTrue(s.onMicChunk(ByteArray(960) { 1 }).isEmpty())        // dropped: TTS playing
+        s.onEvent(event("audio-stop"))
+        assertTrue(s.onMicChunk(ByteArray(960) { 1 }).isEmpty())        // still within the window
+        s.onPlaybackFinished(1000)
+        assertEquals(SatelliteAction.FeedDetector(ByteArray(960) { 1 }),
+            s.onMicChunk(ByteArray(960) { 1 }).first())                  // resumes after playback
+    }
+
+    @Test
+    fun localWakeInfoAdvertisesThreeWakeModels() {
+        val info = sends(wakeSession().onEvent(event("describe"))).single()
+        val wake = info.data["wake"]!!.jsonArray()
+        assertEquals(1, wake.size)
+        val models = wake.first().jsonObject["models"]!!.jsonArray()
+        assertEquals(3, models.size)
+        val phrases = models.map { it.jsonObject["phrase"]!!.jsonPrimitive.content }
+        assertTrue(phrases.contains("Okay Nabu"))
+        assertTrue(phrases.contains("Hey Jarvis"))
+        assertTrue(phrases.contains("Alexa"))
+    }
+
+    @Test
+    fun legacyModeInfoWakeStaysEmpty() {
+        val info = sends(SatelliteSession("9.9").onEvent(event("describe"))).single()
+        assertTrue(info.data["wake"]!!.jsonArray().isEmpty())
     }
 }

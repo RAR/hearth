@@ -3,6 +3,7 @@ package com.rar.echodash.voice
 import com.rar.echodash.vaca.WyomingEvent
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -29,16 +30,43 @@ sealed interface SatelliteAction {
     data class Overlay(val state: VoiceOverlayState) : SatelliteAction
     data class Timers(val state: TimersUiState) : SatelliteAction
     data class Earcon(val kind: EarconKind) : SatelliteAction
+
+    /** Feed a raw mic PCM chunk to the on-device wake detector (localWake only). */
+    data class FeedDetector(val pcm: ByteArray) : SatelliteAction {
+        override fun equals(other: Any?) = other is FeedDetector && pcm.contentEquals(other.pcm)
+        override fun hashCode() = pcm.contentHashCode()
+    }
+
+    /** Reset the on-device wake detector back to warm-up (localWake only). */
+    data object ResetDetector : SatelliteAction
 }
 
 /**
- * Pure protocol/state machine for the always-streaming Wyoming voice satellite.
- * All decisions live here; the server and UI just obey the returned actions.
- * No Android or coroutine imports so it runs in plain-JVM tests.
+ * Pure protocol/state machine for the Wyoming voice satellite.
+ *
+ * [localWake] = false preserves the original always-streaming behavior (HA runs the wake stage);
+ * this is the silent fallback and is byte-for-byte identical to the pre-wake-word implementation.
+ *
+ * [localWake] = true turns this into a wake-streaming satellite (per wyoming-satellite's
+ * WakeStreamingSatellite): run-satellite arms an on-device detector (StartMic, no run-pipeline);
+ * mic chunks flow to the detector as FeedDetector actions; [onWakeDetected] (called by the server
+ * when the detector fires) emits detection -> run-pipeline(asr..tts) -> streaming-started and
+ * begins streaming; transcript/error/run-satellite stop streaming and re-arm, pause-satellite
+ * stops streaming and turns the mic off. While a TTS response plays (audio-start .. onPlaybackFinished)
+ * detecting-state mic chunks are dropped entirely (anti-self-trigger).
+ *
+ * No Android or coroutine imports so it runs in plain-JVM tests. All threading lives in the server.
  */
-class SatelliteSession(private val appVersion: String) {
+class SatelliteSession(
+    private val appVersion: String,
+    private val localWake: Boolean = false,
+) {
+
+    private enum class WakeState { IDLE, DETECTING, STREAMING, PAUSED }
+    private var wakeState = WakeState.IDLE
 
     private var streaming = false
+    private var ttsActive = false
     private var micTimestampMs = 0L
     private var dismissAtMs: Long? = null
     var overlay: VoiceOverlayState = VoiceOverlayState()
@@ -69,7 +97,16 @@ class SatelliteSession(private val appVersion: String) {
     fun onEvent(event: WyomingEvent, nowMs: Long = 0L): List<SatelliteAction> = when (event.type) {
         "describe" -> listOf(SatelliteAction.Send(infoEvent()))
         "ping" -> listOf(SatelliteAction.Send(pongEvent((event.data["text"] as? JsonPrimitive)?.contentOrNull)))
-        "run-satellite" -> {
+        "run-satellite" -> if (localWake) {
+            // Arm on-device detection: mic on, but no pipeline and no streaming yet.
+            wakeState = WakeState.DETECTING
+            micTimestampMs = 0L
+            listOf(
+                SatelliteAction.Send(WyomingEvent("streaming-stopped")),
+                SatelliteAction.ResetDetector,
+                SatelliteAction.StartMic,
+            )
+        } else {
             streaming = true
             micTimestampMs = 0L
             listOf(
@@ -78,26 +115,51 @@ class SatelliteSession(private val appVersion: String) {
                 SatelliteAction.StartMic,
             )
         }
-        "pause-satellite" -> {
+        "pause-satellite" -> if (localWake) {
+            wakeState = WakeState.PAUSED
+            listOf(
+                SatelliteAction.Send(WyomingEvent("streaming-stopped")),
+                SatelliteAction.ResetDetector,
+                SatelliteAction.StopMic,
+            )
+        } else {
             streaming = false
             listOf(SatelliteAction.StopMic, SatelliteAction.Send(WyomingEvent("streaming-stopped")))
         }
         "detection" -> listOf(
+            // Legacy/fallback: HA reports the wake word. In localWake HA never sends this.
             SatelliteAction.Earcon(EarconKind.WAKE),
             overlayAction(VoiceOverlayState(VoiceOverlayPhase.LISTENING)),
         )
-        "transcript" -> listOf(
-            SatelliteAction.Earcon(EarconKind.DONE),
-            overlayAction(VoiceOverlayState(VoiceOverlayPhase.TRANSCRIPT, textOf(event))),
-        )
+        "transcript" -> {
+            val base = listOf(
+                SatelliteAction.Earcon(EarconKind.DONE),
+                overlayAction(VoiceOverlayState(VoiceOverlayPhase.TRANSCRIPT, textOf(event))),
+            )
+            if (localWake) {
+                wakeState = WakeState.DETECTING
+                base + listOf(SatelliteAction.Send(WyomingEvent("streaming-stopped")), SatelliteAction.ResetDetector)
+            } else {
+                base
+            }
+        }
+        "error" -> if (localWake) {
+            wakeState = WakeState.DETECTING
+            listOf(SatelliteAction.Send(WyomingEvent("streaming-stopped")), SatelliteAction.ResetDetector)
+        } else {
+            emptyList()
+        }
         "synthesize" -> listOf(overlayAction(VoiceOverlayState(VoiceOverlayPhase.RESPONSE, textOf(event))))
-        "audio-start" -> listOf(
-            SatelliteAction.PlaybackStart(
-                rate = event.data["rate"]?.jsonPrimitive?.int ?: 22050,
-                width = event.data["width"]?.jsonPrimitive?.int ?: 2,
-                channels = event.data["channels"]?.jsonPrimitive?.int ?: 1,
-            ),
-        )
+        "audio-start" -> {
+            ttsActive = true
+            listOf(
+                SatelliteAction.PlaybackStart(
+                    rate = event.data["rate"]?.jsonPrimitive?.int ?: 22050,
+                    width = event.data["width"]?.jsonPrimitive?.int ?: 2,
+                    channels = event.data["channels"]?.jsonPrimitive?.int ?: 1,
+                ),
+            )
+        }
         "audio-chunk" -> listOf(SatelliteAction.PlaybackChunk(event.payload))
         "audio-stop" -> listOf(SatelliteAction.PlaybackStop)
         "timer-started" -> {
@@ -132,11 +194,40 @@ class SatelliteSession(private val appVersion: String) {
         else -> emptyList()
     }
 
+    /**
+     * The on-device detector fired for wake word [name]. Emits, in wire order:
+     * detection -> run-pipeline(asr..tts, restart_on_end=false) -> streaming-started,
+     * then the local WAKE earcon and LISTENING overlay; begins streaming mic audio.
+     */
+    fun onWakeDetected(name: String, nowMs: Long): List<SatelliteAction> {
+        wakeState = WakeState.STREAMING
+        micTimestampMs = 0L
+        return listOf(
+            SatelliteAction.Send(detectionEvent(name)),
+            SatelliteAction.Send(runPipelineLocalEvent()),
+            SatelliteAction.Send(WyomingEvent("streaming-started")),
+            SatelliteAction.Earcon(EarconKind.WAKE),
+            overlayAction(VoiceOverlayState(VoiceOverlayPhase.LISTENING)),
+        )
+    }
+
     fun onMicChunk(pcm: ByteArray): List<SatelliteAction> {
-        if (!streaming || pcm.isEmpty()) return emptyList()
+        if (pcm.isEmpty()) return emptyList()
+        if (localWake) {
+            return when (wakeState) {
+                WakeState.DETECTING -> if (ttsActive) emptyList() else listOf(SatelliteAction.FeedDetector(pcm))
+                WakeState.STREAMING -> listOf(audioChunkAction(pcm))
+                WakeState.IDLE, WakeState.PAUSED -> emptyList()
+            }
+        }
+        if (!streaming) return emptyList()
+        return listOf(audioChunkAction(pcm))
+    }
+
+    private fun audioChunkAction(pcm: ByteArray): SatelliteAction {
         val ts = micTimestampMs
         micTimestampMs += pcm.size.toLong() * 1000L / (AUDIO_WIDTH.toLong() * AUDIO_CHANNELS * AUDIO_RATE)
-        return listOf(SatelliteAction.Send(audioChunkEvent(pcm, ts)))
+        return SatelliteAction.Send(audioChunkEvent(pcm, ts))
     }
 
     fun onMicError(): List<SatelliteAction> = listOf(
@@ -152,6 +243,7 @@ class SatelliteSession(private val appVersion: String) {
     )
 
     fun onPlaybackFinished(nowMs: Long): List<SatelliteAction> {
+        ttsActive = false
         dismissAtMs = nowMs + DISMISS_MS
         return listOf(SatelliteAction.Send(WyomingEvent("played")))
     }
@@ -195,6 +287,8 @@ class SatelliteSession(private val appVersion: String) {
 
     private fun reset() {
         streaming = false
+        wakeState = WakeState.IDLE
+        ttsActive = false
         micTimestampMs = 0L
         dismissAtMs = null
         overlay = VoiceOverlayState()
@@ -219,12 +313,31 @@ class SatelliteSession(private val appVersion: String) {
         pcm,
     )
 
+    /** Legacy/fallback pipeline: HA runs the wake stage and restarts on end. */
     private fun runPipelineEvent() = WyomingEvent(
         "run-pipeline",
         buildJsonObject {
             put("start_stage", "wake")
             put("end_stage", "tts")
             put("restart_on_end", true)
+        },
+    )
+
+    /** Local-wake pipeline: HA skips its wake stage (start at asr) and does not restart. */
+    private fun runPipelineLocalEvent() = WyomingEvent(
+        "run-pipeline",
+        buildJsonObject {
+            put("start_stage", "asr")
+            put("end_stage", "tts")
+            put("restart_on_end", false)
+        },
+    )
+
+    private fun detectionEvent(name: String) = WyomingEvent(
+        "detection",
+        buildJsonObject {
+            put("name", name)
+            put("timestamp", JsonNull)
         },
     )
 
@@ -235,7 +348,32 @@ class SatelliteSession(private val appVersion: String) {
 
     private fun infoEvent(): WyomingEvent {
         val data = buildJsonObject {
-            for (key in listOf("asr", "tts", "handle", "intent", "wake", "mic", "snd")) putJsonArray(key) {}
+            for (key in listOf("asr", "tts", "handle", "intent", "mic", "snd")) putJsonArray(key) {}
+            putJsonArray("wake") {
+                if (localWake) {
+                    addJsonObject {
+                        put("name", "openWakeWord")
+                        putJsonObject("attribution") {
+                            put("name", SATELLITE_NAME)
+                            put("url", "https://github.com/rar/echo-dashboard")
+                        }
+                        put("installed", true)
+                        put("description", "On-device openWakeWord")
+                        put("version", JsonNull)
+                        putJsonArray("models") {
+                            for ((id, phrase) in WAKE_MODELS) {
+                                addJsonObject {
+                                    put("name", id)
+                                    put("phrase", phrase)
+                                    put("installed", true)
+                                    putJsonArray("languages") {}
+                                    put("version", JsonNull)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             putJsonObject("satellite") {
                 put("name", SATELLITE_NAME)
                 putJsonObject("attribution") {
@@ -262,5 +400,12 @@ class SatelliteSession(private val appVersion: String) {
         const val AUDIO_CHANNELS = 1
         const val DISMISS_MS = 4000L
         const val ALERT_SILENCE_MS = 60000L
+
+        /** The three bundled wake-word model ids and their friendly phrases (HA display only). */
+        val WAKE_MODELS = listOf(
+            "okay_nabu" to "Okay Nabu",
+            "hey_jarvis" to "Hey Jarvis",
+            "alexa" to "Alexa",
+        )
     }
 }

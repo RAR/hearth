@@ -13,6 +13,8 @@ import java.io.IOException
 import java.io.OutputStream
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.concurrent.LinkedBlockingDeque
+import kotlin.concurrent.thread
 
 /**
  * Wyoming TCP server for the voice satellite (port 10600). HA connects inbound.
@@ -21,6 +23,10 @@ import java.net.Socket
  * blocking playback (playback is offloaded to an AnnouncePlayer via [out]). Note:
  * outbound mic-chunk writes share the same socket and can still stall pongs under
  * TCP back-pressure (e.g. a stalled HA); this is bounded and self-heals via disconnect.
+ *
+ * When started with localWake, an on-device [WakeDetector] runs on a dedicated daemon
+ * thread fed by a bounded, drop-oldest queue (FeedDetector/ResetDetector actions from the
+ * session). A detector hit re-enters the session under [lock] via onWakeDetected.
  */
 class SatelliteServer(
     private val scope: CoroutineScope,
@@ -44,6 +50,8 @@ class SatelliteServer(
         private const val TAG = "SatelliteServer"
         private const val BIND_RETRY_MS = 5_000L
         private const val TICK_MS = 500L
+        private const val DETECTOR_QUEUE_MAX = 8
+        private val RESET_MARKER = Any()
     }
 
     private class Connection(val socket: Socket, val out: OutputStream)
@@ -51,16 +59,28 @@ class SatelliteServer(
     @Volatile var boundPort: Int = -1
         private set
 
-    // One session for the server's lifetime so device-local timers persist across connections.
-    private val session = SatelliteSession(appVersion)
+    // Recreated on each start() with the current localWake flag; device-local timers persist
+    // across HA reconnects (same session instance) but are dropped on a start()/stop() cycle
+    // (voice enable/disable or a wake-word/threshold change), which is rare and acceptable.
+    @Volatile private var session = SatelliteSession(appVersion)
     private val lock = Any()
     @Volatile private var serverSocket: ServerSocket? = null
     private var active: Connection? = null
     private var acceptJob: Job? = null
     private var tickJob: Job? = null
 
-    fun start() {
+    // On-device wake detection (localWake only).
+    @Volatile private var detector: WakeDetector? = null
+    @Volatile private var wakeWord: String = "okay_nabu"
+    private val detectorQueue = LinkedBlockingDeque<Any>()
+    @Volatile private var detectorThread: Thread? = null
+
+    fun start(localWake: Boolean = false, detector: WakeDetector? = null, wakeWord: String = "okay_nabu") {
         if (acceptJob?.isActive == true) return
+        session = SatelliteSession(appVersion, localWake)
+        this.detector = if (localWake) detector else null
+        this.wakeWord = wakeWord
+        startDetectorThread()
         acceptJob = scope.launch(Dispatchers.IO) {
             while (isActive) {
                 val server = try {
@@ -98,6 +118,9 @@ class SatelliteServer(
     fun stop() {
         acceptJob?.cancel(); acceptJob = null
         tickJob?.cancel(); tickJob = null
+        detectorThread?.interrupt(); detectorThread = null
+        detectorQueue.clear()
+        detector = null
         runCatching { serverSocket?.close() }
         synchronized(lock) {
             active?.let { runCatching { it.socket.close() } }
@@ -105,7 +128,7 @@ class SatelliteServer(
         }
     }
 
-    /** Feed a mic chunk; resulting audio-chunk is written to the active socket (dropped if none). */
+    /** Feed a mic chunk; resulting audio-chunk/FeedDetector actions run against the active session. */
     fun submitMicChunk(pcm: ByteArray) {
         synchronized(lock) {
             val conn = active ?: return
@@ -171,7 +194,8 @@ class SatelliteServer(
     /**
      * Must be called while holding [lock]. Writes are small Wyoming frames. [conn] may be null
      * (e.g. a timer tick while HA is disconnected): Send actions are then dropped — timer/overlay
-     * actions never produce Sends, so nothing is lost.
+     * actions never produce Sends, so nothing is lost. FeedDetector/ResetDetector are handled
+     * internally against the detector thread (never surfaced on [out]).
      */
     private fun dispatch(conn: Connection?, actions: List<SatelliteAction>) {
         for (a in actions) when (a) {
@@ -187,6 +211,58 @@ class SatelliteServer(
             is SatelliteAction.Overlay -> out.onOverlay(a.state)
             is SatelliteAction.Timers -> out.onTimers(a.state)
             is SatelliteAction.Earcon -> out.onEarcon(a.kind)
+            is SatelliteAction.FeedDetector -> enqueueDetector(a.pcm)
+            SatelliteAction.ResetDetector -> {
+                detectorQueue.clear()
+                detectorQueue.offer(RESET_MARKER)
+            }
+        }
+    }
+
+    private fun enqueueDetector(pcm: ByteArray) {
+        // Drop oldest so the mic path never blocks on slow inference.
+        while (detectorQueue.size >= DETECTOR_QUEUE_MAX) detectorQueue.pollFirst()
+        detectorQueue.offer(pcm)
+    }
+
+    private fun startDetectorThread() {
+        val det = detector ?: return
+        detectorQueue.clear()
+        detectorThread = thread(name = "WakeDetector", isDaemon = true) {
+            var windowMax = 0f
+            var windowStart = System.currentTimeMillis()
+            try {
+                while (true) {
+                    val item = detectorQueue.take()
+                    if (item === RESET_MARKER) {
+                        det.reset()
+                        continue
+                    }
+                    if (item !is ByteArray) continue
+                    val fired = det.process(item)
+                    val score = det.lastScore
+                    if (score > windowMax) windowMax = score
+                    val nowW = System.currentTimeMillis()
+                    if (nowW - windowStart >= 5_000L) {
+                        Log.d(TAG, "wake max score=%.2f (5s)".format(windowMax))
+                        windowMax = 0f
+                        windowStart = nowW
+                    }
+                    if (fired) {
+                        synchronized(lock) {
+                            val conn = active
+                            if (conn != null) {
+                                Log.i(TAG, "wake '$wakeWord' score=%.2f".format(score))
+                                dispatch(conn, session.onWakeDetected(wakeWord, System.currentTimeMillis()))
+                            }
+                        }
+                    }
+                }
+            } catch (e: InterruptedException) {
+                // stop() interrupted us; exit cleanly.
+            } catch (e: Exception) {
+                Log.w(TAG, "wake detector thread died", e)
+            }
         }
     }
 }

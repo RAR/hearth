@@ -8,6 +8,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -119,6 +120,39 @@ class SatelliteServerTest {
         TestClient(server.boundPort).use { c ->
             c.send(WyomingEvent("describe"))
             assertNotNull(c.read())
+        }
+    }
+
+    private fun awaitBind() {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (server.boundPort <= 0 && System.currentTimeMillis() < deadline) Thread.sleep(10)
+        assertTrue("server did not bind", server.boundPort > 0)
+    }
+
+    @Test fun localWakeDetectionStreamsToServer() {
+        server.stop()
+        // Always-fire head so the 17th chunk (past the 16-chunk warm-up) triggers.
+        val det = WakeDetector(
+            melspec = WakeDetector.TfGraph { FloatArray(256) },
+            embedding = WakeDetector.TfGraph { FloatArray(96) },
+            head = WakeDetector.TfGraph { floatArrayOf(0.9f) },
+            thresholdPct = 50,
+            nowMs = { 0L },
+        )
+        server = SatelliteServer(scope, port = 0, appVersion = "0.3", out = out)
+        server.start(localWake = true, detector = det, wakeWord = "alexa")
+        awaitBind()
+        TestClient(server.boundPort).use { c ->
+            c.send(WyomingEvent("run-satellite"))
+            assertEquals("streaming-stopped", c.read()!!.type)   // localWake run-satellite re-arms
+            assertEquals("start-mic", out.next())
+            // Feed 17 whole chunks in one submission; the detector accumulates and fires.
+            server.submitMicChunk(ByteArray(17 * 1280 * 2) { 1 })
+            val detection = c.read()!!
+            assertEquals("detection", detection.type)
+            assertEquals("alexa", detection.data["name"]!!.jsonPrimitive.content)
+            assertEquals("run-pipeline", c.read()!!.type)
+            assertEquals("streaming-started", c.read()!!.type)
         }
     }
 }

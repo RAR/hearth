@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.AcUnit
 import androidx.compose.material.icons.outlined.Air
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Dehaze
 import androidx.compose.material.icons.outlined.Home
@@ -27,7 +28,7 @@ import java.util.Date
 import java.util.Locale
 
 /** The rail destinations, top-to-bottom. */
-enum class DashView { HOME, LIGHTS, CLIMATE, MEDIA, WEATHER, SOLAR, CAMERAS }
+enum class DashView { HOME, LIGHTS, CLIMATE, MEDIA, CALENDAR, WEATHER, SOLAR, CAMERAS }
 
 /** Material icon for a weather condition (used by the Home pill and the Weather panel). */
 fun weatherIcon(icon: WeatherIcon): ImageVector = when (icon) {
@@ -49,6 +50,7 @@ fun railIcon(view: DashView): ImageVector = when (view) {
     DashView.LIGHTS -> Icons.Outlined.Lightbulb
     DashView.CLIMATE -> Icons.Outlined.Thermostat
     DashView.MEDIA -> Icons.Outlined.MusicNote
+    DashView.CALENDAR -> Icons.Outlined.CalendarMonth
     DashView.WEATHER -> Icons.Outlined.WbCloudy
     DashView.SOLAR -> Icons.Outlined.SolarPower
     DashView.CAMERAS -> Icons.Outlined.Videocam
@@ -67,7 +69,9 @@ fun railViews(panels: Panels, camerasConfigured: Boolean = false): List<DashView
     ).filter { (view, cfg) ->
         cfg.enabled && (view != DashView.CAMERAS || camerasConfigured)
     }.sortedBy { it.second.order }.map { it.first }
-    return listOf(DashView.HOME) + configured
+    // Calendar is always available (no panel toggle); it's appended last so panel reordering
+    // never shifts it. The panel itself shows a hint when no calendars are configured.
+    return listOf(DashView.HOME) + configured + DashView.CALENDAR
 }
 
 /** True when the clock should use 24-hour time (AUTO follows the system setting). */

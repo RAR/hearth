@@ -49,6 +49,7 @@ import com.rar.echodash.ui.model.solarFlow
 import com.rar.echodash.ui.model.thermostats
 import com.rar.echodash.ui.model.rainPill
 import com.rar.echodash.ui.model.weatherPill
+import com.rar.echodash.ui.panels.CalendarPanel
 import com.rar.echodash.ui.panels.CamerasPanel
 import com.rar.echodash.ui.panels.ClimatePanel
 import com.rar.echodash.ui.panels.LightsPanel
@@ -230,6 +231,11 @@ fun DashboardShell(
                 DashView.MEDIA -> MediaPanel(
                     nowPlaying, art, onMediaPlay, onMediaPause, onMediaStop,
                     onMediaNext, onMediaPrev, onMediaVolume,
+                )
+                DashView.CALENDAR -> CalendarPanel(
+                    events = calendarEvents,
+                    hasCalendars = config.entities.calendars.isNotEmpty(),
+                    clockFormat = config.home.clockFormat,
                 )
                 DashView.WEATHER -> WeatherPanel(
                     weather = weatherEntityId?.let { entities[it] },

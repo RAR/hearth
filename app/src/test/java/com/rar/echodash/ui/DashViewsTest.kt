@@ -19,7 +19,7 @@ class DashViewsTest {
             solar = PanelConfig(true, 4),
         )
         assertEquals(
-            listOf(DashView.HOME, DashView.LIGHTS, DashView.MEDIA, DashView.SOLAR, DashView.WEATHER),
+            listOf(DashView.HOME, DashView.LIGHTS, DashView.MEDIA, DashView.SOLAR, DashView.WEATHER, DashView.CALENDAR),
             railViews(panels),
         )
     }
@@ -29,13 +29,13 @@ class DashViewsTest {
         val enabled = Panels(cameras = PanelConfig(true, 6))
         assertEquals(
             listOf(DashView.HOME, DashView.LIGHTS, DashView.CLIMATE, DashView.MEDIA,
-                DashView.WEATHER, DashView.SOLAR, DashView.CAMERAS),
+                DashView.WEATHER, DashView.SOLAR, DashView.CAMERAS, DashView.CALENDAR),
             railViews(enabled, camerasConfigured = true),
         )
         // Enabled but no cameras configured -> excluded.
         assertEquals(
             listOf(DashView.HOME, DashView.LIGHTS, DashView.CLIMATE, DashView.MEDIA,
-                DashView.WEATHER, DashView.SOLAR),
+                DashView.WEATHER, DashView.SOLAR, DashView.CALENDAR),
             railViews(enabled, camerasConfigured = false),
         )
     }
@@ -45,7 +45,7 @@ class DashViewsTest {
         val disabled = Panels(cameras = PanelConfig(false, 6))
         assertEquals(
             listOf(DashView.HOME, DashView.LIGHTS, DashView.CLIMATE, DashView.MEDIA,
-                DashView.WEATHER, DashView.SOLAR),
+                DashView.WEATHER, DashView.SOLAR, DashView.CALENDAR),
             railViews(disabled, camerasConfigured = true),
         )
     }

@@ -18,7 +18,7 @@ import org.junit.Test
 
 class SatelliteSessionTest {
 
-    private fun session() = SatelliteSession(appVersion = "9.9")
+    private fun session() = SatelliteSession(appVersion = "9.9", name = { "Test Sat" })
     private fun event(type: String, json: String? = null, payload: ByteArray = ByteArray(0)) =
         WyomingEvent(type, json?.let { Json.parseToJsonElement(it).jsonObject } ?: JsonObject(emptyMap()), payload)
     private inline fun <reified T> List<SatelliteAction>.only(): T {
@@ -32,7 +32,7 @@ class SatelliteSessionTest {
         val info = sends(session().onEvent(event("describe"))).single()
         assertEquals("info", info.type)
         val sat = info.data["satellite"]!!.jsonObject
-        assertEquals("Echo Dashboard", sat["name"]!!.jsonPrimitive.content)
+        assertEquals("Test Sat", sat["name"]!!.jsonPrimitive.content)
         assertEquals(true, sat["installed"]!!.jsonPrimitive.boolean)
         assertEquals("9.9", sat["version"]!!.jsonPrimitive.content)
         // no local services advertised
@@ -66,7 +66,7 @@ class SatelliteSessionTest {
 
     @Test
     fun detectionAndTranscriptEmitEarconsBeforeOverlay() {
-        val s = SatelliteSession("1.0")
+        val s = SatelliteSession("1.0", name = { "Test Sat" })
         val wake = s.onEvent(event("detection", """{"name":"ok_nabu"}"""))
         assertEquals(SatelliteAction.Earcon(EarconKind.WAKE), wake.first())
         assertTrue(wake.last() is SatelliteAction.Overlay)
@@ -232,7 +232,7 @@ class SatelliteSessionTest {
         assertEquals(210L, timers(s.onTick(nowMs = 90_000)).chips[0].remainingSec)
     }
 
-    private fun wakeSession() = SatelliteSession(appVersion = "9.9", localWake = true)
+    private fun wakeSession() = SatelliteSession(appVersion = "9.9", name = { "Test Sat" }, localWake = true)
 
     @Test
     fun localWakeRunSatelliteArmsMicWithoutRunPipeline() {
@@ -367,7 +367,7 @@ class SatelliteSessionTest {
 
     @Test
     fun legacyModeInfoWakeStaysEmpty() {
-        val info = sends(SatelliteSession("9.9").onEvent(event("describe"))).single()
+        val info = sends(SatelliteSession("9.9", name = { "Test Sat" }).onEvent(event("describe"))).single()
         assertTrue(info.data["wake"]!!.jsonArray().isEmpty())
     }
 }

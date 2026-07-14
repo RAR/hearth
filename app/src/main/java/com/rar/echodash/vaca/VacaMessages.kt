@@ -63,15 +63,15 @@ object VacaParser {
 }
 
 object VacaOutgoing {
-    fun info(appVersion: String): WyomingEvent {
+    fun info(appVersion: String, name: String): WyomingEvent {
         val data = buildJsonObject {
             for (key in listOf("asr", "tts", "handle", "intent", "wake", "mic", "snd")) {
                 putJsonArray(key) {}
             }
             putJsonObject("satellite") {
-                put("name", "Echo Dashboard")
+                put("name", name)
                 putJsonObject("attribution") {
-                    put("name", "Echo Dashboard")
+                    put("name", name)
                     put("url", "https://github.com/rar/echo-dashboard")
                 }
                 put("installed", true)

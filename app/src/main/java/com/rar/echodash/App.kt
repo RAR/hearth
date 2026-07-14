@@ -1,7 +1,9 @@
 package com.rar.echodash
 
 import android.content.Context
+import android.os.Build
 import android.os.SystemClock
+import android.provider.Settings
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -81,6 +83,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -129,6 +132,8 @@ class AppDeps(context: Context) {
         sessions = sessions,
         pin = { configPin() },
         notifyToken = { ensuredNotifyToken },
+        deviceName = { deviceName() },
+        setDeviceName = { applyDeviceName(it) },
         pushStore = pushStore,
         entitiesJson = { buildEntityListJson(entityHub.registry.value, entityHub.entities.value) },
         setup = setup,
@@ -148,6 +153,26 @@ class AppDeps(context: Context) {
 
     /** The config page URL to show the user (best-effort LAN IP). */
     fun configUrl(): String = "http://${localIpAddress() ?: "device-ip"}:8080"
+
+    /** Last 4 chars of ANDROID_ID (lowercase hex as returned); "0000" if unavailable. Read once. */
+    private val androidIdSuffix: String by lazy {
+        val id = Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
+        if (id.isNullOrBlank()) "0000" else id.takeLast(4)
+    }
+
+    /** Single source of truth for the device identity. Custom name verbatim, else computed default. */
+    fun deviceName(): String =
+        settings.deviceName ?: "Hearth (${Build.MODEL} $androidIdSuffix)"
+
+    /** Persist a clamped name (null = reset to default) and re-announce every live identity. */
+    private fun applyDeviceName(name: String?) {
+        settings.deviceName = name
+        if (vacaRunning) {
+            nsd.unregister(); nsd.register()   // re-announce _vaca._tcp mDNS with the new name
+            vaca.stop(); vaca.start()          // drop HA's VACA session so it re-reads info on reconnect
+        }
+        voiceRestartTick.value += 1            // reactive voice collect tears down + rebuilds (voiceNsd + satellite)
+    }
 
     /** Start the embedded config web server. Runs for the app's lifetime, independent of HA auth. */
     fun startConfigServer() {
@@ -205,7 +230,7 @@ class AppDeps(context: Context) {
     }
     val vaca: VacaServer = VacaServer(
         scope = scope,
-        infoEvent = { VacaOutgoing.info(BuildConfig.VERSION_NAME) },
+        infoEvent = { VacaOutgoing.info(BuildConfig.VERSION_NAME, deviceName()) },
         capabilitiesEvent = {
             VacaOutgoing.capabilities(
                 VacaOutgoing.buildCapabilities(BuildConfig.VERSION_NAME, lightSensor.hasSensor)
@@ -239,7 +264,7 @@ class AppDeps(context: Context) {
             override fun onSessionEnded() = announce.onDisconnected()
         },
     )
-    private val nsd = NsdAdvertiser(appContext, VacaServer.DEFAULT_PORT)
+    private val nsd = NsdAdvertiser(appContext, VacaServer.DEFAULT_PORT, name = { deviceName() })
 
     // --- Voice satellite (Wyoming) ---
     val voiceOverlay = MutableStateFlow(VoiceOverlayState())
@@ -260,6 +285,7 @@ class AppDeps(context: Context) {
     val satellite: SatelliteServer = SatelliteServer(
         scope = scope,
         appVersion = BuildConfig.VERSION_NAME,
+        name = { deviceName() },
         out = object : SatelliteServer.Out {
             override fun onStartMic() = micStreamer.start()
             override fun onStopMic() = micStreamer.stop()
@@ -275,7 +301,11 @@ class AppDeps(context: Context) {
             )
         },
     )
-    private val voiceNsd = NsdAdvertiser(appContext, SatelliteServer.PORT, "_wyoming._tcp.")
+    private val voiceNsd = NsdAdvertiser(appContext, SatelliteServer.PORT, "_wyoming._tcp.", name = { deviceName() })
+
+    // Bumped by applyDeviceName() to force the reactive voice collect to restart the satellite +
+    // re-register voiceNsd so HA re-reads the (lambda-sourced) name — even when voice settings are unchanged.
+    private val voiceRestartTick = MutableStateFlow(0)
 
     init {
         kiosk.sendFeedback = { s -> scope.launch { vaca.sendSettingsFeedback(s) } }
@@ -289,10 +319,13 @@ class AppDeps(context: Context) {
         ws.start()
     }
 
+    @Volatile private var vacaRunning = false
+
     fun startVaca() {
         vaca.start()
         nsd.register()
         lightSensor.start()
+        vacaRunning = true
     }
 
     /**
@@ -303,9 +336,10 @@ class AppDeps(context: Context) {
      */
     fun startVoice() {
         scope.launch {
-            configStore.config
+            val voiceSettings = configStore.config
                 .map { Triple(it.voice.enabled, it.voice.wakeWord, it.voice.wakeThreshold) }
                 .distinctUntilChanged()
+            combine(voiceSettings, voiceRestartTick) { s, _ -> s }
                 .collect { (enabled, wakeWord, threshold) ->
                     // Tear down any running instance first so a config change fully restarts it.
                     voiceNsd.unregister()

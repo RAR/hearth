@@ -67,13 +67,13 @@ class VacaMessagesTest {
 
     @Test
     fun infoEventDeclaresInstalledSatelliteWithAllFields() {
-        val e = VacaOutgoing.info("0.2")
+        val e = VacaOutgoing.info("0.2", "Test Device")
         assertEquals("info", e.type)
         for (key in listOf("asr", "tts", "handle", "intent", "wake", "mic", "snd")) {
             assertEquals(0, e.data[key]!!.jsonArray.size)
         }
         val sat = e.data["satellite"]!!.jsonObject
-        assertEquals("Echo Dashboard", sat["name"]!!.jsonPrimitive.content)
+        assertEquals("Test Device", sat["name"]!!.jsonPrimitive.content)
         assertEquals(true, sat["installed"]!!.jsonPrimitive.boolean)
         assertEquals("0.2", sat["version"]!!.jsonPrimitive.content)
         assertEquals(false, sat["supports_trigger"]!!.jsonPrimitive.boolean)

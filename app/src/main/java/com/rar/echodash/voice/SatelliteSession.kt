@@ -59,6 +59,7 @@ sealed interface SatelliteAction {
  */
 class SatelliteSession(
     private val appVersion: String,
+    private val name: () -> String,
     private val localWake: Boolean = false,
 ) {
 
@@ -359,7 +360,7 @@ class SatelliteSession(
                     addJsonObject {
                         put("name", "openWakeWord")
                         putJsonObject("attribution") {
-                            put("name", SATELLITE_NAME)
+                            put("name", name())
                             put("url", "https://github.com/rar/echo-dashboard")
                         }
                         put("installed", true)
@@ -389,9 +390,9 @@ class SatelliteSession(
                 }
             }
             putJsonObject("satellite") {
-                put("name", SATELLITE_NAME)
+                put("name", name())
                 putJsonObject("attribution") {
-                    put("name", SATELLITE_NAME)
+                    put("name", name())
                     put("url", "https://github.com/rar/echo-dashboard")
                 }
                 put("installed", true)
@@ -408,7 +409,6 @@ class SatelliteSession(
     }
 
     companion object {
-        const val SATELLITE_NAME = "Echo Dashboard"
         const val AUDIO_RATE = 16000
         const val AUDIO_WIDTH = 2
         const val AUDIO_CHANNELS = 1

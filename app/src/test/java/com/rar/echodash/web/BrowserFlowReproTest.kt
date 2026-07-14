@@ -35,6 +35,8 @@ class BrowserFlowReproTest {
             sessions = SessionManager(random = Random(1)),
             pin = { "123456" },
             notifyToken = { "testtoken" },
+            deviceName = { "Hearth" },
+            setDeviceName = { },
             pushStore = com.rar.echodash.notify.PushNotificationStore(),
             entitiesJson = { "[]" },
             setup = SetupCoordinator(AuthManager(InMemorySettingsStore(), OkHttpClient()), onConfigured = {}),

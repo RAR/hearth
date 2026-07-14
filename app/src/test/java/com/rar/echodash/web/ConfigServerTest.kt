@@ -13,6 +13,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -29,6 +30,9 @@ class ConfigServerTest {
     private lateinit var base: String
     private val requestedAssetPaths = mutableListOf<String>()
     private val previewCalls = mutableListOf<Pair<String, Int>>()
+    private var customName: String? = null
+    private val setNameCalls = mutableListOf<String?>()
+    private val defaultName = "Hearth (Pixel 1234)"
 
     private fun tempDir(): File =
         File.createTempFile("cfgserver", "").let { it.delete(); it.mkdirs(); it }
@@ -43,6 +47,8 @@ class ConfigServerTest {
             sessions = SessionManager(random = Random(1)),
             pin = { "123456" },
             notifyToken = { "testtoken" },
+            deviceName = { customName ?: defaultName },
+            setDeviceName = { v -> setNameCalls += v; customName = v },
             pushStore = pushStore,
             entitiesJson = { """[{"id":"light.k","name":"K","domain":"light","state":"on"}]""" },
             setup = SetupCoordinator(AuthManager(InMemorySettingsStore(), OkHttpClient()), onConfigured = {}),
@@ -365,6 +371,85 @@ class ConfigServerTest {
             .execute().use { r ->
                 assertEquals(200, r.code)
                 assertTrue(r.body!!.string().contains("\"notifyToken\":\"testtoken\""))
+            }
+    }
+
+    @Test
+    fun renameStripsControlCharsAndCollapsesWhitespace() {
+        val cookie = cookieFrom(login("123456"))
+        // JSON-escaped NUL ( ) and DEL () are decoded to real control chars by the
+        // parser, then stripped; the run of spaces collapses to one. Written as \\u.... so the
+        // wire bytes are the JSON escape, not a raw control char (the parser is not lenient).
+        val body = "{\"name\":\"  My\\u0000Kitchen\\u007f   Hearth  \"}"
+        http.newCall(Request.Builder().url("$base/api/name").header("Cookie", cookie)
+            .put(body.toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(200, r.code)
+                assertTrue(r.body!!.string().contains("\"name\":\"MyKitchen Hearth\""))
+            }
+        assertEquals("MyKitchen Hearth", setNameCalls.last())
+        assertEquals("MyKitchen Hearth", customName)
+    }
+
+    @Test
+    fun renameTruncatesToFortyChars() {
+        val cookie = cookieFrom(login("123456"))
+        val fifty = "A".repeat(50)
+        http.newCall(Request.Builder().url("$base/api/name").header("Cookie", cookie)
+            .put("""{"name":"$fifty"}""".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(200, r.code)
+                assertTrue(r.body!!.string().contains("\"name\":\"${"A".repeat(40)}\""))
+            }
+        assertEquals("A".repeat(40), setNameCalls.last())
+    }
+
+    @Test
+    fun renameEmptyResetsToDefault() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/name").header("Cookie", cookie)
+            .put("""{"name":"    "}""".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(200, r.code)
+                assertTrue(r.body!!.string().contains("\"name\":\"Hearth (Pixel 1234)\""))
+            }
+        assertNull(setNameCalls.last())   // setter received null = reset to default
+    }
+
+    @Test
+    fun renameMissingNameResetsToDefault() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/name").header("Cookie", cookie)
+            .put("{}".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(200, r.code)
+                assertTrue(r.body!!.string().contains("\"name\":\"Hearth (Pixel 1234)\""))
+            }
+        assertNull(setNameCalls.last())
+    }
+
+    @Test
+    fun renameMalformedBodyReturns400() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/name").header("Cookie", cookie)
+            .put("{ not json".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(400, r.code)
+            }
+        assertTrue(setNameCalls.isEmpty())
+    }
+
+    @Test
+    fun renameRequiresSession() {
+        http.newCall(Request.Builder().url("$base/api/name")
+            .put("""{"name":"Study"}""".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(401, r.code)
+            }
+        assertTrue(setNameCalls.isEmpty())
+    }
+
+    @Test
+    fun statusIncludesDeviceName() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/status").header("Cookie", cookie).build())
+            .execute().use { r ->
+                assertEquals(200, r.code)
+                assertTrue(r.body!!.string().contains("\"deviceName\":\"Hearth (Pixel 1234)\""))
             }
     }
 }

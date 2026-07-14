@@ -50,7 +50,7 @@ class SatelliteServerTest {
     @Before fun setUp() {
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         out = RecordingOut()
-        server = SatelliteServer(scope, port = 0, appVersion = "0.3", out = out)
+        server = SatelliteServer(scope, port = 0, appVersion = "0.3", name = { "Test Sat" }, out = out)
         server.start()
         val deadline = System.currentTimeMillis() + 5_000
         while (server.boundPort <= 0 && System.currentTimeMillis() < deadline) Thread.sleep(10)
@@ -158,7 +158,7 @@ class SatelliteServerTest {
             thresholdPct = 50,
             nowMs = { 0L },
         )
-        server = SatelliteServer(scope, port = 0, appVersion = "0.3", out = out)
+        server = SatelliteServer(scope, port = 0, appVersion = "0.3", name = { "Test Sat" }, out = out)
         server.start(localWake = true, detector = det, wakeWord = "alexa")
         awaitBind()
         TestClient(server.boundPort).use { c ->

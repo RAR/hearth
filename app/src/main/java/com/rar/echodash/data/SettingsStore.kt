@@ -14,6 +14,7 @@ interface SettingsStore {
     var vacaSettingsJson: String?
     var configPin: String?
     var notifyToken: String?
+    var deviceName: String?
     fun clearAuth()
 }
 
@@ -26,6 +27,7 @@ class InMemorySettingsStore : SettingsStore {
     override var vacaSettingsJson: String? = null
     override var configPin: String? = null
     override var notifyToken: String? = null
+    override var deviceName: String? = null
 
     override fun clearAuth() {
         accessToken = null
@@ -65,6 +67,8 @@ class PrefsSettingsStore(context: Context) : SettingsStore {
         get() = string("config_pin"); set(v) = put("config_pin", v)
     override var notifyToken: String?
         get() = string("notify_token"); set(v) = put("notify_token", v)
+    override var deviceName: String?
+        get() = string("device_name"); set(v) = put("device_name", v)
 
     override fun clearAuth() {
         prefs.edit()

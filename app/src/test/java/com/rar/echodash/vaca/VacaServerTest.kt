@@ -61,7 +61,7 @@ class VacaServerTest {
         server = VacaServer(
             scope = scope,
             port = 0, // ephemeral for tests
-            infoEvent = { VacaOutgoing.info("0.2") },
+            infoEvent = { VacaOutgoing.info("0.2", "Test Device") },
             capabilitiesEvent = { VacaOutgoing.capabilities(VacaOutgoing.buildCapabilities("0.2", hasLightSensor = false)) },
             listener = listener,
         )

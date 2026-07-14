@@ -26,6 +26,8 @@ class ConfigServer(
     private val sessions: SessionManager,
     private val pin: () -> String,
     private val notifyToken: () -> String,
+    private val deviceName: () -> String,
+    private val setDeviceName: (String?) -> Unit,
     private val pushStore: com.rar.echodash.notify.PushNotificationStore,
     private val entitiesJson: () -> String,
     private val setup: SetupCoordinator,
@@ -61,6 +63,7 @@ class ConfigServer(
                 uri == "/api/config" && method == Method.PUT -> handlePutConfig(session)
                 uri == "/api/entities" && method == Method.GET -> ok(entitiesJson())
                 uri == "/api/status" && method == Method.GET -> handleStatus()
+                uri == "/api/name" && method == Method.PUT -> handlePutName(session)
                 uri == "/api/setup/begin" && method == Method.POST -> handleSetupBegin(session)
                 uri == "/api/setup/complete" && method == Method.POST -> handleSetupComplete(session)
                 uri == "/api/voice/preview-chime" && method == Method.POST -> handlePreviewChime(session)
@@ -106,7 +109,31 @@ class ConfigServer(
             put("connState", connState())
             put("lux", lux())            // int, or JSON null when no sensor reading yet
             put("notifyToken", notifyToken())
+            put("deviceName", deviceName())
         }.toString())
+
+    private fun handlePutName(session: IHTTPSession): Response {
+        val obj = runCatching { ConfigJson.json.parseToJsonElement(readBody(session)) as JsonObject }
+            .getOrNull() ?: return error(Response.Status.BAD_REQUEST, "invalid request")
+        val raw = obj["name"]?.jsonPrimitive?.contentOrNull   // JSON null / missing -> null -> default
+        setDeviceName(clampDeviceName(raw))
+        return ok(buildJsonObject { put("name", deviceName()) }.toString())
+    }
+
+    /**
+     * Clamp a raw device name to storage form, or null to reset to the computed default.
+     * Order (per spec): trim; strip ASCII control chars (< 0x20 and 0x7F); collapse whitespace
+     * runs to single spaces; truncate to 40; trim again. Empty after clamping (or null input) -> null.
+     */
+    private fun clampDeviceName(raw: String?): String? {
+        if (raw == null) return null
+        var s = raw.trim()
+        s = buildString { for (c in s) if (c.code >= 0x20 && c.code != 0x7F) append(c) }
+        s = s.replace(Regex("\\s+"), " ")
+        if (s.length > 40) s = s.substring(0, 40)
+        s = s.trim()
+        return s.ifEmpty { null }
+    }
 
     /** Constant-time check of the `Authorization: Bearer <token>` header against the notify token. */
     private fun bearerAuthed(session: IHTTPSession): Boolean {

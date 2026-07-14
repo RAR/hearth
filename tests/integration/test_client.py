@@ -245,6 +245,43 @@ def test_ping_keepalive_keeps_connection_up():
     assert still_up is True
 
 
+def test_late_listener_gets_replayed_settings_and_merged_status():
+    async def scenario() -> list[tuple[str, dict]]:
+        server = FakeAppServer()
+        await server.start()
+        client = HearthClient(server.host, server.port, ping_interval=5)
+        await client.async_start()
+        await client.async_wait_connected(2)
+        await asyncio.sleep(0.2)  # let the immediate settings + status snapshot arrive and dispatch
+
+        # a second, partial status event (e.g. sensors) arrives later on the same session
+        await write_event(
+            server.session_writer,
+            WyomingEvent(
+                "custom-event",
+                {"event_type": "status", "data": {"sensors": {"light": 42}}},
+            ),
+        )
+        await asyncio.sleep(0.1)
+
+        replayed: list[tuple[str, dict]] = []
+        client.add_listener(lambda kind, data: replayed.append((kind, data)))  # registers late, like an HA entity
+
+        await client.async_stop()
+        await server.stop()
+        return replayed
+
+    replayed = asyncio.run(scenario())
+    kinds = [k for k, _ in replayed]
+    assert kinds.count("settings") == 1  # replayed exactly once, synchronously on add_listener
+    assert kinds.count("status") == 1
+    settings = next(d for k, d in replayed if k == "settings")
+    status = next(d for k, d in replayed if k == "status")
+    assert settings == DEFAULT_SETTINGS
+    # merged: media_player from the handshake snapshot, sensors from the later partial event
+    assert status == {"media_player": {"playing": False}, "sensors": {"light": 42}}
+
+
 def test_reconnect_after_connection_drop():
     conn: list[bool] = []
 

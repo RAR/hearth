@@ -53,6 +53,8 @@ class HearthClient:
 
         self._listeners: list[Listener] = []
         self._connected_waiters: list[asyncio.Future] = []
+        self._last_settings: dict | None = None
+        self._last_status: dict | None = None
 
     # ---- public properties --------------------------------------------------
     @property
@@ -70,6 +72,19 @@ class HearthClient:
     # ---- listeners ----------------------------------------------------------
     def add_listener(self, cb: Listener) -> Callable[[], None]:
         self._listeners.append(cb)
+
+        # Replay the last snapshot so late-registering listeners (e.g. HA entities, which
+        # attach after the handshake's one-shot settings/status arrive) don't miss it.
+        if self._last_settings is not None:
+            try:
+                cb("settings", self._last_settings)
+            except Exception:  # noqa: BLE001 - a listener must never break the loop
+                _LOGGER.exception("hearth listener raised for replayed settings")
+        if self._last_status is not None:
+            try:
+                cb("status", self._last_status)
+            except Exception:  # noqa: BLE001 - a listener must never break the loop
+                _LOGGER.exception("hearth listener raised for replayed status")
 
         def remove() -> None:
             if cb in self._listeners:
@@ -249,8 +264,11 @@ class HearthClient:
             body = body if isinstance(body, dict) else {}
             if event_type == "settings":
                 settings = body.get("settings")
-                self._emit("settings", settings if isinstance(settings, dict) else {})
+                settings = settings if isinstance(settings, dict) else {}
+                self._last_settings = settings
+                self._emit("settings", settings)
             elif event_type == "status":
+                self._last_status = {**(self._last_status or {}), **body}
                 self._emit("status", body)
 
     async def _ping_loop(self) -> None:

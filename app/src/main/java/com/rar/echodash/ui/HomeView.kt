@@ -39,7 +39,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.ElectricMeter
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Power
+import androidx.compose.material.icons.outlined.EvStation
 import androidx.compose.material.icons.outlined.SolarPower
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -372,7 +372,7 @@ fun HomeView(
     }
 }
 
-/** One EV charging pill: plug icon + name, a power/energy line, then a battery gauge + SOC/eta. */
+/** One EV charging pill: EV-station icon + name, a power/energy line, then a battery gauge + SOC/eta. */
 @Composable
 private fun EvCardView(card: EvCard) {
     Column(
@@ -387,7 +387,7 @@ private fun EvCardView(card: EvCard) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Icon(
-                Icons.Outlined.Power, contentDescription = null,
+                Icons.Outlined.EvStation, contentDescription = null,
                 tint = Color.White, modifier = Modifier.size(18.dp),
             )
             Text(

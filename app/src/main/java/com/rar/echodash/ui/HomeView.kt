@@ -40,6 +40,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.ElectricMeter
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.EvStation
+import androidx.compose.material.icons.outlined.HorizontalRule
 import androidx.compose.material.icons.outlined.SolarPower
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -541,12 +542,16 @@ private fun SolarCardView(card: SolarCard) {
                         Text("·", color = statsWhite, fontSize = 14.sp)
                     }
                     Icon(
-                        if (card.gridImporting) {
-                            Icons.AutoMirrored.Outlined.ArrowBack
-                        } else {
-                            Icons.AutoMirrored.Outlined.ArrowForward
+                        when (card.gridImporting) {
+                            true -> Icons.AutoMirrored.Outlined.ArrowBack
+                            false -> Icons.AutoMirrored.Outlined.ArrowForward
+                            null -> Icons.Outlined.HorizontalRule
                         },
-                        contentDescription = if (card.gridImporting) "Import" else "Export",
+                        contentDescription = when (card.gridImporting) {
+                            true -> "Import"
+                            false -> "Export"
+                            null -> "Balanced"
+                        },
                         tint = statsWhite, modifier = Modifier.size(16.dp),
                     )
                     Icon(

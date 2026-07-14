@@ -82,6 +82,18 @@ class SolarModelTest {
     }
 
     @Test
+    fun solarCardGridDeadbandIsBalanced() {
+        val cfg = SolarConfig(grid = "sensor.grid")
+        fun importing(state: String, unit: String) = solarCard(cfg,
+            mapOf("sensor.grid" to st("sensor.grid", state, unit)))!!.gridImporting
+        assertNull(importing("0", "W"))
+        assertNull(importing("-30", "W"))      // inside deadband either direction
+        assertNull(importing("0.05", "kW"))    // kW unit-aware: 50 W is inside
+        assertEquals(true, importing("51", "W"))
+        assertEquals(false, importing("-0.2", "kW"))
+    }
+
+    @Test
     fun battFlowSignAndDeadband() {
         val cfg = SolarConfig(battSoc = "sensor.soc", battPower = "sensor.batt")
         fun cardWith(state: String, unit: String) = solarCard(cfg, mapOf(

@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Launcher house glyph without its square backdrop, for the splash window background. -->
+<!-- Launcher house glyph without its square backdrop, for the splash window background.
+     Kept small and off-white: a big pure-white shape blooms on this panel and its
+     anti-aliased diagonals read as blur. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="96dp" android:height="96dp"
+    android:width="64dp" android:height="64dp"
     android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M12,3L2,12h3v8h14v-8h3L12,3z"/>
+    <path android:fillColor="#FFDCE0EA" android:pathData="M12,3L2,12h3v8h14v-8h3L12,3z"/>
 </vector>

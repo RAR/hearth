@@ -7,7 +7,7 @@
     </item>
     <item
         android:gravity="center"
-        android:width="96dp"
-        android:height="96dp"
+        android:width="64dp"
+        android:height="64dp"
         android:drawable="@drawable/ic_splash_logo"/>
 </layer-list>

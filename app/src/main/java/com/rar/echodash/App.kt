@@ -397,9 +397,11 @@ fun EchoDashApp(deps: AppDeps) {
                         }
                     }
                     // Calendar events at Dashboard scope so the home card has data without opening
-                    // the panel. Immediate fetch, then every 15 minutes; a failed fetch (null) keeps
-                    // the last good list, a non-null response updates (empty clears the card). No
-                    // configured calendars -> no fetch, empty list.
+                    // the panel. Immediate fetch, then every 15 minutes. Calendars are fetched one
+                    // per call — HA fails a batched get_events entirely when any one calendar
+                    // errors, which would let a single broken calendar freeze the rest. Per
+                    // calendar, a failed fetch (null) keeps its last good events while a non-null
+                    // response updates them (empty clears). No configured calendars -> no fetch.
                     var calendarEvents by remember { mutableStateOf<List<CalendarEvent>>(emptyList()) }
                     LaunchedEffect(config.entities.calendars) {
                         val cals = config.entities.calendars
@@ -407,11 +409,17 @@ fun EchoDashApp(deps: AppDeps) {
                             calendarEvents = emptyList()
                             return@LaunchedEffect
                         }
+                        val lastGood = HashMap<String, List<CalendarEvent>>()
                         while (true) {
-                            val result = deps.entityHub.getCalendarEvents(cals.map { it.entity })
-                            if (result != null) {
-                                calendarEvents = parseCalendarEvents(result, cals, ZoneId.systemDefault())
+                            for (cal in cals) {
+                                val result = deps.entityHub.getCalendarEvents(listOf(cal.entity))
+                                if (result != null) {
+                                    lastGood[cal.entity] =
+                                        parseCalendarEvents(result, listOf(cal), ZoneId.systemDefault())
+                                }
                             }
+                            calendarEvents = cals.flatMap { lastGood[it.entity].orEmpty() }
+                                .sortedBy { it.startMs }
                             delay(15 * 60_000L)
                         }
                     }

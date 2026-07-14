@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.ElectricMeter
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Power
 import androidx.compose.material.icons.outlined.SolarPower
@@ -546,6 +547,10 @@ private fun SolarCardView(card: SolarCard) {
                             Icons.AutoMirrored.Outlined.ArrowForward
                         },
                         contentDescription = if (card.gridImporting) "Import" else "Export",
+                        tint = statsWhite, modifier = Modifier.size(16.dp),
+                    )
+                    Icon(
+                        Icons.Outlined.ElectricMeter, contentDescription = "Grid",
                         tint = statsWhite, modifier = Modifier.size(16.dp),
                     )
                     Text(card.gridText, color = statsWhite, fontSize = 14.sp, maxLines = 1)

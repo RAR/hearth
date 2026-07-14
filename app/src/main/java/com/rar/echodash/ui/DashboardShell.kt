@@ -171,7 +171,24 @@ fun DashboardShell(
                 }
             }
     ) {
-        Crossfade(targetState = current, animationSpec = tween(300), label = "view") { view ->
+        Crossfade(
+            targetState = current,
+            animationSpec = tween(300),
+            label = "view",
+            // On any panel, a left-to-right swipe goes back home. The detector sits on the
+            // PARENT of the panel content, so interactive children (volume/brightness sliders,
+            // scrolling lists) consume their own drags first and are unaffected; only leftover
+            // rightward swipes on passive areas trigger it. Inert on HOME (the home view has
+            // its own photo-swipe gesture).
+            modifier = Modifier.pointerInput(current) {
+                if (current == DashView.HOME) return@pointerInput
+                var dx = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { dx = 0f },
+                    onDragEnd = { if (dx > 60.dp.toPx()) onSelect(DashView.HOME) },
+                ) { _, dragAmount -> dx += dragAmount }
+            },
+        ) { view ->
             when (view) {
                 DashView.HOME -> {
                     val pill = remember(entities, config.entities, config.panelOptions.sensorDecimals) {

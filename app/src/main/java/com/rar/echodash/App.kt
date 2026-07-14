@@ -411,18 +411,24 @@ fun EchoDashApp(deps: AppDeps) {
                         }
                         val lastGood = HashMap<String, List<CalendarEvent>>()
                         while (true) {
+                            var anyFailed = false
                             for (cal in cals) {
                                 val result = deps.entityHub.getCalendarEvents(listOf(cal.entity))
                                 if (result != null) {
                                     lastGood[cal.entity] =
                                         parseCalendarEvents(result, listOf(cal), ZoneId.systemDefault())
+                                } else {
+                                    anyFailed = true
                                 }
                                 // Publish after every calendar, not after the sweep: a slow or
                                 // erroring calendar must not delay the ones already fetched.
                                 calendarEvents = cals.flatMap { lastGood[it.entity].orEmpty() }
                                     .sortedBy { it.startMs }
                             }
-                            delay(15 * 60_000L)
+                            // A sweep that failed before ANY calendar ever succeeded is almost
+                            // always the cold-start race with the websocket connect — retry
+                            // quickly until first data lands, then settle into the 15-min cadence.
+                            delay(if (anyFailed && lastGood.isEmpty()) 15_000L else 15 * 60_000L)
                         }
                     }
                     val configUrl = remember { deps.configUrl() }

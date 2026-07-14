@@ -39,6 +39,8 @@ import com.rar.echodash.ui.TimerChips
 import com.rar.echodash.ui.TimerFinishedOverlay
 import com.rar.echodash.ui.VoiceOverlay
 import com.rar.echodash.ui.WakeGlow
+import com.rar.echodash.ui.model.CalendarEvent
+import com.rar.echodash.ui.model.parseCalendarEvents
 import com.rar.echodash.ui.model.pushedNotificationItems
 import com.rar.echodash.ui.theme.EchoTheme
 import com.rar.echodash.vaca.AndroidKioskDevice
@@ -72,6 +74,7 @@ import com.rar.echodash.web.generatePin
 import com.rar.echodash.web.generateNotifyToken
 import com.rar.echodash.web.localIpAddress
 import java.io.File
+import java.time.ZoneId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -393,6 +396,25 @@ fun EchoDashApp(deps: AppDeps) {
                             deps.pushStore.prune(System.currentTimeMillis())
                         }
                     }
+                    // Calendar events at Dashboard scope so the home card has data without opening
+                    // the panel. Immediate fetch, then every 15 minutes; a failed fetch (null) keeps
+                    // the last good list, a non-null response updates (empty clears the card). No
+                    // configured calendars -> no fetch, empty list.
+                    var calendarEvents by remember { mutableStateOf<List<CalendarEvent>>(emptyList()) }
+                    LaunchedEffect(config.entities.calendars) {
+                        val cals = config.entities.calendars
+                        if (cals.isEmpty()) {
+                            calendarEvents = emptyList()
+                            return@LaunchedEffect
+                        }
+                        while (true) {
+                            val result = deps.entityHub.getCalendarEvents(cals.map { it.entity })
+                            if (result != null) {
+                                calendarEvents = parseCalendarEvents(result, cals, ZoneId.systemDefault())
+                            }
+                            delay(15 * 60_000L)
+                        }
+                    }
                     val configUrl = remember { deps.configUrl() }
                     val configPinValue = remember { deps.configPin() }
                     var view by remember { mutableStateOf(DashView.HOME) }
@@ -557,6 +579,7 @@ fun EchoDashApp(deps: AppDeps) {
                         },
                         pushed = pushed,
                         onPushDismiss = { id -> deps.pushStore.dismiss(id) },
+                        calendarEvents = calendarEvents,
                     )
 
                     val voiceOverlayState by deps.voiceOverlay.collectAsStateWithLifecycle()

@@ -33,6 +33,7 @@ import com.rar.echodash.config.DashConfig
 import com.rar.echodash.ha.ConnState
 import com.rar.echodash.ha.EntityState
 import com.rar.echodash.ha.RegistryIndex
+import com.rar.echodash.ui.model.CalendarEvent
 import com.rar.echodash.ui.model.NotificationItem
 import com.rar.echodash.ui.model.PUSH_KEY_PREFIX
 import com.rar.echodash.ui.model.aqiPill
@@ -94,6 +95,7 @@ fun DashboardShell(
     onNightWake: () -> Unit = {},
     pushed: List<NotificationItem> = emptyList(),
     onPushDismiss: (String) -> Unit = {},
+    calendarEvents: List<CalendarEvent> = emptyList(),
 ) {
     val connected = connState == ConnState.CONNECTED
     val weatherEntityId = config.entities.weather
@@ -197,6 +199,7 @@ fun DashboardShell(
                         solar = solar,
                         notifications = notifications,
                         onDismiss = dismissKey,
+                        calendarEvents = calendarEvents,
                         clockFormat = config.home.clockFormat,
                         connState = connState,
                         configUrl = configUrl,

@@ -2,6 +2,9 @@ package com.rar.echodash.ha
 
 import com.rar.echodash.config.DashConfig
 import java.io.IOException
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -146,6 +149,31 @@ class EntityHub(
                 put("service", "get_forecasts")
                 putJsonObject("service_data") { put("type", "daily") }
                 putJsonObject("target") { put("entity_id", entityId) }
+                put("return_response", JsonPrimitive(true))
+            })
+        }.getOrNull()
+
+    /**
+     * One calendar.get_events call for all configured calendars. Returns the raw
+     * {"response":{"<entity>":{"events":[...]}}} element, or null on any failure (caller keeps last
+     * good list). Window is now .. now+3 days, RFC3339 with the device's local offset
+     * (e.g. 2026-07-14T11:30:00-04:00). Events come from this service call, NOT state subscriptions.
+     */
+    suspend fun getCalendarEvents(entityIds: List<String>): JsonElement? =
+        runCatching {
+            val now = OffsetDateTime.now().truncatedTo(ChronoUnit.SECONDS)
+            val end = now.plusDays(3)
+            val fmt = DateTimeFormatter.ISO_OFFSET_DATE_TIME
+            client.request("call_service", buildJsonObject {
+                put("domain", "calendar")
+                put("service", "get_events")
+                putJsonObject("service_data") {
+                    put("start_date_time", now.format(fmt))
+                    put("end_date_time", end.format(fmt))
+                }
+                putJsonObject("target") {
+                    putJsonArray("entity_id") { entityIds.forEach { add(it) } }
+                }
                 put("return_response", JsonPrimitive(true))
             })
         }.getOrNull()

@@ -76,14 +76,18 @@ import com.rar.echodash.media.ArtBitmaps
 import com.rar.echodash.media.NowPlayingState
 import com.rar.echodash.ui.model.AqiPill
 import com.rar.echodash.ui.model.BattFlow
+import com.rar.echodash.ui.model.CalendarEvent
 import com.rar.echodash.ui.model.EvCard
 import com.rar.echodash.ui.model.NotificationItem
 import com.rar.echodash.ui.model.RainPill
 import com.rar.echodash.ui.model.SolarCard
 import com.rar.echodash.ui.model.WeatherIcon
 import com.rar.echodash.ui.model.WeatherPill
+import com.rar.echodash.ui.model.eventTimeLabel
+import com.rar.echodash.ui.model.nextEventCard
 import java.io.File
 import java.text.SimpleDateFormat
+import java.time.ZoneId
 import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
@@ -166,6 +170,7 @@ fun HomeView(
     onMediaNext: () -> Unit,
     onMediaPrev: () -> Unit,
     onMediaVolume: (Int) -> Unit,
+    calendarEvents: List<CalendarEvent> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -338,6 +343,40 @@ fun HomeView(
                         .heightIn(max = 200.dp)
                         .clipToBounds(),
                 )
+            }
+
+            // Next-event card: bottom-right, diagonal from the clock, width-capped so it never
+            // approaches the bottom-left clock block. Re-derives on the minute tick so "Tomorrow"
+            // flips to a time and "Now" appears without waiting for the next 15-minute fetch.
+            val nextEvent = remember(calendarEvents, now) { nextEventCard(calendarEvents, now) }
+            AnimatedVisibility(
+                visible = nextEvent != null,
+                enter = fadeIn(tween(600)),
+                exit = fadeOut(tween(600)),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 20.dp, end = 28.dp),
+            ) {
+                // Guarded like the EV/solar stack above: nextEvent is non-null whenever visible=true.
+                nextEvent?.let { ev ->
+                    val is24 = clockIs24(clockFormat, DateFormat.is24HourFormat(context))
+                    Row(
+                        Modifier
+                            .widthIn(max = 300.dp)
+                            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Box(Modifier.size(10.dp).clip(CircleShape).background(Color(ev.colorArgb)))
+                        Text(
+                            eventTimeLabel(ev, now, ZoneId.systemDefault(), is24),
+                            color = Color.White.copy(alpha = 0.7f), fontSize = 15.sp,
+                        )
+                        Text(
+                            ev.title, color = Color.White, fontSize = 15.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
         }
 

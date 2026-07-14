@@ -6,7 +6,7 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <application
         android:name=".EchoDashApplication"
-        android:label="Echo Dashboard"
+        android:label="Hearth"
         android:icon="@drawable/ic_launcher"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.EchoDash">

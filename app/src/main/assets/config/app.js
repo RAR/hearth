@@ -38,6 +38,13 @@ const SEVERITY_OPTIONS = [
   ["severe", "Severe"],
 ];
 
+const AUTO_DISMISS_OPTIONS = [
+  ["off", "Off"],
+  ["info", "Info only"],
+  ["warning", "Info + warning"],
+  ["critical", "All severities"],
+];
+
 // ---------- inline SVG glyphs (currentColor) ----------
 const ICONS = {
   lights: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.5.5.8 1 .8 1.6V16h6v-.8c0-.6.3-1.1.8-1.6A6 6 0 0 0 12 3Z"/></svg>',
@@ -428,6 +435,8 @@ function renderNotifications() {
   if (!config.notifications) config.notifications = { nwsAlerts: null, nwsMinSeverity: "minor" };
   const n = config.notifications;
   if (n.nwsMinSeverity == null) n.nwsMinSeverity = "minor";
+  if (n.autoDismiss == null) n.autoDismiss = "off";
+  if (n.autoDismissSeconds == null) n.autoDismissSeconds = 300;
 
   // Same populated picker pattern as the AQI sensor: shared sensor datalist; blank -> null.
   host.appendChild(labeledRow("NWS alerts sensor",
@@ -442,10 +451,25 @@ function renderNotifications() {
   sev.addEventListener("change", () => n.nwsMinSeverity = sev.value);
   host.appendChild(labeledRow("Minimum severity", sev));
 
+  const auto = el("select");
+  AUTO_DISMISS_OPTIONS.forEach(([val, lbl]) => {
+    const o = el("option", null, lbl); o.value = val;
+    if (n.autoDismiss === val) o.selected = true;
+    auto.appendChild(o);
+  });
+  auto.addEventListener("change", () => n.autoDismiss = auto.value);
+  host.appendChild(labeledRow("Auto-dismiss", auto));
+
+  const autoSecs = el("input"); autoSecs.type = "number"; autoSecs.min = 10; autoSecs.max = 7200;
+  autoSecs.value = n.autoDismissSeconds;
+  autoSecs.addEventListener("change", () => n.autoDismissSeconds = Math.round(parseFloat(autoSecs.value) || 300));
+  host.appendChild(labeledRow("Auto-dismiss after (s)", autoSecs));
+
   host.appendChild(el("div", "muted",
     "Point this at the nws_alerts integration's sensor (e.g. sensor.nws_alerts_alerts) to show active " +
     "alerts under the weather; swipe left to dismiss. Only alerts at or above the minimum severity " +
-    "appear (Minor = show all)."));
+    "appear (Minor = show all). Auto-dismiss removes rows at or below the chosen severity after the " +
+    "set time; higher severities stay until swiped away."));
 
   // ---- Push from Home Assistant ----
   // Rendered only when the app build exposes a notify token (older builds -> block absent).

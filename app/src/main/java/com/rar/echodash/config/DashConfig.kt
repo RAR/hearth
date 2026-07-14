@@ -154,18 +154,26 @@ data class NightSettings(
 
 @Serializable
 data class NotificationsConfig(
-    val nwsAlerts: String? = null,        // NWS alerts sensor entity id (nws_alerts integration)
-    val nwsMinSeverity: String = "minor", // "minor" | "moderate" | "severe"
+    val nwsAlerts: String? = null,          // NWS alerts sensor entity id (nws_alerts integration)
+    val nwsMinSeverity: String = "minor",   // "minor" | "moderate" | "severe"
+    val autoDismiss: String = "off",        // auto-dismiss rows at or below: "off" | "info" | "warning" | "critical"
+    val autoDismissSeconds: Int = 300,      // how long a row stays before auto-dismissal
 ) {
-    /** Trim the sensor id (blank -> null) and clamp the min-severity to the valid set (default minor). */
+    /** Trim the sensor id (blank -> null), clamp the min-severity to the valid set (default minor),
+     *  the auto-dismiss level to its set (default off), and the auto-dismiss delay into 10..7200 s. */
     fun clamped(): NotificationsConfig = copy(
         nwsAlerts = nwsAlerts?.trim()?.ifBlank { null },
         nwsMinSeverity = nwsMinSeverity.trim().lowercase().let { if (it in MIN_SEVERITIES) it else "minor" },
+        autoDismiss = autoDismiss.trim().lowercase().let { if (it in AUTO_DISMISS_LEVELS) it else "off" },
+        autoDismissSeconds = autoDismissSeconds.coerceIn(10, 7200),
     )
 
     companion object {
         /** The three recognized minimum-severity ids. */
         val MIN_SEVERITIES: Set<String> = setOf("minor", "moderate", "severe")
+
+        /** The recognized auto-dismiss levels ("at or below" cutoffs; "off" disables). */
+        val AUTO_DISMISS_LEVELS: Set<String> = setOf("off", "info", "warning", "critical")
     }
 }
 

@@ -275,4 +275,47 @@ class NotificationModelTest {
     fun mergeConstant() {
         assertEquals("push:", PUSH_KEY_PREFIX)
     }
+
+    // ---- auto-dismiss ----
+
+    @Test
+    fun autoDismissCutoffMapping() {
+        assertEquals(NotifSeverity.INFO, autoDismissCutoff("info"))
+        assertEquals(NotifSeverity.WARNING, autoDismissCutoff("  Warning "))
+        assertEquals(NotifSeverity.CRITICAL, autoDismissCutoff("critical"))
+        assertNull(autoDismissCutoff("off"))
+        assertNull(autoDismissCutoff("bogus"))
+        assertNull(autoDismissCutoff(""))
+    }
+
+    @Test
+    fun autoDismissKeysRespectsCutoffAndDwell() {
+        val items = listOf(
+            NotificationItem("old-info", NotifSeverity.INFO, "A", null),
+            NotificationItem("new-info", NotifSeverity.INFO, "B", null),
+            NotificationItem("old-crit", NotifSeverity.CRITICAL, "C", null),
+            NotificationItem("unseen", NotifSeverity.INFO, "D", null),
+        )
+        val firstSeen = mapOf("old-info" to 0L, "new-info" to 9_000L, "old-crit" to 0L)
+        // cutoff WARNING: INFO rows past the 10s dwell go; CRITICAL never; unseen treated as new.
+        assertEquals(
+            listOf("old-info"),
+            autoDismissKeys(items, NotifSeverity.WARNING, firstSeen, 10_000L, 10_000L),
+        )
+        // dwell boundary is inclusive: exactly timeoutMs counts.
+        assertEquals(
+            listOf("old-info", "new-info"),
+            autoDismissKeys(items, NotifSeverity.WARNING, firstSeen, 10_000L, 19_000L),
+        )
+        // cutoff CRITICAL sweeps everything past the dwell.
+        assertEquals(
+            listOf("old-info", "old-crit"),
+            autoDismissKeys(items, NotifSeverity.CRITICAL, firstSeen, 10_000L, 10_000L),
+        )
+        // null cutoff = feature off.
+        assertEquals(
+            emptyList<String>(),
+            autoDismissKeys(items, null, firstSeen, 10_000L, 999_999L),
+        )
+    }
 }

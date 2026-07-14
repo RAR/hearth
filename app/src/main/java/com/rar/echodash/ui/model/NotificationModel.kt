@@ -132,3 +132,33 @@ fun pushedNotificationItems(items: List<PushedNotification>): List<NotificationI
  */
 fun mergeNotifications(pushed: List<NotificationItem>, nws: List<NotificationItem>): List<NotificationItem> =
     (pushed + nws).sortedByDescending { it.severity.ordinal }
+
+/** Map the config auto-dismiss level to the highest severity it covers ("at or below" semantics):
+ *  "info" -> INFO only, "warning" -> INFO+WARNING, "critical" -> everything. "off"/unknown -> null
+ *  (auto-dismiss disabled). */
+fun autoDismissCutoff(configValue: String): NotifSeverity? =
+    when (configValue.trim().lowercase(Locale.US)) {
+        "info" -> NotifSeverity.INFO
+        "warning" -> NotifSeverity.WARNING
+        "critical" -> NotifSeverity.CRITICAL
+        else -> null
+    }
+
+/**
+ * Keys of rows due for auto-dismissal: severity at or below [cutoff] AND on screen for at least
+ * [timeoutMs] (per [firstSeenMs]; a row with no recorded first-seen is treated as just arrived).
+ * Null [cutoff] disables the feature (empty result).
+ */
+fun autoDismissKeys(
+    items: List<NotificationItem>,
+    cutoff: NotifSeverity?,
+    firstSeenMs: Map<String, Long>,
+    timeoutMs: Long,
+    nowMs: Long,
+): List<String> {
+    if (cutoff == null) return emptyList()
+    return items
+        .filter { it.severity.ordinal <= cutoff.ordinal }
+        .filter { nowMs - (firstSeenMs[it.key] ?: nowMs) >= timeoutMs }
+        .map { it.key }
+}

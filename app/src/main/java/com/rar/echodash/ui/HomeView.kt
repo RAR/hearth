@@ -325,12 +325,14 @@ fun HomeView(
                 NotificationArea(
                     notifications = notifications,
                     onDismiss = onDismiss,
-                    // The Echo panel is 960x480 px at 195 dpi = ~787dp wide. The EV/solar column's
+                    // The Echo panel is 960x480 px at 195 dpi = ~787x394dp. The EV/solar column's
                     // left edge is at ~787 - 28 (end pad) - 248 (card) = ~511dp, so a start of 28dp
                     // leaves ~471dp before a row would slide under the cards; 460 keeps a gap.
+                    // Height: the bottom-left clock's top edge is at ~394 - 20 (pad) - 90 (clock +
+                    // date) = ~284dp; starting at 70dp, a 200dp cap keeps the scrolling stack clear.
                     modifier = Modifier
                         .widthIn(max = 460.dp)
-                        .heightIn(max = 280.dp)
+                        .heightIn(max = 200.dp)
                         .clipToBounds(),
                 )
             }

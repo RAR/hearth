@@ -498,6 +498,28 @@ class DashConfigTest {
     }
 
     @Test
+    fun notificationsAutoDismissDefaultsAndClamps() {
+        val defaults = NotificationsConfig()
+        assertEquals("off", defaults.autoDismiss)
+        assertEquals(300, defaults.autoDismissSeconds)
+        // absent from old JSON -> defaults
+        val old = decodeConfig("""{"version":1}""").notifications
+        assertEquals("off", old.autoDismiss)
+        assertEquals(300, old.autoDismissSeconds)
+        // trim/lower-case kept; unknown -> off; seconds coerced into 10..7200
+        val c = DashConfig(
+            notifications = NotificationsConfig(autoDismiss = "  Warning ", autoDismissSeconds = 3),
+        ).clamped().notifications
+        assertEquals("warning", c.autoDismiss)
+        assertEquals(10, c.autoDismissSeconds)
+        val bad = DashConfig(
+            notifications = NotificationsConfig(autoDismiss = "bogus", autoDismissSeconds = 999_999),
+        ).clamped().notifications
+        assertEquals("off", bad.autoDismiss)
+        assertEquals(7200, bad.autoDismissSeconds)
+    }
+
+    @Test
     fun notificationsSurvivesClampedAndDefaultsOnOldConfig() {
         assertEquals("severe",
             DashConfig(notifications = NotificationsConfig(nwsMinSeverity = "severe")).clamped().notifications.nwsMinSeverity)

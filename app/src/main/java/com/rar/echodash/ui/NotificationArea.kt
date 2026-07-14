@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -42,7 +44,6 @@ import com.rar.echodash.ui.model.NotificationItem
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
-private const val MAX_ROWS = 4
 private const val SWIPE_DISMISS_FRACTION = 0.30f
 
 private fun accentColor(severity: NotifSeverity): Color = when (severity) {
@@ -52,9 +53,10 @@ private fun accentColor(severity: NotifSeverity): Color = when (severity) {
 }
 
 /**
- * The home-view notification stack. Renders up to [MAX_ROWS] rows; extra rows collapse to a
- * non-interactive "+N more" line. Tapping a row with detail toggles in-place expansion (only one
- * expanded at a time). Swiping a row left past [SWIPE_DISMISS_FRACTION] of its width dismisses it.
+ * The home-view notification stack. Rows beyond the caller's height cap scroll vertically (the
+ * cap + clipToBounds come in via [modifier]). Tapping a row with detail toggles in-place expansion
+ * (only one expanded at a time). Swiping a row left past [SWIPE_DISMISS_FRACTION] of its width
+ * dismisses it (the horizontal detector and the vertical scroll claim separate axes).
  * The caller anchors/sizes this via [modifier]; empty lists should not be rendered by the caller.
  */
 @Composable
@@ -64,11 +66,12 @@ fun NotificationArea(
     modifier: Modifier = Modifier,
 ) {
     var expandedKey by remember { mutableStateOf<String?>(null) }
-    val shown = notifications.take(MAX_ROWS)
-    val overflow = notifications.size - shown.size
 
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        shown.forEach { item ->
+    Column(
+        modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        notifications.forEach { item ->
             key(item.key) {
                 NotificationRow(
                     item = item,
@@ -77,14 +80,6 @@ fun NotificationArea(
                     onDismiss = { onDismiss(item.key) },
                 )
             }
-        }
-        if (overflow > 0) {
-            Text(
-                "+$overflow more",
-                color = Color.White.copy(alpha = 0.6f),
-                fontSize = 14.sp,
-                modifier = Modifier.padding(start = 4.dp, top = 2.dp),
-            )
         }
     }
 }

@@ -3,3 +3,7 @@ build/
 local.properties
 .superpowers/
 .claude/
+
+# Python (HA integration tests)
+__pycache__/
+.pytest_cache/

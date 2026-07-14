@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Window background shown between process start and first Compose frame.
+     Color matches PanelSurface (#12141C) so the handoff into the app is seamless. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <color android:color="#FF12141C"/>
+    </item>
+    <item
+        android:gravity="center"
+        android:width="96dp"
+        android:height="96dp"
+        android:drawable="@drawable/ic_splash_logo"/>
+</layer-list>

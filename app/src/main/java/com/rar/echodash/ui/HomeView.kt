@@ -171,6 +171,7 @@ fun HomeView(
     onMediaPrev: () -> Unit,
     onMediaVolume: (Int) -> Unit,
     calendarEvents: List<CalendarEvent> = emptyList(),
+    onOpenCalendar: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -363,7 +364,10 @@ fun HomeView(
                     Row(
                         Modifier
                             .widthIn(max = 420.dp)
-                            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color.Black.copy(alpha = 0.35f))
+                            // Tap opens the agenda panel.
+                            .pointerInput(Unit) { detectTapGestures(onTap = { onOpenCalendar() }) }
                             .padding(horizontal = 16.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),

@@ -201,6 +201,7 @@ fun DashboardShell(
                         notifications = notifications,
                         onDismiss = dismissKey,
                         calendarEvents = calendarEvents,
+                        onOpenCalendar = { onSelect(DashView.CALENDAR) },
                         clockFormat = config.home.clockFormat,
                         connState = connState,
                         configUrl = configUrl,
@@ -252,22 +253,16 @@ fun DashboardShell(
             }
         }
 
-        // While the home now-playing takeover is showing, the rail slides away so the player
-        // owns the full width; the rail also auto-hides everywhere when the auto-hide option is
-        // on. Hidden, it comes back ONLY via a leftward swipe from the right edge (the strip
-        // below) — ordinary touches no longer pop it up — and hides again after RAIL_HIDE_MS.
-        val autoHide = (current == DashView.HOME && takeoverVisible) || config.panelOptions.autoHideRail
+        // The rail always auto-hides (no longer an option). Hidden, it comes back ONLY via a
+        // leftward swipe from the right edge (the strip below) — ordinary touches don't pop it
+        // up — shows for RAIL_HIDE_MS, then slides away again.
         var railVisible by remember { mutableStateOf(true) }
-        LaunchedEffect(autoHide, railReveals) {
-            if (autoHide) {
-                railVisible = true
-                delay(RAIL_HIDE_MS)
-                railVisible = false
-            } else {
-                railVisible = true
-            }
+        LaunchedEffect(railReveals) {
+            railVisible = true
+            delay(RAIL_HIDE_MS)
+            railVisible = false
         }
-        if (autoHide && !railVisible) {
+        if (!railVisible) {
             Box(
                 Modifier
                     .align(Alignment.CenterEnd)

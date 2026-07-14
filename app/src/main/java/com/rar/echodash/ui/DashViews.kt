@@ -66,12 +66,11 @@ fun railViews(panels: Panels, camerasConfigured: Boolean = false): List<DashView
         DashView.WEATHER to panels.weather,
         DashView.SOLAR to panels.solar,
         DashView.CAMERAS to panels.cameras,
+        DashView.CALENDAR to panels.calendar,
     ).filter { (view, cfg) ->
         cfg.enabled && (view != DashView.CAMERAS || camerasConfigured)
     }.sortedBy { it.second.order }.map { it.first }
-    // Calendar is always available (no panel toggle); it's appended last so panel reordering
-    // never shifts it. The panel itself shows a hint when no calendars are configured.
-    return listOf(DashView.HOME) + configured + DashView.CALENDAR
+    return listOf(DashView.HOME) + configured
 }
 
 /** True when the clock should use 24-hour time (AUTO follows the system setting). */

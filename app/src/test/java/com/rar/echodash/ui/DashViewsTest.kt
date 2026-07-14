@@ -51,6 +51,18 @@ class DashViewsTest {
     }
 
     @Test
+    fun railViewsHonorsCalendarToggleAndOrder() {
+        // Disabled -> excluded like any other panel.
+        assertEquals(
+            listOf(DashView.HOME, DashView.LIGHTS, DashView.CLIMATE, DashView.MEDIA,
+                DashView.WEATHER, DashView.SOLAR),
+            railViews(Panels(calendar = PanelConfig(false, 7))),
+        )
+        // Reorderable: order 0 puts it right after HOME.
+        assertEquals(DashView.CALENDAR, railViews(Panels(calendar = PanelConfig(true, 0)))[1])
+    }
+
+    @Test
     fun clockIs24HonorsFormatThenSystem() {
         assertEquals(true, clockIs24(ClockFormat.H24, systemIs24 = false))
         assertEquals(false, clockIs24(ClockFormat.H12, systemIs24 = true))

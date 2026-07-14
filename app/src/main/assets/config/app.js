@@ -14,9 +14,10 @@ const setupCode = _sp.get("code");
 const setupState = _sp.get("state");
 let setupAttempted = false;
 
-const PANEL_KEYS = ["lights", "climate", "media", "weather", "solar", "cameras"];
+const PANEL_KEYS = ["lights", "climate", "media", "weather", "solar", "cameras", "calendar"];
 const PANEL_LABELS = {
   lights: "Lights", climate: "Climate", media: "Media", weather: "Weather", solar: "Solar", cameras: "Cameras",
+  calendar: "Calendar",
 };
 
 const TONE_OPTIONS = [
@@ -56,6 +57,7 @@ const ICONS = {
   solar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.6"/><path d="M12 2.5v2.4M12 19.1v2.4M21.5 12h-2.4M4.9 12H2.5M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7M18.4 18.4l-1.7-1.7M7.3 7.3 5.6 5.6"/></svg>',
   cameras: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="12" height="11" rx="2"/><path d="M15 10l6-3v10l-6-3Z"/></svg>',
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v10h12V10"/><path d="M10 20v-5h4v5"/></svg>',
+  calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9.5h16"/><path d="M8 3v4M16 3v4"/></svg>',
   ev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v-4l2-4.5A2 2 0 0 1 7.8 7.3h6.4A2 2 0 0 1 16 8.5L18 13v4"/><path d="M4 17h2M18 17h2"/><circle cx="7.5" cy="17" r="1.5"/><circle cx="16.5" cy="17" r="1.5"/><path d="M12 8.5 11 11.5h2L11.8 14.5"/></svg>',
 };
 
@@ -309,6 +311,8 @@ function render() {
 function renderPanels() {
   const host = document.getElementById("panels");
   clear(host);
+  // Defensive default for configs saved before the Calendar panel existed.
+  if (!config.panels.calendar) config.panels.calendar = { enabled: true, order: 7 };
 
   // Home is always first and cannot be moved or hidden — shown as a pinned, non-interactive row.
   const homeRow = el("div", "panel-row pinned");
@@ -633,12 +637,8 @@ function renderOptions() {
   host.appendChild(labeledRow("Forecast days", numberInput(o.forecastDays, v => o.forecastDays = Math.round(v))));
   host.appendChild(labeledRow("Sensor decimal places", numberInput(o.sensorDecimals, v => o.sensorDecimals = Math.round(v))));
   host.appendChild(labeledRow("Doorbell popup (s)", numberInput(o.doorbellPopupSeconds, v => o.doorbellPopupSeconds = Math.round(v))));
-  const autoHide = el("input"); autoHide.type = "checkbox"; autoHide.checked = !!o.autoHideRail;
-  autoHide.setAttribute("aria-label", "Auto-hide panel bar");
-  autoHide.addEventListener("change", () => o.autoHideRail = autoHide.checked);
-  host.appendChild(labeledRow("Auto-hide panel bar", autoHide));
   host.appendChild(el("div", "muted", "Step 0.1–5.0, forecast 1–5, doorbell popup 5–120 (clamped on save). " +
-    "Auto-hide slides the panel bar away; any touch brings it back for 8 s."));
+    "The panel bar auto-hides; swipe in from the right edge to bring it back for 8 s."));
 }
 
 function renderVoice() {

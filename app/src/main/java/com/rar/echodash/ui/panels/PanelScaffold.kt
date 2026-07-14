@@ -12,14 +12,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
-/** Full-screen dark panel background; content is inset from the right so the rail never overlaps it. */
+/** Full-screen dark panel background. Content gets the whole width: the rail auto-hides and
+ * only overlays transiently after an edge swipe, so no right-side inset is reserved. */
 @Composable
 fun PanelSurface(content: @Composable () -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
             .background(Color(0xFF12141C))
-            .padding(start = 24.dp, top = 24.dp, bottom = 24.dp, end = 96.dp),
+            .padding(24.dp),
     ) { content() }
 }
 

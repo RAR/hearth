@@ -17,6 +17,7 @@ data class Panels(
     val weather: PanelConfig = PanelConfig(true, 4),
     val solar: PanelConfig = PanelConfig(true, 5),
     val cameras: PanelConfig = PanelConfig(false, 6),
+    val calendar: PanelConfig = PanelConfig(true, 7),
 )
 
 @Serializable
@@ -110,7 +111,6 @@ data class PanelOptions(
     val forecastDays: Int = 5,
     val sensorDecimals: Int = 1,
     val doorbellPopupSeconds: Int = 30,
-    val autoHideRail: Boolean = false,
 )
 
 @Serializable

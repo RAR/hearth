@@ -416,11 +416,14 @@ class DashConfigTest {
     }
 
     @Test
-    fun autoHideRailDefaultsFalseAndSurvivesClamped() {
-        // old config document with no "autoHideRail" key -> defaults to false
-        val cfg = decodeConfig("""{"version":1,"home":{"photoFolder":"nas"}}""")
-        assertEquals(false, cfg.panelOptions.autoHideRail)
-        assertEquals(true, DashConfig(panelOptions = PanelOptions(autoHideRail = true)).clamped().panelOptions.autoHideRail)
+    fun calendarPanelDefaultsEnabledLastForOldConfigs() {
+        // Old document with no panels.calendar key -> enabled, ordered after cameras. Documents
+        // still carrying the removed autoHideRail key decode fine (unknown keys are ignored).
+        val cfg = decodeConfig(
+            """{"version":1,"home":{"photoFolder":"nas"},"panelOptions":{"autoHideRail":true}}"""
+        )
+        assertEquals(true, cfg.panels.calendar.enabled)
+        assertEquals(7, cfg.panels.calendar.order)
     }
 
     @Test

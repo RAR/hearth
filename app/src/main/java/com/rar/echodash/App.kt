@@ -417,9 +417,11 @@ fun EchoDashApp(deps: AppDeps) {
                                     lastGood[cal.entity] =
                                         parseCalendarEvents(result, listOf(cal), ZoneId.systemDefault())
                                 }
+                                // Publish after every calendar, not after the sweep: a slow or
+                                // erroring calendar must not delay the ones already fetched.
+                                calendarEvents = cals.flatMap { lastGood[it.entity].orEmpty() }
+                                    .sortedBy { it.startMs }
                             }
-                            calendarEvents = cals.flatMap { lastGood[it.entity].orEmpty() }
-                                .sortedBy { it.startMs }
                             delay(15 * 60_000L)
                         }
                     }

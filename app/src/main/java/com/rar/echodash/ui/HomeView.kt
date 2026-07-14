@@ -346,8 +346,10 @@ fun HomeView(
             }
 
             // Next-event card: bottom-right, diagonal from the clock, width-capped so it never
-            // approaches the bottom-left clock block. Re-derives on the minute tick so "Tomorrow"
-            // flips to a time and "Now" appears without waiting for the next 15-minute fetch.
+            // approaches the bottom-left clock block (worst-case date line ends ~230dp from the
+            // left; a 420dp cap puts the card's left edge at 787-28-420 = ~339dp, >100dp clear).
+            // Re-derives on the minute tick so "Tomorrow" flips to a time and "Now" appears
+            // without waiting for the next 15-minute fetch.
             val nextEvent = remember(calendarEvents, now) { nextEventCard(calendarEvents, now) }
             AnimatedVisibility(
                 visible = nextEvent != null,
@@ -360,7 +362,7 @@ fun HomeView(
                     val is24 = clockIs24(clockFormat, DateFormat.is24HourFormat(context))
                     Row(
                         Modifier
-                            .widthIn(max = 300.dp)
+                            .widthIn(max = 420.dp)
                             .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
                             .padding(horizontal = 16.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,

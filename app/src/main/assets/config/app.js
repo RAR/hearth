@@ -298,6 +298,7 @@ function reorderButtons(canUp, canDown, onUp, onDown) {
 
 // ---------- render ----------
 function render() {
+  renderDevice();
   renderPanels();
   renderEntities();
   renderMedia();
@@ -309,6 +310,51 @@ function render() {
   renderEv();
   renderCalendars();
   renderBackup();
+}
+
+function renderDevice() {
+  const host = document.getElementById("device");
+  clear(host);
+
+  const nameInput = el("input");
+  nameInput.type = "text";
+  nameInput.maxLength = 40;
+  nameInput.value = (lastStatus && lastStatus.deviceName) || "";
+  nameInput.setAttribute("aria-label", "Device name");
+  host.appendChild(labeledRow("Device name", nameInput));
+
+  const row = el("div", "row");
+  const renameBtn = el("button", "ghost", "Rename");
+  renameBtn.type = "button";
+  renameBtn.addEventListener("click", () => renameDevice(nameInput));
+  row.appendChild(renameBtn);
+  host.appendChild(row);
+
+  host.appendChild(el("div", "muted",
+    "This name appears in Home Assistant (voice satellite and VACA) and on the network (mDNS). " +
+    "It is stored only on this device and is never included in config export/import. Leave the " +
+    "field empty and rename to restore the default. Home Assistant may keep showing the old name " +
+    "on entries it already knows until you rename or re-add the device there."));
+}
+
+async function renameDevice(input) {
+  setStatus("Renaming…", "busy");
+  try {
+    const r = await api("PUT", "/api/name", { name: input.value });
+    if (r.ok) {
+      const b = await r.json();
+      input.value = b.name || "";              // adopt the server's effective (clamped/default) name
+      if (lastStatus) lastStatus.deviceName = b.name;
+      setStatus("Renamed", "ok");
+    } else if (r.status === 401) {
+      showLogin();
+    } else {
+      const b = await r.json().catch(() => ({}));
+      setStatus("Error: " + (b.error || r.status), "err");
+    }
+  } catch (e) {
+    setStatus("Can't reach the device — not renamed.", "err");
+  }
 }
 
 function renderPanels() {

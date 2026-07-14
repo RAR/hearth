@@ -157,6 +157,7 @@ async function save() {
       config = await r.json();  // adopt the server's clamped copy
       render();
       setStatus("Saved", "ok");
+      return true;
     } else if (r.status === 401) {
       showLogin();
     } else {
@@ -166,6 +167,7 @@ async function save() {
   } catch (e) {
     setStatus("Can't reach the device — changes not saved.", "err");
   }
+  return false;
 }
 
 function renderSetup(show) {
@@ -306,6 +308,7 @@ function render() {
   renderNight();
   renderEv();
   renderCalendars();
+  renderBackup();
 }
 
 function renderPanels() {
@@ -852,6 +855,101 @@ function renderCalendar(c, ci) {
   color.addEventListener("change", () => c.color = color.value);
   box.appendChild(labeledRow("Color", color));
   return box;
+}
+
+function renderBackup() {
+  const host = document.getElementById("backup");
+  clear(host);
+
+  // Hidden file input the visible "Import" button proxies to.
+  const fileInput = el("input");
+  fileInput.type = "file";
+  fileInput.accept = ".json,application/json";
+  fileInput.hidden = true;
+  fileInput.addEventListener("change", importConfig);
+
+  const row = el("div", "row");
+
+  const exportBtn = el("button", "ghost", "Export config");
+  exportBtn.type = "button";
+  exportBtn.addEventListener("click", exportConfig);
+  row.appendChild(exportBtn);
+
+  const importBtn = el("button", "ghost", "Import config…");
+  importBtn.type = "button";
+  importBtn.addEventListener("click", () => fileInput.click());
+  row.appendChild(importBtn);
+
+  row.appendChild(fileInput);
+  host.appendChild(row);
+
+  host.appendChild(el("div", "muted",
+    "The file holds only this dashboard's configuration — not the Home Assistant " +
+    "connection or the notify token, which stay on each device. A freshly imported " +
+    "device still needs its own HA setup. Importing replaces this device's entire configuration."));
+}
+
+async function exportConfig() {
+  // Fetch a FRESH copy from the device, not the in-memory `config` (which may hold unsaved edits).
+  setStatus("Exporting…", "busy");
+  try {
+    const r = await api("GET", "/api/config");
+    if (r.status === 401) { showLogin(); return; }
+    if (!r.ok) { setStatus("Export failed (" + r.status + ")", "err"); return; }
+    const cfg = await r.json();
+    const text = JSON.stringify(cfg, null, 2);
+    const d = new Date();
+    const stamp = d.getFullYear() + "-" +
+      String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+    const blob = new Blob([text], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = el("a");
+    a.href = url;
+    a.download = "hearth-config-" + stamp + ".json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setStatus("Exported", "ok");
+  } catch (e) {
+    setStatus("Can't reach the device — export failed.", "err");
+  }
+}
+
+async function importConfig(ev) {
+  const input = ev.target;
+  const file = input.files && input.files[0];
+  if (!file) return;
+
+  let parsed;
+  try {
+    const raw = await file.text();
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    setStatus("Import failed: not a valid config file", "err");
+    input.value = "";   // reset so re-picking the same file fires `change` again
+    return;
+  }
+
+  // Must be a plain object — arrays, strings, numbers, null are the same rejection.
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    setStatus("Import failed: not a valid config file", "err");
+    input.value = "";
+    return;
+  }
+
+  if (!confirm("Replace this device's entire configuration with " + file.name + "?")) {
+    input.value = "";
+    return;
+  }
+
+  // Full replace: adopt the parsed object and PUT it. save() reports its own
+  // "Saved"/error status and re-renders every card (including this one); only
+  // announce the import when the PUT actually succeeded.
+  config = parsed;
+  if (await save()) setStatus("Imported " + file.name, "ok");
+  input.value = "";
 }
 
 function updateNightLux(status) {

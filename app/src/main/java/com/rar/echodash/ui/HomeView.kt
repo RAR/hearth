@@ -274,11 +274,10 @@ fun HomeView(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            val dim = if (aqi.stale) 0.4f else 1f
-                            Text("AQI", color = Color.White.copy(alpha = 0.7f * dim), fontSize = 18.sp)
+                            Text("AQI", color = Color.White.copy(alpha = 0.7f), fontSize = 18.sp)
                             Text(
                                 aqi.value.toString(),
-                                color = Color(aqi.band.colorArgb).copy(alpha = dim),
+                                color = Color(aqi.band.colorArgb),
                                 fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
                             )
                         }
@@ -291,14 +290,13 @@ fun HomeView(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            val dim = if (rain.stale) 0.4f else 0.95f
                             Icon(
                                 imageVector = weatherIcon(WeatherIcon.RAIN),
                                 contentDescription = null,
-                                tint = Color.White.copy(alpha = dim),
+                                tint = Color.White.copy(alpha = 0.95f),
                                 modifier = Modifier.size(22.dp),
                             )
-                            Text(rain.text, color = Color.White.copy(alpha = dim), fontSize = 18.sp)
+                            Text(rain.text, color = Color.White.copy(alpha = 0.95f), fontSize = 18.sp)
                         }
                     }
                 }

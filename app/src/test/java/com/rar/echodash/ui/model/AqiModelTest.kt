@@ -27,27 +27,20 @@ class AqiModelTest {
 
     @Test
     fun pillReadsValueAndBand() {
-        val pill = aqiPill("sensor.aqi", sensor("42"), nowMs = 1_500L)!!
+        val pill = aqiPill("sensor.aqi", sensor("42"))!!
         assertEquals(42, pill.value)
         assertEquals(AqiBand.GOOD, pill.band)
-        assertEquals(false, pill.stale)
     }
 
     @Test
     fun pillTruncatesDecimalStates() {
-        assertEquals(87, aqiPill("sensor.aqi", sensor("87.6"), nowMs = 1_500L)!!.value)
+        assertEquals(87, aqiPill("sensor.aqi", sensor("87.6"))!!.value)
     }
 
     @Test
     fun pillHiddenWhenUnsetMissingOrNonNumeric() {
-        assertNull(aqiPill(null, sensor("42"), nowMs = 0L))
-        assertNull(aqiPill("sensor.other", sensor("42"), nowMs = 0L))
-        assertNull(aqiPill("sensor.aqi", sensor("unavailable"), nowMs = 0L))
-    }
-
-    @Test
-    fun pillMarksStaleReadings() {
-        val pill = aqiPill("sensor.aqi", sensor("42", updatedMs = 0L), nowMs = STALE_AFTER_MS + 1)!!
-        assertEquals(true, pill.stale)
+        assertNull(aqiPill(null, sensor("42")))
+        assertNull(aqiPill("sensor.other", sensor("42")))
+        assertNull(aqiPill("sensor.aqi", sensor("unavailable")))
     }
 }

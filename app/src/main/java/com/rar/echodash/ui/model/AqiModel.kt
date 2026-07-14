@@ -21,15 +21,13 @@ fun aqiBand(value: Int): AqiBand = when {
     else -> AqiBand.HAZARDOUS
 }
 
-data class AqiPill(val value: Int, val band: AqiBand, val stale: Boolean)
+data class AqiPill(val value: Int, val band: AqiBand)
 
-/** Home-screen AQI pill from the configured sensor; hidden when unset, missing, or non-numeric. */
-fun aqiPill(aqiSensorId: String?, entities: Map<String, EntityState>, nowMs: Long): AqiPill? {
+/** Home-screen AQI pill from the configured sensor; hidden when unset, missing, or non-numeric.
+ *  No staleness signal: AQI legitimately sits on one value for hours, so "hasn't changed lately"
+ *  says nothing about sensor health. */
+fun aqiPill(aqiSensorId: String?, entities: Map<String, EntityState>): AqiPill? {
     val sensor = aqiSensorId?.let { entities[it] } ?: return null
     val value = sensor.state.toDoubleOrNull()?.toInt() ?: return null
-    return AqiPill(
-        value = value,
-        band = aqiBand(value),
-        stale = nowMs - sensor.lastUpdatedMs > STALE_AFTER_MS,
-    )
+    return AqiPill(value = value, band = aqiBand(value))
 }

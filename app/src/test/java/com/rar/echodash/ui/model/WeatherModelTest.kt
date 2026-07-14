@@ -93,38 +93,32 @@ class WeatherModelTest {
         assertEquals(WeatherIcon.UNKNOWN, conditionIcon("exceptional"))
     }
 
-    private fun rainEntities(state: String, attrsJson: String = """{"unit_of_measurement":"in"}""", updatedMs: Long = 1_000L) =
-        mapOf("sensor.rain" to EntityState("sensor.rain", state, attrs(attrsJson), updatedMs))
+    private fun rainEntities(state: String, attrsJson: String = """{"unit_of_measurement":"in"}""") =
+        mapOf("sensor.rain" to EntityState("sensor.rain", state, attrs(attrsJson), 1_000L))
 
     @Test
     fun rainPillHiddenWhenUnsetMissingOrNonNumeric() {
-        assertNull(rainPill(null, rainEntities("0.4"), 1_000L))
-        assertNull(rainPill("sensor.other", rainEntities("0.4"), 1_000L))
-        assertNull(rainPill("sensor.rain", rainEntities("unavailable"), 1_000L))
+        assertNull(rainPill(null, rainEntities("0.4")))
+        assertNull(rainPill("sensor.other", rainEntities("0.4")))
+        assertNull(rainPill("sensor.rain", rainEntities("unavailable")))
     }
 
     @Test
     fun rainPillHiddenWhenDryOrNegative() {
-        assertNull(rainPill("sensor.rain", rainEntities("0"), 1_000L))
-        assertNull(rainPill("sensor.rain", rainEntities("0.0"), 1_000L))
-        assertNull(rainPill("sensor.rain", rainEntities("-0.1"), 1_000L))
+        assertNull(rainPill("sensor.rain", rainEntities("0")))
+        assertNull(rainPill("sensor.rain", rainEntities("0.0")))
+        assertNull(rainPill("sensor.rain", rainEntities("-0.1")))
     }
 
     @Test
     fun rainPillFormatsTwoDecimalsWithUnit() {
-        assertEquals("0.42 in", rainPill("sensor.rain", rainEntities("0.416"), 1_000L)!!.text)
-        assertEquals("1.50 in", rainPill("sensor.rain", rainEntities("1.5"), 1_000L)!!.text)
+        assertEquals("0.42 in", rainPill("sensor.rain", rainEntities("0.416"))!!.text)
+        assertEquals("1.50 in", rainPill("sensor.rain", rainEntities("1.5"))!!.text)
     }
 
     @Test
     fun rainPillOmitsMissingUnit() {
-        assertEquals("0.40", rainPill("sensor.rain", rainEntities("0.4", "{}"), 1_000L)!!.text)
-    }
-
-    @Test
-    fun rainPillStaleAfterFifteenMinutes() {
-        assertEquals(false, rainPill("sensor.rain", rainEntities("0.4", updatedMs = 0L), STALE_AFTER_MS)!!.stale)
-        assertEquals(true, rainPill("sensor.rain", rainEntities("0.4", updatedMs = 0L), STALE_AFTER_MS + 1)!!.stale)
+        assertEquals("0.40", rainPill("sensor.rain", rainEntities("0.4", "{}"))!!.text)
     }
 
     @Test

@@ -176,10 +176,10 @@ fun DashboardShell(
                             System.currentTimeMillis(), config.panelOptions.sensorDecimals)
                     }
                     val aqi = remember(entities, config.entities) {
-                        aqiPill(config.entities.aqiSensor, entities, System.currentTimeMillis())
+                        aqiPill(config.entities.aqiSensor, entities)
                     }
                     val rain = remember(entities, config.entities) {
-                        rainPill(config.entities.rainEvent, entities, System.currentTimeMillis())
+                        rainPill(config.entities.rainEvent, entities)
                     }
                     val evs = remember(entities, config.entities.evs) {
                         evCards(config.entities.evs, entities, System.currentTimeMillis())

@@ -45,6 +45,8 @@ const AUTO_DISMISS_OPTIONS = [
   ["critical", "All severities"],
 ];
 
+const CALENDAR_COLORS = ["blue", "green", "amber", "red", "purple", "teal", "orange", "pink"];
+
 // ---------- inline SVG glyphs (currentColor) ----------
 const ICONS = {
   lights: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.5.5.8 1 .8 1.6V16h6v-.8c0-.6.3-1.1.8-1.6A6 6 0 0 0 12 3Z"/></svg>',
@@ -301,6 +303,7 @@ function render() {
   renderVoice();
   renderNight();
   renderEv();
+  renderCalendars();
 }
 
 function renderPanels() {
@@ -790,6 +793,65 @@ function renderEv() {
     "and time remaining (minutes, H:MM:SS, or a timestamp) only display while charging. Battery % " +
     "shows whenever the card is up. EVCC’s status sensor (A/B/C) can drive both trigger pickers. " +
     "Empty slots are dropped on save. A charge-limit entity draws a tick on the battery bar."));
+}
+
+function renderCalendars() {
+  const host = document.getElementById("calendars");
+  clear(host);
+  const e = config.entities;
+  // Defensive: old configs and server responses may omit the array entirely.
+  if (!Array.isArray(e.calendars)) e.calendars = [];
+  e.calendars.forEach((c, ci) => host.appendChild(renderCalendar(c, ci)));
+  const add = el("button", "add", "Add calendar");
+  add.type = "button";
+  add.addEventListener("click", () => {
+    if (e.calendars.length >= 6) return; // cap 6 (matches DashConfig.clamped)
+    e.calendars.push({ entity: "", name: "", color: "blue" });
+    renderCalendars();
+  });
+  host.appendChild(add);
+  host.appendChild(el("div", "muted",
+    "Up to 6 Home Assistant calendars, color-coded on the home-screen next-event card and the " +
+    "3-day agenda panel. Display name defaults to the entity id when blank. Blank rows are dropped on save."));
+}
+
+function renderCalendar(c, ci) {
+  const cals = config.entities.calendars;
+  const box = el("div", "group");
+  const head = el("div", "group-head");
+  head.appendChild(el("span", "panel-name", "Calendar " + (ci + 1)));
+  head.appendChild(reorderButtons(
+    ci !== 0, ci !== cals.length - 1,
+    () => { const t = cals[ci]; cals[ci] = cals[ci - 1]; cals[ci - 1] = t; renderCalendars(); },
+    () => { const t = cals[ci]; cals[ci] = cals[ci + 1]; cals[ci + 1] = t; renderCalendars(); },
+  ));
+  const del = el("button", "ghost small danger", "Delete");
+  del.type = "button";
+  del.setAttribute("aria-label", "Delete calendar");
+  del.addEventListener("click", () => { cals.splice(ci, 1); renderCalendars(); });
+  head.appendChild(del);
+  box.appendChild(head);
+
+  box.appendChild(labeledRow("Calendar entity",
+    entityPicker(["calendar"], c.entity, v => c.entity = v || "")));
+
+  const name = el("input");
+  name.value = c.name || "";
+  name.setAttribute("autocomplete", "off");
+  name.setAttribute("aria-label", "Calendar name");
+  name.addEventListener("change", () => c.name = name.value.trim());
+  box.appendChild(labeledRow("Display name", name));
+
+  const color = el("select");
+  CALENDAR_COLORS.forEach(key => {
+    const o = el("option", null, key.charAt(0).toUpperCase() + key.slice(1));
+    o.value = key;
+    if ((c.color || "blue") === key) o.selected = true;
+    color.appendChild(o);
+  });
+  color.addEventListener("change", () => c.color = color.value);
+  box.appendChild(labeledRow("Color", color));
+  return box;
 }
 
 function updateNightLux(status) {

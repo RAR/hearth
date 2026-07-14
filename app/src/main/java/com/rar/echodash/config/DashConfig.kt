@@ -65,6 +65,20 @@ data class DoorbellConfig(
     val camera: String = "",
 )
 
+/** A configured HA calendar. [entity] is a calendar.* id; [name] is the display name (blank ->
+ *  entity-id tail, resolved in the model); [color] is one of [CalendarConfig.COLORS]. */
+@Serializable
+data class CalendarConfig(
+    val entity: String = "",     // calendar.* entity id
+    val name: String = "",       // display name; blank -> entity id tail
+    val color: String = "blue",  // palette key
+) {
+    companion object {
+        /** The eight recognized palette keys (ARGB values live in the model's calendarColorArgb). */
+        val COLORS: Set<String> = setOf("blue", "green", "amber", "red", "purple", "teal", "orange", "pink")
+    }
+}
+
 @Serializable
 data class Entities(
     val tempSensor: String? = null,
@@ -77,6 +91,7 @@ data class Entities(
     val cameras: List<CameraConfig> = emptyList(),
     val doorbells: List<DoorbellConfig> = emptyList(),
     val evs: List<EvConfig> = emptyList(),
+    val calendars: List<CalendarConfig> = emptyList(),
 )
 
 @Serializable
@@ -239,6 +254,16 @@ data class DashConfig(
             }
             .filter { it.name.isNotBlank() || it.ids().isNotEmpty() }
             .take(2)
+        val cleanedCalendars = entities.calendars
+            .map { c ->
+                c.copy(
+                    entity = c.entity.trim(),
+                    name = c.name.trim(),
+                    color = c.color.trim().lowercase().let { if (it in CalendarConfig.COLORS) it else "blue" },
+                )
+            }
+            .filter { it.entity.isNotBlank() }
+            .take(6)
         return copy(
             version = 1,
             entities = entities.copy(
@@ -262,6 +287,7 @@ data class DashConfig(
                 cameras = cleanedCameras,
                 doorbells = cleanedDoorbells,
                 evs = cleanedEvs,
+                calendars = cleanedCalendars,
             ),
             home = home.copy(
                 idleReturnSeconds = home.idleReturnSeconds.coerceIn(15, 3600),

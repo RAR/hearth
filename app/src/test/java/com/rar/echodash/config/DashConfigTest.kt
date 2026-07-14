@@ -547,4 +547,56 @@ class DashConfigTest {
         // Old stored docs without the key decode to the default.
         assertEquals(null, decodeConfig("""{"version":1}""").entities.rainEvent)
     }
+
+    @Test
+    fun calendarsDefaultEmptyAndRoundTrip() {
+        assertEquals(emptyList<CalendarConfig>(), DashConfig().entities.calendars)
+        // old config document with no "calendars" key -> defaults to empty
+        val old = decodeConfig("""{"version":1}""")
+        assertEquals(emptyList<CalendarConfig>(), old.entities.calendars)
+        val cfg = DashConfig(
+            entities = Entities(calendars = listOf(CalendarConfig("calendar.a", "Home", "teal"))),
+        )
+        val text = ConfigJson.json.encodeToString(DashConfig.serializer(), cfg)
+        assertEquals(cfg, decodeConfig(text))
+        assertEquals("teal", decodeConfig(text).entities.calendars[0].color)
+    }
+
+    @Test
+    fun calendarsClampedTrimColorValidatedBlankDroppedAndCapped() {
+        val cals = DashConfig(
+            entities = Entities(
+                calendars = listOf(
+                    CalendarConfig(entity = "  calendar.a  ", name = "  Personal  ", color = "  Green "),
+                    CalendarConfig(entity = "calendar.b", name = "", color = "chartreuse"), // unknown -> blue
+                    CalendarConfig(entity = "   ", name = "Blank", color = "red"),           // blank entity -> dropped
+                    CalendarConfig(entity = "calendar.c"),
+                    CalendarConfig(entity = "calendar.d"),
+                    CalendarConfig(entity = "calendar.e"),
+                    CalendarConfig(entity = "calendar.f"),
+                    CalendarConfig(entity = "calendar.g"),                                    // 7th valid -> capped out
+                ),
+            ),
+        ).clamped().entities.calendars
+        assertEquals(6, cals.size)
+        assertEquals(CalendarConfig(entity = "calendar.a", name = "Personal", color = "green"), cals[0])
+        assertEquals("blue", cals[1].color) // unknown color normalized
+        assertEquals(
+            listOf("calendar.a", "calendar.b", "calendar.c", "calendar.d", "calendar.e", "calendar.f"),
+            cals.map { it.entity },
+        )
+    }
+
+    @Test
+    fun calendarsAreNotWatchedEntities() {
+        // Calendar events come from the service call, not state subscriptions, so calendars
+        // must never enter the EntityHub watched set.
+        val cfg = DashConfig(
+            entities = Entities(
+                tempSensor = "sensor.t",
+                calendars = listOf(CalendarConfig("calendar.a"), CalendarConfig("calendar.b")),
+            ),
+        )
+        assertEquals(listOf("sensor.t"), cfg.referencedEntityIds())
+    }
 }

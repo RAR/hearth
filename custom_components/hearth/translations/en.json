@@ -1,0 +1,53 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a Hearth device",
+        "description": "Enter the device's host and port. The app serves one integration session at a time (newest wins): migrate from VACA per device by deleting its VACA entry first.",
+        "data": {
+          "host": "Host",
+          "port": "Port"
+        }
+      },
+      "zeroconf_confirm": {
+        "title": "Add a Hearth device",
+        "description": "Add {name} to Home Assistant? The app serves one integration session at a time (newest wins); if this device still has a VACA entry, delete it first."
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect"
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  },
+  "entity": {
+    "switch": {
+      "screen": { "name": "Screen" },
+      "auto_brightness": { "name": "Auto brightness" },
+      "always_on": { "name": "Always on" },
+      "screensaver": { "name": "Screen saver" },
+      "dark_mode": { "name": "Dark mode" }
+    },
+    "number": {
+      "brightness": { "name": "Brightness" },
+      "screen_timeout": { "name": "Screen timeout" },
+      "ducking_volume": { "name": "Ducking volume" }
+    },
+    "button": {
+      "refresh": { "name": "Refresh" }
+    }
+  },
+  "services": {
+    "toast": {
+      "name": "Show toast",
+      "description": "Shows a short on-screen message on the Hearth device.",
+      "fields": {
+        "message": {
+          "name": "Message",
+          "description": "The text to show."
+        }
+      }
+    }
+  }
+}

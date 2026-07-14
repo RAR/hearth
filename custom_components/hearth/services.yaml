@@ -1,0 +1,16 @@
+toast:
+  name: Show toast
+  description: Shows a short on-screen message on the Hearth device.
+  target:
+    entity:
+      integration: hearth
+    device:
+      integration: hearth
+  fields:
+    message:
+      name: Message
+      description: The text to show.
+      required: true
+      example: Dinner is ready
+      selector:
+        text:

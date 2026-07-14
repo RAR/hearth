@@ -1,0 +1,14 @@
+{
+  "domain": "hearth",
+  "name": "Hearth",
+  "codeowners": ["@RAR"],
+  "config_flow": true,
+  "dependencies": ["ffmpeg"],
+  "documentation": "https://github.com/RAR/vaca-ha-native",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/RAR/vaca-ha-native/issues",
+  "requirements": [],
+  "version": "0.1.0",
+  "zeroconf": ["_hearth._tcp.local."]
+}

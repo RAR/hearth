@@ -470,9 +470,9 @@ function renderNotifications() {
       '      authorization: "Bearer ' + token + '"\n' +
       '    content_type: "application/json"\n' +
       '    payload: >-\n' +
-      '      {"title": "{{ title }}", "message": "{{ message | default(\'\') }}",\n' +
-      '       "severity": "{{ severity | default(\'info\') }}",\n' +
-      '       "id": "{{ id | default(\'\') }}", "timeout": {{ timeout | default(0) }}}';
+      '      {"title": {{ title | tojson }}, "message": {{ message | default(\'\') | tojson }},\n' +
+      '       "severity": {{ severity | default(\'info\') | tojson }},\n' +
+      '       "id": {{ id | default(\'\') | tojson }}, "timeout": {{ timeout | default(0) }}}';
     host.appendChild(el("pre", "yaml", yaml));
 
     host.appendChild(el("div", "muted",

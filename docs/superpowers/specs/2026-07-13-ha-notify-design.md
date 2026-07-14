@@ -138,9 +138,9 @@ rest_command:
       authorization: "Bearer <token>"
     content_type: "application/json"
     payload: >-
-      {"title": "{{ title }}", "message": "{{ message | default('') }}",
-       "severity": "{{ severity | default('info') }}",
-       "id": "{{ id | default('') }}", "timeout": {{ timeout | default(0) }}}
+      {"title": {{ title | tojson }}, "message": {{ message | default('') | tojson }},
+       "severity": {{ severity | default('info') | tojson }},
+       "id": {{ id | default('') | tojson }}, "timeout": {{ timeout | default(0) }}}
 ```
 
   (`timeout: 0`/absent means persistent — the server treats `timeout <= 0` as null.)

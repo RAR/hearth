@@ -63,17 +63,22 @@ class SolarModelTest {
         assertEquals("3.2 kW", card.pvText)
         assertEquals(78, card.socPct)
         assertEquals(BattFlow.CHARGING, card.battFlow)
-        assertEquals("Home 1.4 kW · Export 1.8 kW", card.statsLine)
+        assertEquals("1.4 kW", card.homeText)
+        assertEquals("1.8 kW", card.gridText)
+        assertEquals(false, card.gridImporting) // negative grid = exporting
     }
 
     @Test
-    fun solarCardGridImportLabel() {
+    fun solarCardGridImportDirection() {
         val cfg = SolarConfig(load = "sensor.load", grid = "sensor.grid")
         val entities = mapOf(
             "sensor.load" to st("sensor.load", "900", "W"),
             "sensor.grid" to st("sensor.grid", "450", "W"),
         )
-        assertEquals("Home 900 W · Import 450 W", solarCard(cfg, entities)!!.statsLine)
+        val card = solarCard(cfg, entities)!!
+        assertEquals("900 W", card.homeText)
+        assertEquals("450 W", card.gridText)
+        assertEquals(true, card.gridImporting) // positive grid = importing
     }
 
     @Test
@@ -97,13 +102,15 @@ class SolarModelTest {
         val noPv = solarCard(SolarConfig(load = "sensor.load"),
             mapOf("sensor.load" to st("sensor.load", "800", "W")))!!
         assertNull(noPv.pvText)
-        assertEquals("Home 800 W", noPv.statsLine)
+        assertEquals("800 W", noPv.homeText)
+        assertNull(noPv.gridText)
         // Non-numeric SOC: no gauge, card still produced.
         val badSoc = solarCard(SolarConfig(battSoc = "sensor.soc"),
             mapOf("sensor.soc" to st("sensor.soc", "unknown", "%")))
         assertNotNull(badSoc)
         assertNull(badSoc!!.socPct)
-        assertNull(badSoc.statsLine)
+        assertNull(badSoc.homeText)
+        assertNull(badSoc.gridText)
         assertEquals(BattFlow.IDLE, badSoc.battFlow)
         // SOC clamped to 0..100.
         val over = solarCard(SolarConfig(battSoc = "sensor.soc"),

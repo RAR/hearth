@@ -35,6 +35,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Power
 import androidx.compose.material.icons.outlined.SolarPower
 import androidx.compose.material3.DropdownMenu
@@ -519,11 +522,35 @@ private fun SolarCardView(card: SolarCard) {
                 reverse = card.battFlow == BattFlow.DISCHARGING,
             )
         }
-        if (card.statsLine != null) {
-            Text(
-                card.statsLine, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
+        if (card.homeText != null || card.gridText != null) {
+            val statsWhite = Color.White.copy(alpha = 0.9f)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (card.homeText != null) {
+                    Icon(
+                        Icons.Outlined.Home, contentDescription = "Home",
+                        tint = statsWhite, modifier = Modifier.size(16.dp),
+                    )
+                    Text(card.homeText, color = statsWhite, fontSize = 14.sp, maxLines = 1)
+                }
+                if (card.gridText != null) {
+                    if (card.homeText != null) {
+                        Text("·", color = statsWhite, fontSize = 14.sp)
+                    }
+                    Icon(
+                        if (card.gridImporting) {
+                            Icons.AutoMirrored.Outlined.ArrowBack
+                        } else {
+                            Icons.AutoMirrored.Outlined.ArrowForward
+                        },
+                        contentDescription = if (card.gridImporting) "Import" else "Export",
+                        tint = statsWhite, modifier = Modifier.size(16.dp),
+                    )
+                    Text(card.gridText, color = statsWhite, fontSize = 14.sp, maxLines = 1)
+                }
+            }
         }
     }
 }

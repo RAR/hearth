@@ -50,10 +50,12 @@ enum class BattFlow { CHARGING, DISCHARGING, IDLE }
 
 /** Home solar/battery pill card. Null when no solar entities resolve (card hidden). */
 data class SolarCard(
-    val pvText: String?,     // formatted PV output for the header; null = no pv sensor
-    val socPct: Int?,        // battery SOC 0-100; null = no gauge
-    val battFlow: BattFlow,  // |power| > CHARGE_DEADBAND_W; negative = charging (evcc convention)
-    val statsLine: String?,  // "Home 1.4 kW · Export 1.8 kW"; null when empty
+    val pvText: String?,        // formatted PV output for the header; null = no pv sensor
+    val socPct: Int?,           // battery SOC 0-100; null = no gauge
+    val battFlow: BattFlow,     // |power| > CHARGE_DEADBAND_W; negative = charging (evcc convention)
+    val homeText: String?,      // house load watts, rendered behind a house icon; null = no load sensor
+    val gridText: String?,      // grid watts, rendered behind an import/export arrow; null = no numeric grid
+    val gridImporting: Boolean, // arrow direction: true = importing (left), false = exporting (right)
 )
 
 private const val CHARGE_DEADBAND_W = 50.0
@@ -67,13 +69,6 @@ fun solarCard(cfg: SolarConfig, entities: Map<String, EntityState>): SolarCard? 
     if (pv == null && load == null && grid == null && soc == null) return null
 
     val gridValue = grid?.state?.toDoubleOrNull()
-    val statsLine = buildList {
-        load?.let { add("Home ${formatWatts(it)}") }
-        if (grid != null && gridValue != null) {
-            add((if (gridValue >= 0) "Import " else "Export ") + formatWatts(grid))
-        }
-    }.joinToString(" · ").takeIf { it.isNotEmpty() }
-
     val battWatts = get(cfg.battPower)?.let { powerWatts(it) }
     return SolarCard(
         pvText = pv?.let { formatWatts(it) },
@@ -84,7 +79,9 @@ fun solarCard(cfg: SolarConfig, entities: Map<String, EntityState>): SolarCard? 
             battWatts > CHARGE_DEADBAND_W -> BattFlow.DISCHARGING
             else -> BattFlow.IDLE
         },
-        statsLine = statsLine,
+        homeText = load?.let { formatWatts(it) },
+        gridText = if (grid != null && gridValue != null) formatWatts(grid) else null,
+        gridImporting = (gridValue ?: 0.0) >= 0,
     )
 }
 

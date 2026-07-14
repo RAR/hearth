@@ -19,7 +19,7 @@ class WeatherModelTest {
         val pill = weatherPill("sensor.temp", "weather.home", entities, nowMs = 1_500L)!!
         assertEquals("14.1 °C", pill.temperature)
         assertEquals(WeatherIcon.RAIN, pill.icon)
-        assertEquals("rainy", pill.conditionText)
+        assertEquals("Rainy", pill.conditionText) // human label, not the raw state
         assertEquals(false, pill.stale)
     }
 
@@ -125,5 +125,23 @@ class WeatherModelTest {
     fun rainPillStaleAfterFifteenMinutes() {
         assertEquals(false, rainPill("sensor.rain", rainEntities("0.4", updatedMs = 0L), STALE_AFTER_MS)!!.stale)
         assertEquals(true, rainPill("sensor.rain", rainEntities("0.4", updatedMs = 0L), STALE_AFTER_MS + 1)!!.stale)
+    }
+
+    @Test
+    fun conditionLabelsMatchHaTranslations() {
+        assertEquals("Partly cloudy", conditionLabel("partlycloudy"))
+        assertEquals("Clear, night", conditionLabel("clear-night"))
+        assertEquals("Lightning, rainy", conditionLabel("lightning-rainy"))
+        assertEquals("Snowy, rainy", conditionLabel("snowy-rainy"))
+        assertEquals("Windy", conditionLabel("windy-variant"))
+        assertEquals("Sunny", conditionLabel("sunny"))
+    }
+
+    @Test
+    fun conditionLabelFallsBackForUnknownAndNull() {
+        assertEquals("Freezing drizzle", conditionLabel("freezing-drizzle")) // unknown -> prettified
+        assertEquals("Unavailable", conditionLabel("unavailable"))
+        assertEquals(null, conditionLabel(null))
+        assertEquals(null, conditionLabel("   "))
     }
 }

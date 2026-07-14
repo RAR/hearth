@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.rar.echodash.ha.EntityState
 import com.rar.echodash.ui.model.DailyForecast
 import com.rar.echodash.ui.model.conditionIcon
+import com.rar.echodash.ui.model.conditionLabel
 import com.rar.echodash.ui.model.formatSensor
 import com.rar.echodash.ui.model.parseForecasts
 import com.rar.echodash.ui.weatherIcon
@@ -76,7 +77,7 @@ fun WeatherPanel(
                                 color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Light,
                             )
                         }
-                        Text(weather.state, color = Color.White, fontSize = 24.sp)
+                        Text(conditionLabel(weather.state) ?: weather.state, color = Color.White, fontSize = 24.sp)
                         weather.attrDouble("humidity")?.let {
                             Text("Humidity ${it.toInt()}%", color = Color.White.copy(alpha = 0.7f), fontSize = 16.sp)
                         }

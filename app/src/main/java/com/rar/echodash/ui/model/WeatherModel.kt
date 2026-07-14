@@ -38,6 +38,32 @@ fun conditionIcon(condition: String?): WeatherIcon = when (condition) {
     else -> WeatherIcon.UNKNOWN
 }
 
+/** Human-readable label for a HA weather condition state (matches HA's English frontend
+ *  translations, e.g. "partlycloudy" -> "Partly cloudy"). Unknown conditions fall back to
+ *  dash/underscore -> space with the first letter capitalized; null/blank stays null. */
+fun conditionLabel(condition: String?): String? = when (condition?.trim()?.takeIf { it.isNotBlank() }) {
+    null -> null
+    "clear-night" -> "Clear, night"
+    "cloudy" -> "Cloudy"
+    "exceptional" -> "Exceptional"
+    "fog" -> "Fog"
+    "hail" -> "Hail"
+    "lightning" -> "Lightning"
+    "lightning-rainy" -> "Lightning, rainy"
+    "partlycloudy" -> "Partly cloudy"
+    "pouring" -> "Pouring"
+    "rainy" -> "Rainy"
+    "snowy" -> "Snowy"
+    "snowy-rainy" -> "Snowy, rainy"
+    "sunny" -> "Sunny"
+    "windy" -> "Windy"
+    "windy-variant" -> "Windy"
+    else -> condition.trim()
+        .replace('-', ' ')
+        .replace('_', ' ')
+        .replaceFirstChar { it.uppercase(Locale.US) }
+}
+
 data class WeatherPill(
     val icon: WeatherIcon,
     val conditionText: String?,
@@ -78,7 +104,7 @@ fun weatherPill(
 
     return WeatherPill(
         icon = conditionIcon(weather?.state),
-        conditionText = weather?.state,
+        conditionText = conditionLabel(weather?.state),
         temperature = temperature,
         stale = stale,
     )

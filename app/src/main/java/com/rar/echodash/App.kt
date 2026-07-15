@@ -168,9 +168,8 @@ class AppDeps(context: Context) {
     private fun applyDeviceName(name: String?) {
         settings.deviceName = name
         if (vacaRunning) {
-            nsd.unregister(); nsd.register()   // re-announce _vaca._tcp mDNS with the new name
             hearthNsd.unregister(); hearthNsd.register()   // re-announce _hearth._tcp mDNS with the new name
-            vaca.stop(); vaca.start()          // drop HA's VACA session so it re-reads info on reconnect
+            vaca.stop(); vaca.start()          // drop HA's session so it re-reads info on reconnect
         }
         voiceRestartTick.value += 1            // reactive voice collect tears down + rebuilds (voiceNsd + satellite)
     }
@@ -265,7 +264,6 @@ class AppDeps(context: Context) {
             override fun onSessionEnded() = announce.onDisconnected()
         },
     )
-    private val nsd = NsdAdvertiser(appContext, VacaServer.DEFAULT_PORT, name = { deviceName() })
     private val hearthNsd =
         NsdAdvertiser(appContext, VacaServer.DEFAULT_PORT, "_hearth._tcp.", name = { deviceName() })
 
@@ -326,7 +324,6 @@ class AppDeps(context: Context) {
 
     fun startVaca() {
         vaca.start()
-        nsd.register()
         hearthNsd.register()
         lightSensor.start()
         vacaRunning = true

@@ -7,11 +7,11 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 
-/** Advertises the VACA server via mDNS so HA auto-discovers the device (retries every 30 s on failure). */
+/** Advertises a service via mDNS so HA auto-discovers the device (retries every 30 s on failure). */
 class NsdAdvertiser(
     context: Context,
     private val port: Int,
-    private val serviceType: String = "_vaca._tcp.",
+    private val serviceType: String,
     private val name: () -> String,
 ) {
     private val nsd = context.getSystemService(Context.NSD_SERVICE) as NsdManager

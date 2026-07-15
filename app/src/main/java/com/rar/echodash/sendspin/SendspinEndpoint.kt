@@ -55,7 +55,7 @@ class SendspinEndpoint(
     private val deviceName: () -> String,
     private val config: StateFlow<DashConfig>,
     private val mediaEngine: MediaEngine,
-    @Suppress("unused") private val nowPlaying: NowPlayingStore, // held for Task 6; unused in Task 5
+    private val nowPlaying: NowPlayingStore, // SendSpin now-playing mapping (Part B)
     private val scope: CoroutineScope, // Dispatchers.Default work
     private val mainScope: CoroutineScope, // Dispatchers.Main.immediate for SyncAudioPlayer + NSD
 ) {
@@ -103,6 +103,37 @@ class SendspinEndpoint(
     // True once a stream has been announced (onStreamStart) until it clears/ends or
     // we disconnect. Drives the Playing vs Connected status distinction.
     @Volatile private var streaming: Boolean = false
+
+    // ---- Now-playing metadata (Part B) ----
+    // The onMetadataUpdate / onArtwork / onVolumeChanged / onStateChanged callbacks arrive
+    // SEPARATELY on the WS-IO thread, so we hold the latest of each and publish the merge into
+    // NowPlayingStore (via publishNowPlaying) on mainScope -- keeping UI-facing writes off WS-IO.
+    @Volatile private var npTitle: String? = null
+    @Volatile private var npArtist: String? = null
+    @Volatile private var npAlbum: String? = null
+    @Volatile private var npArtwork: ByteArray? = null
+    @Volatile private var npVolume: Int = 90
+    @Volatile private var npPlaying: Boolean = false
+
+    /** Publish the current merged now-playing snapshot. active mirrors [streaming]. */
+    private fun publishNowPlaying() {
+        mainScope.launch {
+            nowPlaying.onSendspin(
+                active = streaming, playing = npPlaying,
+                title = npTitle, artist = npArtist, album = npAlbum,
+                artworkData = npArtwork, volume = npVolume,
+            )
+        }
+    }
+
+    /** Map a SendSpin/MA playback-state string to a playing flag; unknown -> playing iff streaming. */
+    private fun resolvePlaying(state: String): Boolean = when {
+        state.equals("playing", ignoreCase = true) -> true
+        state.equals("paused", ignoreCase = true) ||
+            state.equals("stopped", ignoreCase = true) ||
+            state.equals("idle", ignoreCase = true) -> false
+        else -> streaming
+    }
 
     // Fast-path gate read on the WS-IO thread: once onStreamStart is observed we set
     // this true so chunks are enqueued for the (soon-to-exist) decoder; a total
@@ -278,6 +309,8 @@ class SendspinEndpoint(
         }
 
         _status.value = SendspinStatus.Disconnected
+        npPlaying = false
+        mainScope.launch { nowPlaying.onSendspin(false, false, null, null, null, null, 90) }
     }
 
     /** Recompute the published status from the current transport state + streaming flag. */
@@ -319,6 +352,7 @@ class SendspinEndpoint(
             // they decode once the worker drains the StartStream ahead of them.
             decoderReady = true
             streaming = true
+            publishNowPlaying() // active -> true (metadata fills in as onMetadataUpdate/onArtwork arrive)
             // Sent synchronously on the WS-IO callback thread (not via scope.launch) so
             // enqueue order matches callback order -- a launch here could race with the
             // Chunk/Flush launches below and reorder relative to them on the channel.
@@ -379,6 +413,10 @@ class SendspinEndpoint(
             streaming = false
             mainScope.launch { syncAudioPlayer?.enterIdle() }
             updateStatus() // -> Connected (while Ready)
+            npPlaying = false
+            mainScope.launch {
+                nowPlaying.onSendspin(false, false, null, null, null, null, npVolume)
+            }
         }
 
         override fun onSyncMuteChanged(muted: Boolean) {
@@ -389,9 +427,15 @@ class SendspinEndpoint(
 
         override fun onServerDiscovered(name: String, address: String) {}
 
-        override fun onStateChanged(state: String) {}
+        override fun onStateChanged(state: String) {
+            npPlaying = resolvePlaying(state)
+            publishNowPlaying()
+        }
 
-        override fun onGroupUpdate(groupId: String, groupName: String, playbackState: String) {}
+        override fun onGroupUpdate(groupId: String, groupName: String, playbackState: String) {
+            npPlaying = resolvePlaying(playbackState)
+            publishNowPlaying()
+        }
 
         override fun onMetadataUpdate(
             title: String,
@@ -402,18 +446,28 @@ class SendspinEndpoint(
             positionMs: Long,
             playbackSpeed: Int,
         ) {
-            // Task 6: map SendSpin track metadata into NowPlayingStore.
+            // MA sends binary artwork via onArtwork -- ignore artworkUrl (do not fetch it).
+            // duration/position/speed unused this task.
+            npTitle = title
+            npArtist = artist
+            npAlbum = album
+            publishNowPlaying()
         }
 
         override fun onArtwork(imageData: ByteArray) {
-            // Task 6: map SendSpin artwork into NowPlayingStore.
+            npArtwork = imageData
+            publishNowPlaying()
         }
 
         override fun onArtworkCleared() {
-            // Task 6: clear NowPlayingStore artwork.
+            npArtwork = null
+            publishNowPlaying()
         }
 
-        override fun onVolumeChanged(volume: Int) {}
+        override fun onVolumeChanged(volume: Int) {
+            npVolume = volume
+            publishNowPlaying()
+        }
 
         override fun onMutedChanged(muted: Boolean) {}
 

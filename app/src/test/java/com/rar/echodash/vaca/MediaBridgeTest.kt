@@ -48,7 +48,7 @@ class MediaBridgeTest {
     @Test
     fun playMediaAppliesVolumeThenPlays() {
         val engine = FakeEngine()
-        val bridge = MediaBridge(engine, NowPlayingStore()) {}
+        val bridge = MediaBridge(engine, NowPlayingStore(), sendStatus = {})
         assertTrue(bridge.handleAction("play-media",
             json("""{"url":"http://radio/stream.mp3","volume":80}""")))
         assertEquals(0.8f, engine.volume, 0.001f)
@@ -60,7 +60,7 @@ class MediaBridgeTest {
     @Test
     fun transportActionsMapToEngine() {
         val engine = FakeEngine()
-        val bridge = MediaBridge(engine, NowPlayingStore()) {}
+        val bridge = MediaBridge(engine, NowPlayingStore(), sendStatus = {})
         assertTrue(bridge.handleAction("pause", null))
         assertTrue(bridge.handleAction("play", json("""{"volume":50}""")))
         assertTrue(bridge.handleAction("stop", null))
@@ -74,7 +74,7 @@ class MediaBridgeTest {
     @Test
     fun duckingScalesEngineGainAndRestores() {
         val engine = FakeEngine()
-        val bridge = MediaBridge(engine, NowPlayingStore()) {}
+        val bridge = MediaBridge(engine, NowPlayingStore(), sendStatus = {})
         bridge.handleAction("set-volume", json("""{"volume":90}"""))
         assertEquals(0.9f, engine.volume, 0.001f)
         bridge.applySettings(json("""{"ducking_volume":1}""").jsonObject)
@@ -90,7 +90,7 @@ class MediaBridgeTest {
     @Test
     fun musicVolumeSettingSetsSystemVolume() {
         val engine = FakeEngine()
-        val bridge = MediaBridge(engine, NowPlayingStore()) {}
+        val bridge = MediaBridge(engine, NowPlayingStore(), sendStatus = {})
         bridge.applySettings(json("""{"music_volume":5}""").jsonObject)
         assertEquals(0.5f, engine.volume, 0.001f)
     }
@@ -98,7 +98,7 @@ class MediaBridgeTest {
     @Test
     fun constructionSeedsVolumeFromEngine() {
         val engine = FakeEngine().apply { sysVolume = 60 }
-        val bridge = MediaBridge(engine, NowPlayingStore()) {}
+        val bridge = MediaBridge(engine, NowPlayingStore(), sendStatus = {})
         assertEquals(60, bridge.ui.value.volume)
     }
 
@@ -106,7 +106,7 @@ class MediaBridgeTest {
     fun hardwareVolumeChangeUpdatesStateWithoutFeedback() {
         val engine = FakeEngine()
         val store = NowPlayingStore()
-        val bridge = MediaBridge(engine, store) {}
+        val bridge = MediaBridge(engine, store, sendStatus = {})
         engine.calls.clear()
         engine.onVolumeChanged!!.invoke(30)
         assertEquals(30, bridge.ui.value.volume)
@@ -119,7 +119,7 @@ class MediaBridgeTest {
     fun reportsPlayingStatus() {
         val engine = FakeEngine()
         var status: JsonObject? = null
-        MediaBridge(engine, NowPlayingStore()) { status = it }
+        MediaBridge(engine, NowPlayingStore(), sendStatus = { status = it })
         engine.onPlayingChanged!!.invoke(true)
         assertEquals(true,
             status!!["media_player"]!!.jsonObject["playing"]!!.jsonPrimitive.boolean)
@@ -131,7 +131,7 @@ class MediaBridgeTest {
     @Test
     fun nonMediaActionsReturnFalseUntouched() {
         val engine = FakeEngine()
-        val bridge = MediaBridge(engine, NowPlayingStore()) {}
+        val bridge = MediaBridge(engine, NowPlayingStore(), sendStatus = {})
         engine.calls.clear() // drop the construction-time seed (setDucking)
         assertFalse(bridge.handleAction("screen-wake", null))
         assertFalse(bridge.handleAction("toast-message", null))
@@ -141,7 +141,7 @@ class MediaBridgeTest {
     @Test
     fun uiStateTracksPlayNowPlayingVolumeAndStop() {
         val engine = FakeEngine()
-        val bridge = MediaBridge(engine, NowPlayingStore()) {}
+        val bridge = MediaBridge(engine, NowPlayingStore(), sendStatus = {})
         bridge.handleAction("play-media", json("""{"url":"http://radio/stream.mp3","volume":80}"""))
         assertEquals("http://radio/stream.mp3", bridge.ui.value.nowPlaying)
         assertEquals(80, bridge.ui.value.volume)
@@ -156,7 +156,7 @@ class MediaBridgeTest {
     fun forwardsEngineAndLocalMetaIntoStore() {
         val engine = FakeEngine()
         val store = NowPlayingStore()
-        val bridge = MediaBridge(engine, store) {}
+        val bridge = MediaBridge(engine, store, sendStatus = {})
         bridge.handleAction("play-media", json("""{"url":"http://radio/stream.mp3","volume":80}"""))
         engine.onPlayingChanged!!.invoke(true)
         engine.onMeta!!.invoke("Artist - Title", null)
@@ -172,7 +172,7 @@ class MediaBridgeTest {
     fun stopDeactivatesStoreKeepingVolume() {
         val engine = FakeEngine()
         val store = NowPlayingStore()
-        val bridge = MediaBridge(engine, store) {}
+        val bridge = MediaBridge(engine, store, sendStatus = {})
         bridge.handleAction("play-media", json("""{"url":"http://radio/stream.mp3","volume":60}"""))
         engine.onPlayingChanged!!.invoke(true)
         engine.onMeta!!.invoke("Some Title", null)
@@ -188,7 +188,7 @@ class MediaBridgeTest {
     fun engineEndedOrErrorDeactivatesStore() {
         val engine = FakeEngine()
         val store = NowPlayingStore()
-        val bridge = MediaBridge(engine, store) {}
+        val bridge = MediaBridge(engine, store, sendStatus = {})
         bridge.handleAction("play-media", json("""{"url":"http://radio/stream.mp3","volume":70}"""))
         engine.onPlayingChanged!!.invoke(true)
         engine.onMeta!!.invoke("Artist - Title", null)
@@ -203,7 +203,7 @@ class MediaBridgeTest {
     fun playingCallbackReactivatesAfterStaleEnded() {
         val engine = FakeEngine()
         val store = NowPlayingStore()
-        val bridge = MediaBridge(engine, store) {}
+        val bridge = MediaBridge(engine, store, sendStatus = {})
         bridge.handleAction("play-media", json("""{"url":"http://a.mp3","volume":70}"""))
         // Track A ends just as a new play-media was handled: stale onEnded fires after activate.
         engine.onEnded!!.invoke()
@@ -216,19 +216,19 @@ class MediaBridgeTest {
 
     @Test
     fun restoredDuckingSurfacesInCurrentSettings() {
-        val bridge = MediaBridge(FakeEngine(), NowPlayingStore(), restoredDucking = 7) {}
+        val bridge = MediaBridge(FakeEngine(), NowPlayingStore(), restoredDucking = 7, sendStatus = {})
         assertEquals(7, bridge.currentSettings()["ducking_volume"]!!.jsonPrimitive.int)
     }
 
     @Test
     fun outOfRangeRestoredDuckingCoercesToTen() {
-        val bridge = MediaBridge(FakeEngine(), NowPlayingStore(), restoredDucking = 42) {}
+        val bridge = MediaBridge(FakeEngine(), NowPlayingStore(), restoredDucking = 42, sendStatus = {})
         assertEquals(10, bridge.currentSettings()["ducking_volume"]!!.jsonPrimitive.int)
     }
 
     @Test
     fun nullRestoredDuckingDefaultsToOne() {
-        val bridge = MediaBridge(FakeEngine(), NowPlayingStore(), restoredDucking = null) {}
+        val bridge = MediaBridge(FakeEngine(), NowPlayingStore(), restoredDucking = null, sendStatus = {})
         assertEquals(1, bridge.currentSettings()["ducking_volume"]!!.jsonPrimitive.int)
     }
 
@@ -240,7 +240,8 @@ class MediaBridgeTest {
             FakeEngine(), NowPlayingStore(),
             persistDucking = { persisted = it },
             sendSettings = { echoed = it },
-        ) {}
+            sendStatus = {},
+        )
         bridge.applySettings(json("""{"ducking_volume":5}""").jsonObject)
         assertEquals(5, persisted)
         assertEquals(5, echoed!!["ducking_volume"]!!.jsonPrimitive.int)
@@ -254,7 +255,8 @@ class MediaBridgeTest {
             FakeEngine(), NowPlayingStore(),
             persistDucking = { persisted = it },
             sendSettings = { echoed = it },
-        ) {}
+            sendStatus = {},
+        )
         bridge.applySettings(json("""{"music_volume":5}""").jsonObject)
         assertNull(persisted)
         assertNull(echoed)
@@ -263,7 +265,7 @@ class MediaBridgeTest {
     @Test
     fun restoredDuckingDrivesEngineGain() {
         val engine = FakeEngine()
-        val bridge = MediaBridge(engine, NowPlayingStore(), restoredDucking = 5) {}
+        val bridge = MediaBridge(engine, NowPlayingStore(), restoredDucking = 5, sendStatus = {})
         bridge.setDucked(true)
         assertEquals(0.5f, engine.duckGain, 0.001f)
     }
@@ -274,7 +276,7 @@ class MediaBridgeTest {
         // report the real system value, not the requested one, or the two drift apart forever
         // (a same-index request fires no VOLUME_CHANGED broadcast to correct it).
         val engine = FakeEngine().apply { volumeSteps = 15 }
-        val bridge = MediaBridge(engine, NowPlayingStore()) {}
+        val bridge = MediaBridge(engine, NowPlayingStore(), sendStatus = {})
         bridge.handleAction("set-volume", json("""{"volume":50}"""))
         assertEquals(53, bridge.ui.value.volume)
     }

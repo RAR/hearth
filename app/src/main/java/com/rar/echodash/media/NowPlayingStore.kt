@@ -64,6 +64,17 @@ class NowPlayingStore {
     private var localArt: ByteArray? = null
     private var entity: EntityState? = null
 
+    // SendSpin (Music Assistant) is a fourth input, mutually exclusive with the ExoPlayer engine
+    // (reverse-exclusion in the endpoint guarantees only one owns audio). While a SendSpin stream is
+    // active it wins in recompute() regardless of engine/entity state.
+    private var sendspinActive = false
+    private var sendspinPlaying = false
+    private var sendspinTitle: String? = null
+    private var sendspinArtist: String? = null
+    private var sendspinAlbum: String? = null
+    private var sendspinArt: ByteArray? = null
+    private var sendspinVolume = 90
+
     @Synchronized
     fun onEngine(active: Boolean, playing: Boolean, volume: Int) {
         engineActive = active
@@ -87,7 +98,29 @@ class NowPlayingStore {
         recompute()
     }
 
+    @Synchronized
+    fun onSendspin(active: Boolean, playing: Boolean, title: String?, artist: String?,
+                   album: String?, artworkData: ByteArray?, volume: Int) {
+        sendspinActive = active
+        sendspinPlaying = playing
+        sendspinTitle = title?.takeIf { it.isNotBlank() }
+        sendspinArtist = artist?.takeIf { it.isNotBlank() }
+        sendspinAlbum = album?.takeIf { it.isNotBlank() }
+        sendspinArt = artworkData
+        sendspinVolume = volume
+        recompute()
+    }
+
     private fun recompute() {
+        // SendSpin owns audio (mutually exclusive with the engine) -> its metadata wins.
+        if (sendspinActive) {
+            _state.value = NowPlayingState(
+                active = true, playing = sendspinPlaying,
+                title = sendspinTitle, artist = sendspinArtist, album = sendspinAlbum,
+                artUrl = null, localArt = sendspinArt, volume = sendspinVolume, canSkip = true,
+            )
+            return
+        }
         val entityTitle = entity?.attr("media_title")?.takeIf { it.isNotBlank() }
         val canSkip = entityTitle != null
         if (!engineActive) {

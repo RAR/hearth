@@ -224,16 +224,8 @@ class AppDeps(context: Context) {
         baseUrl = { settings.baseUrl },
         token = { runCatching { auth.validAccessToken() }.getOrNull() },
     )
-    val media = MediaBridge(
-        mediaEngine,
-        nowPlaying,
-        restoredDucking = settings.duckingVolume,
-        persistDucking = { settings.duckingVolume = it },
-        sendSettings = { s -> scope.launch { vaca.sendSettingsFeedback(s) } },
-    ) { status ->
-        scope.launch { vaca.sendStatus(status) }
-    }
-
+    // Declared BEFORE `media`: MediaBridge's init{} runs applyDucking() -> duckSendspin(1f) during
+    // construction, and the duck/URL lambdas below capture `sendspin`, so it must exist first.
     /** SendSpin (Music Assistant) synced-audio playback endpoint. Started reactively by [startSendspin]. */
     val sendspin = SendspinEndpoint(
         context = appContext,
@@ -243,6 +235,16 @@ class AppDeps(context: Context) {
         nowPlaying = nowPlaying,
         scope = scope,
         mainScope = mainScope,
+    )
+    val media = MediaBridge(
+        mediaEngine,
+        nowPlaying,
+        restoredDucking = settings.duckingVolume,
+        persistDucking = { settings.duckingVolume = it },
+        sendSettings = { s -> scope.launch { vaca.sendSettingsFeedback(s) } },
+        sendStatus = { status -> scope.launch { vaca.sendStatus(status) } },
+        duckSendspin = { g -> sendspin.setDuckGain(g) },
+        onStartUrl = { sendspin.stop() },
     )
     val announce = AnnouncePlayer(
         scope,

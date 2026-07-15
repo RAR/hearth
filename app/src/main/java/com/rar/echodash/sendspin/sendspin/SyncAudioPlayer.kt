@@ -827,20 +827,13 @@ class SyncAudioPlayer(
     }
 
     /**
-     * Set the playback volume.
-     *
-     * Note: Volume is now controlled via device STREAM_MUSIC (AudioManager),
-     * not per-AudioTrack gain. This method is kept for API compatibility but
-     * AudioTrack always plays at full volume. Device volume handles attenuation.
-     *
-     * @param volume Volume level from 0.0 (mute) to 1.0 (full volume) - ignored
+     * Set per-track output gain 0.0 (silent) .. 1.0 (full). Hearth adaptation: unlike upstream
+     * SendSpinDroid (device STREAM_MUSIC volume for hardware buttons), Hearth ducks this track
+     * independently so TTS/announce can attenuate SendSpin without touching the device volume or
+     * the announce stream. Thread-safe; no-op if the sink is not yet initialized / already released.
      */
-    @Suppress("UNUSED_PARAMETER")
-    fun setVolume(volume: Float) {
-        // Volume is now controlled via device STREAM_MUSIC, not AudioTrack gain.
-        // AudioTrack plays at full volume; device media stream handles attenuation.
-        // This follows Spotify/Plexamp best practices for hardware volume button support.
-        AppLog.Audio.d("setVolume called (ignored - using device volume): $volume")
+    fun setVolume(gain: Float) {
+        stateLock.withLock { audioSink?.setVolume(gain.coerceIn(0f, 1f)) }
     }
 
     /**

@@ -27,6 +27,8 @@ class AudioTrackSink(
     override fun flush() = track.flush()
     override fun release() = track.release()
 
+    override fun setVolume(gain: Float) { track.setVolume(gain) }
+
     override fun write(buffer: ByteArray, offset: Int, size: Int): Int =
         track.write(buffer, offset, size)
 

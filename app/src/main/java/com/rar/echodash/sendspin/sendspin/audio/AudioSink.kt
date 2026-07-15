@@ -24,6 +24,9 @@ interface AudioSink {
     /** Release native resources. Mirrors AudioTrack.release(). */
     fun release()
 
+    /** Set output gain 0.0..1.0. Mirrors AudioTrack.setVolume(). */
+    fun setVolume(gain: Float)
+
     /**
      * Write PCM data. Mirrors AudioTrack.write(buffer, offset, size) in
      * blocking mode. Returns the number of bytes written, or a negative

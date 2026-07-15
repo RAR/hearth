@@ -65,6 +65,11 @@ class MediaBridge(
     private val persistDucking: (Int) -> Unit = {},
     private val sendSettings: (JsonObject) -> Unit = {},
     private val sendStatus: (JsonObject) -> Unit,
+    // Fan the ducking fraction out to the SendSpin endpoint too (single fraction authority; the
+    // fraction math stays here in applyDucking). SendSpin ducks its own AudioTrack gain.
+    private val duckSendspin: (Float) -> Unit = {},
+    // Starting a local URL stops SendSpin (one audio source at a time; reverse mutual-exclusion).
+    private val onStartUrl: () -> Unit = {},
 ) {
     // active/playing/volumePercent are written from both the VACA server thread
     // (handleAction) and the Android main thread (engine callbacks); @Volatile
@@ -128,6 +133,7 @@ class MediaBridge(
             applyVolume()
             val url = payloadUrl(payload)
             if (url != null) {
+                onStartUrl()          // stop SendSpin -- one audio source at a time
                 active = true
                 engine.play(url)
                 _ui.update { it.copy(nowPlaying = url, volume = volumePercent) }
@@ -199,7 +205,11 @@ class MediaBridge(
         volumePercent = engine.currentVolumePercent()
     }
 
-    private fun applyDucking() = engine.setDucking(if (ducked) duckingVolume / 10f else 1f)
+    private fun applyDucking() {
+        val f = if (ducked) duckingVolume / 10f else 1f
+        engine.setDucking(f)
+        duckSendspin(f)
+    }
 
     private fun payloadVolume(payload: JsonElement?): Int? =
         ((payload as? JsonObject)?.get("volume") as? JsonPrimitive)?.doubleOrNull?.toInt()

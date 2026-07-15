@@ -165,10 +165,13 @@ class SendspinEndpoint(
     // play/pause icon, so the icon can't get stuck showing "paused" while audio is actually flowing.
     @Volatile private var playWhenReady: Boolean = false
 
-    // True once we have a track worth showing (first stream/start or first real metadata) and until
-    // the endpoint stops or the transport dies. Drives the takeover's visibility ([active]); it must
-    // PERSIST across pause and across the stream/end that MA fires at every track boundary, so a
-    // pause shows a paused track rather than making the whole takeover vanish.
+    // True once PLAYBACK has actually started this session (first stream/start) and until the
+    // endpoint stops or the transport dies. Drives the takeover's visibility ([active]); it must
+    // PERSIST across pause and across the stream/end MA fires at every track boundary, so a pause
+    // shows a paused track rather than making the takeover vanish. Deliberately NOT set on metadata
+    // alone: MA sends the current track's metadata on connect even when it is paused/stopped, so a
+    // cold reconnect to a paused track must not resurrect a takeover the user already dismissed --
+    // the takeover is for active playback and appears only once a stream starts.
     @Volatile private var hasTrack: Boolean = false
 
     /** Publish the current merged now-playing snapshot to [NowPlayingStore]. */
@@ -618,7 +621,9 @@ class SendspinEndpoint(
             npTitle = title
             npArtist = artist
             npAlbum = album
-            hasTrack = true
+            // NOTE: do NOT set hasTrack here -- see the field doc. Metadata for a paused/stopped
+            // track (e.g. right after a cold reconnect) must not force the takeover open. hasTrack
+            // is set on stream/start; if we are already active this just refreshes the display.
             Log.i(TAG, "meta title='$title' artist='$artist' album='$album'")
             publishNowPlaying()
         }

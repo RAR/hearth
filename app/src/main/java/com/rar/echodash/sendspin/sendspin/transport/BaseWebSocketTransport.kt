@@ -24,7 +24,6 @@ import java.util.concurrent.atomic.AtomicReference
  * Encapsulates the shared connection lifecycle, channel management, send/receive loops,
  * and close logic. Subclasses provide only the transport-specific setup:
  * - [WebSocketTransport]: direct `ws://host:port/path` for local network
- * - [ProxyWebSocketTransport]: `wss://` URL with optional Bearer auth header for proxies
  *
  * ## Thread Safety
  * This class is thread-safe. All state changes are atomic, and Ktor handles

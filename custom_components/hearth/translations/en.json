@@ -36,6 +36,9 @@
     },
     "button": {
       "refresh": { "name": "Refresh" }
+    },
+    "select": {
+      "view": { "name": "View" }
     }
   },
   "services": {

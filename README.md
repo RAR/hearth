@@ -4,12 +4,10 @@
 
 <h1 align="center">Hearth</h1>
 
-A native Android wall-dashboard for Home Assistant, plus its own HA integration — one repo, both halves.
+A native Android wall-dashboard for Home Assistant, plus its own HA integration.
 
 - **The app** (`app/`): a Kotlin + Jetpack Compose kiosk that turns an Android device into an always-on HA dashboard and voice satellite. Born on a LineageOS Echo Show 5, now happily multi-device (also running on a Lenovo Tab M9 wall tablet). Everything is configured from a web page the device serves on your LAN — no YAML, no HA labels.
 - **The integration** (`custom_components/hearth/`): a slim custom integration that gives HA full control of each device — media player, screen, brightness, toasts, TTS announcements. Zero pip dependencies. It replaces the third-party VACA integration this project originally spoke to.
-
-Built for landscape kiosk use, minSdk 28 / targetSdk 34. 454 plain-JVM unit tests on the app, 23 pytest tests on the integration's protocol layer.
 
 ## What's on screen
 
@@ -32,8 +30,6 @@ Each device gets: a **media player** (URLs/radio/Music Assistant via ExoPlayer, 
 
 Voice is deliberately separate: the satellite speaks to HA core's own Wyoming integration (port 10600) and keeps working with or without the Hearth integration.
 
-**Coming from VACA?** This app originally spoke to the third-party VACA integration; it's now Hearth-native and no longer advertises `_vaca._tcp`. Install the Hearth integration above, then remove any leftover VACA device entry in HA. The app serves one integration session at a time (newest wins).
-
 ## Build
 
 ```bash
@@ -52,10 +48,3 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 First run: the device shows a pointer card — open `http://<device-ip>:8080` in a browser, enter the PIN, and complete HA login there (OAuth on HA's own page). For boot-to-dashboard, set Hearth as the default launcher (*Settings → Apps → Default apps → Home*); this is also what auto-starts it after a reboot on Android 10+.
-
-## Repo layout
-
-- `app/` — the Android app (Kotlin, Compose; plain-JVM tests under `app/src/test`).
-- `custom_components/hearth/` — the HA integration (`codec.py`/`client.py` are HA-free and tested; entity platforms are thin).
-- `tests/integration/` — pytest suite for the protocol layer.
-- `docs/superpowers/` — design specs and implementation plans for every feature.

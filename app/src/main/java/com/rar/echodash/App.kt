@@ -63,6 +63,7 @@ import com.rar.echodash.vaca.MediaBridge
 import com.rar.echodash.media.NowPlayingStore
 import com.rar.echodash.media.ArtFetcher
 import com.rar.echodash.night.NightModeController
+import com.rar.echodash.sendspin.SendspinEndpoint
 import com.rar.echodash.vaca.NsdAdvertiser
 import com.rar.echodash.vaca.VacaOutgoing
 import com.rar.echodash.vaca.VacaServer
@@ -232,6 +233,17 @@ class AppDeps(context: Context) {
     ) { status ->
         scope.launch { vaca.sendStatus(status) }
     }
+
+    /** SendSpin (Music Assistant) synced-audio playback endpoint. Started reactively by [startSendspin]. */
+    val sendspin = SendspinEndpoint(
+        context = appContext,
+        deviceName = { deviceName() },
+        config = configStore.config,
+        mediaEngine = mediaEngine,
+        nowPlaying = nowPlaying,
+        scope = scope,
+        mainScope = mainScope,
+    )
     val announce = AnnouncePlayer(
         scope,
         AndroidPcmSink(),
@@ -399,6 +411,23 @@ class AppDeps(context: Context) {
                         voiceOverlay.value = VoiceOverlayState()
                         timersUi.value = TimersUiState()
                     }
+                }
+        }
+    }
+
+    /**
+     * Reactively (re)run the SendSpin playback endpoint. Restarts on any change to
+     * sendspin.enabled or sendspin.serverAddress (mirrors how [startVoice] restarts on
+     * config change): tears down any running instance, then starts it if enabled.
+     */
+    fun startSendspin() {
+        scope.launch {
+            configStore.config
+                .map { it.sendspin.enabled to it.sendspin.serverAddress }
+                .distinctUntilChanged()
+                .collect { (enabled, _) ->
+                    sendspin.stop() // tear down any running instance first
+                    if (enabled) sendspin.start()
                 }
         }
     }

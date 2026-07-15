@@ -11,5 +11,6 @@ class EchoDashApplication : Application() {
         deps = AppDeps(this)
         deps.startVaca()
         deps.startVoice()
+        deps.startSendspin()
     }
 }

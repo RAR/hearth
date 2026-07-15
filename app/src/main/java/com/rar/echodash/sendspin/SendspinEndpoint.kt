@@ -234,7 +234,17 @@ class SendspinEndpoint(
 
     // ---- Public lifecycle ----
 
-    /** Idempotent: build the client (lazily) and begin connecting via address or discovery. */
+    /**
+     * Idempotent: build the client (lazily) and begin connecting via address or discovery.
+     *
+     * @Synchronized with [stop] -- called from both the reactive config collector
+     * (Dispatchers.Default, via AppDeps.startSendspin) and the main thread (via
+     * MediaBridge.onStartUrl -> sendspin.stop() on a URL play). Both methods only
+     * launch/cancel coroutines and build/destroy objects (no inline network I/O), so
+     * synchronizing them is cheap and prevents one thread's start() from racing the
+     * other's stop() and leaving `started=true` pointing at a torn-down client.
+     */
+    @Synchronized
     fun start() {
         if (started) return
         started = true
@@ -256,6 +266,16 @@ class SendspinEndpoint(
                     streaming = false
                 }
                 _status.value = sendspinStatus(state, streaming)
+                // A dead-end transport (exhausted reconnect, or never-started) must not leave
+                // a phantom now-playing takeover on the home screen forever -- onStreamEnd/stop()
+                // only fire on a clean end/explicit stop, not an abrupt drop that never recovers.
+                // Connecting is deliberately excluded: a transient reconnect must keep the
+                // takeover up while the buffer drains.
+                if (state is TransportState.Failed || state is TransportState.Idle) {
+                    mainScope.launch {
+                        nowPlaying.onSendspin(false, false, null, null, null, null, npVolume)
+                    }
+                }
             }
         }
 
@@ -271,7 +291,12 @@ class SendspinEndpoint(
         }
     }
 
-    /** Idempotent: disconnect, tear down discovery, and release the player + decoder. */
+    /**
+     * Idempotent: disconnect, tear down discovery, and release the player + decoder.
+     *
+     * @Synchronized with [start] -- see the note there.
+     */
+    @Synchronized
     fun stop() {
         if (!started) return
         started = false
@@ -352,6 +377,13 @@ class SendspinEndpoint(
             // they decode once the worker drains the StartStream ahead of them.
             decoderReady = true
             streaming = true
+            // Clear the previous stream's metadata so this new stream starts blank instead of
+            // flashing the prior track until the first onMetadataUpdate arrives. npVolume is
+            // left as-is (it's a device/output property, not per-stream).
+            npTitle = null
+            npArtist = null
+            npAlbum = null
+            npArtwork = null
             publishNowPlaying() // active -> true (metadata fills in as onMetadataUpdate/onArtwork arrive)
             // Sent synchronously on the WS-IO callback thread (not via scope.launch) so
             // enqueue order matches callback order -- a launch here could race with the

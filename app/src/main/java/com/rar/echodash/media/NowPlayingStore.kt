@@ -117,7 +117,9 @@ class NowPlayingStore {
             _state.value = NowPlayingState(
                 active = true, playing = sendspinPlaying,
                 title = sendspinTitle, artist = sendspinArtist, album = sendspinAlbum,
-                artUrl = null, localArt = sendspinArt, volume = sendspinVolume, canSkip = true,
+                // Next/prev route to the companion media_player entity, not SendSpin -- skip
+                // controls would hit the wrong player, so transport controls are out of scope.
+                artUrl = null, localArt = sendspinArt, volume = sendspinVolume, canSkip = false,
             )
             return
         }

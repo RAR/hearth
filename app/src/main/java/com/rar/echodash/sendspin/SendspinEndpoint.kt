@@ -142,7 +142,7 @@ class SendspinEndpoint(
     /** Set the group volume (0..100): apply it to the device output AND sync it to Music Assistant. */
     fun transportVolume(volume: Int) {
         val v = volume.coerceIn(0, 100)
-        Log.i(TAG, "transportVolume $v -> device STREAM_MUSIC + MA")
+        Log.d(TAG, "transportVolume $v -> device STREAM_MUSIC + MA")
         applyDeviceVolume(v)
         npVolume = v
         sendSpin?.setGroupVolume(v)
@@ -187,7 +187,7 @@ class SendspinEndpoint(
     private fun publishNowPlaying() {
         val active = hasTrack
         val playing = playWhenReady
-        Log.i(TAG, "publish active=$active playing=$playing title='$npTitle' art=${npArtwork?.size ?: 0} vol=$npVolume")
+        Log.d(TAG, "publish active=$active playing=$playing title='$npTitle' art=${npArtwork?.size ?: 0} vol=$npVolume")
         mainScope.launch {
             nowPlaying.onSendspin(
                 active = active, playing = playing,
@@ -617,12 +617,12 @@ class SendspinEndpoint(
         override fun onServerDiscovered(name: String, address: String) {}
 
         override fun onStateChanged(state: String) {
-            Log.i(TAG, "server/state playback_state=$state")
+            Log.d(TAG, "server/state playback_state=$state")
             applyServerPlaybackState(state)
         }
 
         override fun onGroupUpdate(groupId: String, groupName: String, playbackState: String) {
-            Log.i(TAG, "group/update playback_state=$playbackState group='$groupName'")
+            Log.d(TAG, "group/update playback_state=$playbackState group='$groupName'")
             applyServerPlaybackState(playbackState)
         }
 
@@ -652,13 +652,13 @@ class SendspinEndpoint(
         }
 
         override fun onArtwork(imageData: ByteArray) {
-            Log.i(TAG, "onArtwork ${imageData.size} bytes")
+            Log.d(TAG, "onArtwork ${imageData.size} bytes")
             npArtwork = imageData
             publishNowPlaying()
         }
 
         override fun onArtworkCleared() {
-            Log.i(TAG, "onArtworkCleared")
+            Log.d(TAG, "onArtworkCleared")
             npArtwork = null
             publishNowPlaying()
         }
@@ -668,7 +668,7 @@ class SendspinEndpoint(
             // the device output so changing volume in MA actually changes loudness here, not just the
             // on-screen slider. Only fires on real changes -- not the connect-time controller snapshot
             // -- so this cannot slam the device to MA's volume on startup.
-            Log.i(TAG, "onVolumeChanged $volume -> device STREAM_MUSIC")
+            Log.d(TAG, "onVolumeChanged $volume -> device STREAM_MUSIC")
             applyDeviceVolume(volume)
             npVolume = volume
             publishNowPlaying()

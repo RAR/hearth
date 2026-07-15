@@ -18,7 +18,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 
@@ -77,8 +76,10 @@ class SendspinEndpoint(
     // ---- Lifecycle state (touched on the caller thread; start/stop are not re-entrant) ----
 
     private var started = false
-    private var sendSpin: SendSpin? = null
-    private var nsd: NsdDiscoveryManager? = null
+    // Read from the NSD executor thread + WS-IO callbacks, written from the caller thread
+    // (start/stop) and the discovery listener -- @Volatile for cross-thread visibility.
+    @Volatile private var sendSpin: SendSpin? = null
+    @Volatile private var nsd: NsdDiscoveryManager? = null
     private var stateCollectorJob: Job? = null
 
     /** deferred: latency tuning -- read but intentionally NOT wired into the time filter yet. */
@@ -217,6 +218,12 @@ class SendspinEndpoint(
         // Publish status derived from the transport state + streaming flag.
         stateCollectorJob = scope.launch {
             ss.connectionState.collect { state ->
+                // Clear a stale streaming flag on any non-Ready transition (e.g. an abrupt
+                // drop with no onStreamEnd/onStreamClear) so a SendSpin auto-reconnect back
+                // to Ready starts from Connected, not a falsely-resumed Playing.
+                if (state !is TransportState.Ready) {
+                    streaming = false
+                }
                 _status.value = sendspinStatus(state, streaming)
             }
         }
@@ -256,8 +263,13 @@ class SendspinEndpoint(
         sendSpin?.destroy()
         sendSpin = null
 
-        // Release the decoder on its owning worker thread.
-        scope.launch { decodeChannel.send(DecodeTask.Release) }
+        // Release the decoder on its owning worker thread. Sent synchronously (not via a
+        // fresh launch) so it preserves FIFO order relative to any task enqueued just
+        // before stop() from a callback thread; trySend always succeeds on an UNLIMITED
+        // channel while open.
+        if (decodeChannel.trySend(DecodeTask.Release).isFailure) {
+            Log.w(TAG, "decodeChannel closed, dropped Release task")
+        }
 
         val player = syncAudioPlayer
         syncAudioPlayer = null
@@ -307,10 +319,14 @@ class SendspinEndpoint(
             // they decode once the worker drains the StartStream ahead of them.
             decoderReady = true
             streaming = true
-            scope.launch {
-                decodeChannel.send(
+            // Sent synchronously on the WS-IO callback thread (not via scope.launch) so
+            // enqueue order matches callback order -- a launch here could race with the
+            // Chunk/Flush launches below and reorder relative to them on the channel.
+            if (decodeChannel.trySend(
                     DecodeTask.StartStream(codec, sampleRate, channels, bitDepth, codecHeader),
-                )
+                ).isFailure
+            ) {
+                Log.w(TAG, "decodeChannel closed, dropped StartStream task")
             }
             // Player lifecycle lives on the main looper.
             mainScope.launch {
@@ -342,12 +358,19 @@ class SendspinEndpoint(
 
         override fun onAudioChunk(serverTimeMicros: Long, audioData: ByteArray) {
             if (!decoderReady) return
-            scope.launch { decodeChannel.send(DecodeTask.Chunk(serverTimeMicros, audioData)) }
+            // Sent synchronously (see onStreamStart) to preserve FIFO order with the
+            // StartStream/Flush/Release tasks around it.
+            if (decodeChannel.trySend(DecodeTask.Chunk(serverTimeMicros, audioData)).isFailure) {
+                Log.w(TAG, "decodeChannel closed, dropped Chunk task")
+            }
         }
 
         override fun onStreamClear() {
             streaming = false
-            scope.launch { decodeChannel.send(DecodeTask.Flush) }
+            // Sent synchronously (see onStreamStart) to preserve FIFO order.
+            if (decodeChannel.trySend(DecodeTask.Flush).isFailure) {
+                Log.w(TAG, "decodeChannel closed, dropped Flush task")
+            }
             mainScope.launch { syncAudioPlayer?.clearBuffer() }
             updateStatus()
         }

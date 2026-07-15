@@ -310,7 +310,7 @@ class SendspinEndpoint(
 
         _status.value = SendspinStatus.Disconnected
         npPlaying = false
-        mainScope.launch { nowPlaying.onSendspin(false, false, null, null, null, null, 90) }
+        mainScope.launch { nowPlaying.onSendspin(false, false, null, null, null, null, npVolume) }
     }
 
     /** Recompute the published status from the current transport state + streaming flag. */

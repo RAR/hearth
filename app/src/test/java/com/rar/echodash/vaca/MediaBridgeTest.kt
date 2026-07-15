@@ -58,6 +58,38 @@ class MediaBridgeTest {
     }
 
     @Test
+    fun playMediaWithUrlInvokesOnStartUrlBeforePlayExactlyOnce() {
+        val engine = FakeEngine()
+        var startCount = 0
+        val bridge = MediaBridge(
+            engine, NowPlayingStore(),
+            sendStatus = {},
+            // Reverse mutual-exclusion: starting a local URL must stop SendSpin first.
+            onStartUrl = { startCount++; engine.calls += "start-sendspin" },
+        )
+        assertTrue(bridge.handleAction("play-media",
+            json("""{"url":"http://radio/stream.mp3","volume":80}""")))
+        assertEquals(1, startCount)
+        assertTrue("onStartUrl must run before engine.play()",
+            engine.calls.indexOf("start-sendspin") <
+                engine.calls.indexOf("play:http://radio/stream.mp3"))
+    }
+
+    @Test
+    fun playMediaWithoutUrlDoesNotInvokeOnStartUrl() {
+        val engine = FakeEngine()
+        var started = false
+        val bridge = MediaBridge(
+            engine, NowPlayingStore(),
+            sendStatus = {},
+            onStartUrl = { started = true },
+        )
+        // No "url" key -- e.g. a play-media call that only updates volume.
+        assertTrue(bridge.handleAction("play-media", json("""{"volume":80}""")))
+        assertFalse(started)
+    }
+
+    @Test
     fun transportActionsMapToEngine() {
         val engine = FakeEngine()
         val bridge = MediaBridge(engine, NowPlayingStore(), sendStatus = {})
@@ -268,6 +300,38 @@ class MediaBridgeTest {
         val bridge = MediaBridge(engine, NowPlayingStore(), restoredDucking = 5, sendStatus = {})
         bridge.setDucked(true)
         assertEquals(0.5f, engine.duckGain, 0.001f)
+    }
+
+    @Test
+    fun duckedTrueFansOutSameFractionToSendspinAsEngine() {
+        val engine = FakeEngine()
+        var sendspinFraction: Float? = null
+        val bridge = MediaBridge(
+            engine, NowPlayingStore(),
+            restoredDucking = 5,
+            sendStatus = {},
+            duckSendspin = { sendspinFraction = it },
+        )
+        bridge.setDucked(true)
+        assertEquals("SendSpin and the local engine must duck by the same fraction",
+            engine.duckGain, sendspinFraction!!, 0.001f)
+        assertEquals(0.5f, sendspinFraction!!, 0.001f)
+    }
+
+    @Test
+    fun duckedFalseFansOutFullVolumeToSendspin() {
+        val engine = FakeEngine()
+        var sendspinFraction: Float? = null
+        val bridge = MediaBridge(
+            engine, NowPlayingStore(),
+            restoredDucking = 5,
+            sendStatus = {},
+            duckSendspin = { sendspinFraction = it },
+        )
+        bridge.setDucked(true)
+        bridge.setDucked(false)
+        assertEquals(1f, sendspinFraction!!, 0.001f)
+        assertEquals(engine.duckGain, sendspinFraction!!, 0.001f)
     }
 
     @Test

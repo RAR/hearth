@@ -6,8 +6,8 @@
 
 A native Android wall-dashboard for Home Assistant, plus its own HA integration.
 
-- **The app** (`app/`): a Kotlin + Jetpack Compose kiosk that turns an Android device into an always-on HA dashboard and voice satellite. Born on a LineageOS Echo Show 5, now happily multi-device (also running on a Lenovo Tab M9 wall tablet). Everything is configured from a web page the device serves on your LAN — no YAML.
-- **The integration** (`custom_components/hearth/`): a slim custom integration that gives HA full control of each device — media player, screen, brightness, toasts, TTS announcements. Zero pip dependencies.
+- **The app** (`app/`): a Kotlin + Jetpack Compose kiosk that turns an Android device into an always-on HA dashboard and voice satellite. Born on a LineageOS Echo Show 5, now happily multi-device. Everything is configured from a web page the device serves on your LAN — no YAML.
+- **The integration** (`custom_components/hearth/`): a slim custom integration that gives HA full control of each device — media player, screen, brightness, toasts, TTS announcements.
 
 ## What's on screen
 

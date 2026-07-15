@@ -343,9 +343,12 @@ with the following (the new dispatch/wake helpers plus the `current_view` snapsh
      * parsing lives in [DashActionParser]; this method applies the effects on the main scope.
      */
     private fun handleDeviceAction(action: String, payload: JsonElement?): Boolean {
+        // Parser calls are wrapped in runCatching: DashActionParser mirrors ConfigServer, whose
+        // .jsonPrimitive access throws on object/array-valued fields — the HTTP path catches that
+        // at the top-level parse, but here an arbitrary wire payload must never crash mainScope.
         when (action) {
             "set-view" -> {
-                val view = DashActionParser.parseSetView(payload)
+                val view = runCatching { DashActionParser.parseSetView(payload) }.getOrNull()
                 if (view == null) {
                     android.util.Log.i("AppDeps", "set-view ignored: unknown/invalid view $payload")
                     return true
@@ -362,7 +365,7 @@ with the following (the new dispatch/wake helpers plus the `current_view` snapsh
                 return true
             }
             "notify" -> {
-                val cmd = DashActionParser.parseNotify(payload)
+                val cmd = runCatching { DashActionParser.parseNotify(payload) }.getOrNull()
                 if (cmd == null) {
                     android.util.Log.i("AppDeps", "notify ignored: missing/blank title $payload")
                     return true
@@ -374,7 +377,7 @@ with the following (the new dispatch/wake helpers plus the `current_view` snapsh
                 return true
             }
             "notify-clear" -> {
-                when (val cmd = DashActionParser.parseNotifyClear(payload)) {
+                when (val cmd = runCatching { DashActionParser.parseNotifyClear(payload) }.getOrNull()) {
                     DashActionParser.NotifyClear.All -> pushStore.clearAll()
                     is DashActionParser.NotifyClear.One -> pushStore.clear(cmd.id)
                     null -> android.util.Log.i("AppDeps", "notify-clear ignored: neither id nor all $payload")

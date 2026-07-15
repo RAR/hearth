@@ -1,0 +1,6 @@
+Hearth bundles a vendored copy of the SendSpin client engine from
+chrisuthe/SendSpinDroid (https://github.com/chrisuthe/SendSpinDroid),
+MIT License, Copyright (c) 2024-2026 Chris Uthe.
+Vendored from upstream commit 594251fb4b45201208a474efb3ba5ad30bd22153,
+adapted into com.rar.echodash.sendspin
+(local-only transport; UI, MediaSession, WebRTC, and proxy paths removed).

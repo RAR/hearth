@@ -306,6 +306,7 @@ function render() {
   renderHome();
   renderOptions();
   renderVoice();
+  renderSendspin();
   renderNight();
   renderEv();
   renderCalendars();
@@ -766,6 +767,39 @@ function renderVoice() {
     "HA's own streaming wake-word setting is no longer used, and mic audio only reaches HA after the wake word is heard. " +
     "Wake sound: chirps when the wake word is heard and when it stops listening; volume 0 disables it. " +
     "If the on-device models fail to load, the satellite silently falls back to HA-side wake."));
+}
+
+function renderSendspin() {
+  const host = document.getElementById("sendspin");
+  clear(host);
+  // Defensive default for configs saved before Sendspin existed (same pattern as Media/Night).
+  if (!config.sendspin) config.sendspin = { enabled: false, syncDelayMs: 0, serverAddress: "" };
+  const s = config.sendspin;
+  if (typeof s.syncDelayMs !== "number") s.syncDelayMs = 0;
+  if (s.serverAddress == null) s.serverAddress = "";
+
+  const toggle = el("input"); toggle.type = "checkbox"; toggle.checked = !!s.enabled;
+  toggle.setAttribute("aria-label", "Sendspin sync playback enabled");
+  toggle.addEventListener("change", () => s.enabled = toggle.checked);
+  host.appendChild(labeledRow("Synced playback (Sendspin)", toggle));
+
+  const delay = el("input"); delay.type = "number"; delay.min = -2000; delay.max = 2000;
+  delay.value = s.syncDelayMs;
+  delay.addEventListener("change", () => s.syncDelayMs = Math.round(parseFloat(delay.value) || 0));
+  host.appendChild(labeledRow("Sync delay (ms)", delay));
+
+  const addr = el("input"); addr.value = s.serverAddress; addr.placeholder = "auto (mDNS)";
+  addr.setAttribute("autocomplete", "off");
+  addr.addEventListener("change", () => s.serverAddress = addr.value.trim());
+  host.appendChild(labeledRow("Server address", addr));
+
+  const status = el("div", "muted"); status.id = "sendspin-status";
+  host.appendChild(status);
+
+  host.appendChild(el("div", "muted",
+    "Joins a Music Assistant Sendspin group for sample-accurate multi-room synced playback. Leave the " +
+    "server address blank to auto-discover the Music Assistant server via mDNS. Sync delay offsets this " +
+    "device's playback by up to ±2000 ms to compensate for its own audio-pipeline latency (clamped on save)."));
 }
 
 function renderNight() {

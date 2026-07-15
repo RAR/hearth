@@ -192,6 +192,18 @@ data class NotificationsConfig(
     }
 }
 
+@Serializable
+data class SendspinConfig(
+    val enabled: Boolean = false,
+    val syncDelayMs: Int = 0,          // per-player fixed-latency offset for tuning
+    val serverAddress: String = "",    // optional manual MA server host:port; blank = mDNS discovery
+) {
+    fun clamped(): SendspinConfig = copy(
+        syncDelayMs = syncDelayMs.coerceIn(-2000, 2000),
+        serverAddress = serverAddress.trim(),
+    )
+}
+
 /** The whole device configuration; one versioned document persisted at filesDir/config.json. */
 @Serializable
 data class DashConfig(
@@ -204,6 +216,7 @@ data class DashConfig(
     val media: MediaSettings = MediaSettings(),
     val night: NightSettings = NightSettings(),
     val notifications: NotificationsConfig = NotificationsConfig(),
+    val sendspin: SendspinConfig = SendspinConfig(),
 ) {
     /** Every entity id referenced anywhere, first-seen order, de-duplicated (EntityHub watched set). */
     fun referencedEntityIds(): List<String> = buildList {
@@ -304,6 +317,7 @@ data class DashConfig(
             media = media.clamped(),
             night = night.clamped(),
             notifications = notifications.clamped(),
+            sendspin = sendspin.clamped(),
         )
     }
 }

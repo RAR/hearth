@@ -9,7 +9,7 @@ A native Android wall-dashboard for Home Assistant, plus its own HA integration 
 - **The app** (`app/`): a Kotlin + Jetpack Compose kiosk that turns an Android device into an always-on HA dashboard and voice satellite. Born on a LineageOS Echo Show 5, now happily multi-device (also running on a Lenovo Tab M9 wall tablet). Everything is configured from a web page the device serves on your LAN — no YAML, no HA labels.
 - **The integration** (`custom_components/hearth/`): a slim custom integration that gives HA full control of each device — media player, screen, brightness, toasts, TTS announcements. Zero pip dependencies. It replaces the third-party VACA integration this project originally spoke to.
 
-Built for landscape kiosk use, minSdk 28 / targetSdk 34. 433 plain-JVM unit tests on the app, 23 pytest tests on the integration's protocol layer.
+Built for landscape kiosk use, minSdk 28 / targetSdk 34. 454 plain-JVM unit tests on the app, 23 pytest tests on the integration's protocol layer.
 
 ## What's on screen
 
@@ -32,13 +32,13 @@ Each device gets: a **media player** (URLs/radio/Music Assistant via ExoPlayer, 
 
 Voice is deliberately separate: the satellite speaks to HA core's own Wyoming integration (port 10600) and keeps working with or without the Hearth integration.
 
-**Migrating from VACA:** the app serves one integration session at a time (newest wins) — per device, delete the VACA entry first, then add the Hearth one. The app still advertises `_vaca._tcp` for now, so un-migrated devices keep working.
+**Coming from VACA?** This app originally spoke to the third-party VACA integration; it's now Hearth-native and no longer advertises `_vaca._tcp`. Install the Hearth integration above, then remove any leftover VACA device entry in HA. The app serves one integration session at a time (newest wins).
 
 ## Build
 
 ```bash
 export JAVA_HOME=/usr/lib/jvm/java-21-amazon-corretto  # any JDK 17+
-./gradlew test assembleDebug                            # app: build + 433 unit tests
+./gradlew test assembleDebug                            # app: build + 454 unit tests
 python3 -m pytest tests/integration -q                  # integration protocol tests (stdlib + pytest only)
 ```
 

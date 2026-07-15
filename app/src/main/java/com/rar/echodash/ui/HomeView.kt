@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.BatteryStd
 import androidx.compose.material.icons.outlined.ElectricMeter
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.EvStation
@@ -567,23 +568,44 @@ private fun SolarCardView(card: SolarCard) {
                 reverse = card.battFlow == BattFlow.DISCHARGING,
             )
         }
-        if (card.homeText != null || card.gridText != null) {
+        if (card.battText != null || card.homeText != null || card.gridText != null) {
             val statsWhite = Color.White.copy(alpha = 0.9f)
+            // Compact sizing so battery + home + grid all fit one line in the fixed-width card.
+            // Stopgap until per-screen adaptive sizing (see [[echo-dashboard-future-features]]).
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
             ) {
+                if (card.battText != null) {
+                    Icon(
+                        Icons.Outlined.BatteryStd, contentDescription = "Battery",
+                        tint = statsWhite, modifier = Modifier.size(14.dp),
+                    )
+                    Text(card.battText, color = statsWhite, fontSize = 12.sp, maxLines = 1)
+                    // Direction arrow mirrors the grid: into the battery = points at it (charging),
+                    // away from it = out of it (discharging), dash = idle.
+                    Icon(
+                        when (card.battFlow) {
+                            BattFlow.CHARGING -> Icons.AutoMirrored.Outlined.ArrowBack
+                            BattFlow.DISCHARGING -> Icons.AutoMirrored.Outlined.ArrowForward
+                            BattFlow.IDLE -> Icons.Outlined.HorizontalRule
+                        },
+                        contentDescription = when (card.battFlow) {
+                            BattFlow.CHARGING -> "Charging"
+                            BattFlow.DISCHARGING -> "Discharging"
+                            BattFlow.IDLE -> "Idle"
+                        },
+                        tint = statsWhite, modifier = Modifier.size(14.dp),
+                    )
+                }
                 if (card.homeText != null) {
                     Icon(
                         Icons.Outlined.Home, contentDescription = "Home",
-                        tint = statsWhite, modifier = Modifier.size(16.dp),
+                        tint = statsWhite, modifier = Modifier.size(14.dp),
                     )
-                    Text(card.homeText, color = statsWhite, fontSize = 14.sp, maxLines = 1)
+                    Text(card.homeText, color = statsWhite, fontSize = 12.sp, maxLines = 1)
                 }
                 if (card.gridText != null) {
-                    if (card.homeText != null) {
-                        Text("·", color = statsWhite, fontSize = 14.sp)
-                    }
                     Icon(
                         when (card.gridImporting) {
                             true -> Icons.AutoMirrored.Outlined.ArrowBack
@@ -595,13 +617,13 @@ private fun SolarCardView(card: SolarCard) {
                             false -> "Export"
                             null -> "Balanced"
                         },
-                        tint = statsWhite, modifier = Modifier.size(16.dp),
+                        tint = statsWhite, modifier = Modifier.size(14.dp),
                     )
                     Icon(
                         Icons.Outlined.ElectricMeter, contentDescription = "Grid",
-                        tint = statsWhite, modifier = Modifier.size(16.dp),
+                        tint = statsWhite, modifier = Modifier.size(14.dp),
                     )
-                    Text(card.gridText, color = statsWhite, fontSize = 14.sp, maxLines = 1)
+                    Text(card.gridText, color = statsWhite, fontSize = 12.sp, maxLines = 1)
                 }
             }
         }

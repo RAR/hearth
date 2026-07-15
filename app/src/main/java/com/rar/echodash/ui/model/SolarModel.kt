@@ -53,6 +53,7 @@ data class SolarCard(
     val pvText: String?,        // formatted PV output for the header; null = no pv sensor
     val socPct: Int?,           // battery SOC 0-100; null = no gauge
     val battFlow: BattFlow,     // |power| > CHARGE_DEADBAND_W; negative = charging (evcc convention)
+    val battText: String?,      // battery power magnitude (formatted); null = no battPower sensor
     val homeText: String?,       // house load watts, rendered behind a house icon; null = no load sensor
     val gridText: String?,       // grid watts, rendered behind an import/export arrow; null = no numeric grid
     val gridImporting: Boolean?, // arrow: true = import (left), false = export (right), null = balanced
@@ -70,7 +71,8 @@ fun solarCard(cfg: SolarConfig, entities: Map<String, EntityState>): SolarCard? 
     if (pv == null && load == null && grid == null && soc == null) return null
 
     val gridWatts = grid?.let { powerWatts(it) }
-    val battWatts = get(cfg.battPower)?.let { powerWatts(it) }
+    val battPower = get(cfg.battPower)
+    val battWatts = battPower?.let { powerWatts(it) }
     return SolarCard(
         pvText = pv?.let { formatWatts(it) },
         socPct = soc?.state?.toDoubleOrNull()?.roundToInt()?.coerceIn(0, 100),
@@ -80,6 +82,7 @@ fun solarCard(cfg: SolarConfig, entities: Map<String, EntityState>): SolarCard? 
             battWatts > CHARGE_DEADBAND_W -> BattFlow.DISCHARGING
             else -> BattFlow.IDLE
         },
+        battText = battPower?.let { formatWatts(it) },
         homeText = load?.let { formatWatts(it) },
         gridText = if (grid != null && gridWatts != null) formatWatts(grid) else null,
         gridImporting = gridWatts?.takeIf { abs(it) > GRID_DEADBAND_W }?.let { it >= 0 },

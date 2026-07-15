@@ -286,8 +286,17 @@ class SendspinEndpoint(
         } else {
             val discovery = NsdDiscoveryManager(context, DiscoveryListenerImpl())
             nsd = discovery
-            // NsdManager needs a Looper -- start discovery on the main thread.
-            mainScope.launch { discovery.startDiscovery() }
+            // NsdManager needs a Looper -- start discovery on the main thread. Guarded so a
+            // discovery failure (missing multicast permission, Wi-Fi down, NSD unavailable)
+            // degrades to Disconnected instead of crashing the kiosk on the main dispatcher.
+            mainScope.launch {
+                try {
+                    discovery.startDiscovery()
+                } catch (e: Exception) {
+                    Log.e(TAG, "SendSpin discovery failed to start", e)
+                    _status.value = SendspinStatus.Disconnected
+                }
+            }
         }
     }
 

@@ -429,8 +429,12 @@ class AppDeps(context: Context) {
                 .map { it.sendspin.enabled to it.sendspin.serverAddress }
                 .distinctUntilChanged()
                 .collect { (enabled, _) ->
-                    sendspin.stop() // tear down any running instance first
-                    if (enabled) sendspin.start()
+                    // Guard so a start/stop failure can never crash the collector (and with it
+                    // the kiosk). SendspinEndpoint already logs internally; this is the backstop.
+                    runCatching {
+                        sendspin.stop() // tear down any running instance first
+                        if (enabled) sendspin.start()
+                    }.onFailure { android.util.Log.e("AppDeps", "SendSpin start/stop failed", it) }
                 }
         }
     }

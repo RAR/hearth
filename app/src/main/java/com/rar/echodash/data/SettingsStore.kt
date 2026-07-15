@@ -15,6 +15,7 @@ interface SettingsStore {
     var configPin: String?
     var notifyToken: String?
     var deviceName: String?
+    var duckingVolume: Int?
     fun clearAuth()
 }
 
@@ -28,6 +29,7 @@ class InMemorySettingsStore : SettingsStore {
     override var configPin: String? = null
     override var notifyToken: String? = null
     override var deviceName: String? = null
+    override var duckingVolume: Int? = null
 
     override fun clearAuth() {
         accessToken = null
@@ -69,6 +71,8 @@ class PrefsSettingsStore(context: Context) : SettingsStore {
         get() = string("notify_token"); set(v) = put("notify_token", v)
     override var deviceName: String?
         get() = string("device_name"); set(v) = put("device_name", v)
+    override var duckingVolume: Int?
+        get() = string("ducking_volume")?.toIntOrNull(); set(v) = put("ducking_volume", v?.toString())
 
     override fun clearAuth() {
         prefs.edit()

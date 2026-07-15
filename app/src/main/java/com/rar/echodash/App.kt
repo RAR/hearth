@@ -216,7 +216,13 @@ class AppDeps(context: Context) {
         baseUrl = { settings.baseUrl },
         token = { runCatching { auth.validAccessToken() }.getOrNull() },
     )
-    val media = MediaBridge(mediaEngine, nowPlaying) { status ->
+    val media = MediaBridge(
+        mediaEngine,
+        nowPlaying,
+        restoredDucking = settings.duckingVolume,
+        persistDucking = { settings.duckingVolume = it },
+        sendSettings = { s -> scope.launch { vaca.sendSettingsFeedback(s) } },
+    ) { status ->
         scope.launch { vaca.sendStatus(status) }
     }
     val announce = AnnouncePlayer(
@@ -249,7 +255,7 @@ class AppDeps(context: Context) {
             override fun onSessionStarted() {
                 announce.onDisconnected()
                 mainScope.launch {
-                    vaca.sendSettingsFeedback(kiosk.currentSettings())
+                    vaca.sendSettingsFeedback(JsonObject(kiosk.currentSettings() + media.currentSettings()))
                     vaca.sendStatus(statusSnapshot())
                 }
             }

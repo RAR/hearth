@@ -61,13 +61,17 @@ data class MediaUiState(
 class MediaBridge(
     private val engine: MediaEngine,
     private val nowPlaying: NowPlayingStore,
+    restoredDucking: Int? = null,
+    private val persistDucking: (Int) -> Unit = {},
+    private val sendSettings: (JsonObject) -> Unit = {},
     private val sendStatus: (JsonObject) -> Unit,
 ) {
     // active/playing/volumePercent are written from both the VACA server thread
     // (handleAction) and the Android main thread (engine callbacks); @Volatile
     // gives cross-thread visibility without needing a lock for these simple flags.
     @Volatile private var volumePercent = 90 // HA media player default volume_level 0.9
-    private var duckingVolume = 1  // 1..10 scale, integration default
+    // 0..10 scale; restored from device-local prefs, else the integration default of 1.
+    private var duckingVolume = restoredDucking?.coerceIn(0, 10) ?: 1
     private var ducked = false
     @Volatile private var active = false   // engine has media loaded (play-media until stop/error)
     @Volatile private var playing = false  // mirrors the engine isPlaying callback
@@ -159,6 +163,9 @@ class MediaBridge(
         else -> false
     }
 
+    /** Settings this bridge owns, for the session-start feedback snapshot. */
+    fun currentSettings(): JsonObject = buildJsonObject { put("ducking_volume", duckingVolume) }
+
     fun applySettings(settings: JsonObject) {
         var changed = false
         (settings["music_volume"] as? JsonPrimitive)?.intOrNull?.let {
@@ -170,6 +177,11 @@ class MediaBridge(
             duckingVolume = it.coerceIn(0, 10)
             applyDucking()
             changed = true
+            persistDucking(duckingVolume)
+            // Echo the applied value so HA's number entity gets state (it stays unknown otherwise).
+            // Unconditional receipt confirmation — the integration treats feedback as idempotent
+            // state, not a service call, so re-echoing an unchanged value can't loop.
+            sendSettings(currentSettings())
         }
         if (changed) { _ui.update { it.copy(volume = volumePercent) }; pushEngine() }
     }

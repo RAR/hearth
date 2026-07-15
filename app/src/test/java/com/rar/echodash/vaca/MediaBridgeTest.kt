@@ -4,10 +4,12 @@ import com.rar.echodash.media.NowPlayingStore
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -210,6 +212,60 @@ class MediaBridgeTest {
         engine.onPlayingChanged!!.invoke(true)
         assertTrue(store.state.value.active)
         assertTrue(store.state.value.playing)
+    }
+
+    @Test
+    fun restoredDuckingSurfacesInCurrentSettings() {
+        val bridge = MediaBridge(FakeEngine(), NowPlayingStore(), restoredDucking = 7) {}
+        assertEquals(7, bridge.currentSettings()["ducking_volume"]!!.jsonPrimitive.int)
+    }
+
+    @Test
+    fun outOfRangeRestoredDuckingCoercesToTen() {
+        val bridge = MediaBridge(FakeEngine(), NowPlayingStore(), restoredDucking = 42) {}
+        assertEquals(10, bridge.currentSettings()["ducking_volume"]!!.jsonPrimitive.int)
+    }
+
+    @Test
+    fun nullRestoredDuckingDefaultsToOne() {
+        val bridge = MediaBridge(FakeEngine(), NowPlayingStore(), restoredDucking = null) {}
+        assertEquals(1, bridge.currentSettings()["ducking_volume"]!!.jsonPrimitive.int)
+    }
+
+    @Test
+    fun applyingDuckingPersistsAndEchoes() {
+        var persisted: Int? = null
+        var echoed: JsonObject? = null
+        val bridge = MediaBridge(
+            FakeEngine(), NowPlayingStore(),
+            persistDucking = { persisted = it },
+            sendSettings = { echoed = it },
+        ) {}
+        bridge.applySettings(json("""{"ducking_volume":5}""").jsonObject)
+        assertEquals(5, persisted)
+        assertEquals(5, echoed!!["ducking_volume"]!!.jsonPrimitive.int)
+    }
+
+    @Test
+    fun settingsWithoutDuckingNeitherPersistNorEcho() {
+        var persisted: Int? = null
+        var echoed: JsonObject? = null
+        val bridge = MediaBridge(
+            FakeEngine(), NowPlayingStore(),
+            persistDucking = { persisted = it },
+            sendSettings = { echoed = it },
+        ) {}
+        bridge.applySettings(json("""{"music_volume":5}""").jsonObject)
+        assertNull(persisted)
+        assertNull(echoed)
+    }
+
+    @Test
+    fun restoredDuckingDrivesEngineGain() {
+        val engine = FakeEngine()
+        val bridge = MediaBridge(engine, NowPlayingStore(), restoredDucking = 5) {}
+        bridge.setDucked(true)
+        assertEquals(0.5f, engine.duckGain, 0.001f)
     }
 
     @Test

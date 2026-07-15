@@ -48,6 +48,7 @@ import com.rar.echodash.ui.theme.EchoTheme
 import com.rar.echodash.vaca.AndroidKioskDevice
 import com.rar.echodash.vaca.AnnouncePlayer
 import com.rar.echodash.vaca.AndroidPcmSink
+import com.rar.echodash.vaca.DashActionParser
 import com.rar.echodash.vaca.ExoPlayerEngine
 import com.rar.echodash.vaca.KioskController
 import com.rar.echodash.vaca.LightSensorReporter
@@ -77,6 +78,7 @@ import com.rar.echodash.web.generateNotifyToken
 import com.rar.echodash.web.localIpAddress
 import java.io.File
 import java.time.ZoneId
+import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -199,6 +201,13 @@ class AppDeps(context: Context) {
         restoredJson = settings.vacaSettingsJson,
     )
     val nightMode = NightModeController()
+
+    /**
+     * The dashboard view, hoisted out of the composable so HA (`set-view`) and the rail stay in
+     * lockstep. The UI writes it (rail select / idle-return); a collector in [startVaca] reports
+     * `current_view` to HA on change; [statusSnapshot] and `set-view` handling read/write it.
+     */
+    val currentView = MutableStateFlow(DashView.HOME)
     private val mediaEngine = ExoPlayerEngine(appContext)
     val nowPlaying = NowPlayingStore()
     val artFetcher = ArtFetcher(
@@ -252,7 +261,9 @@ class AppDeps(context: Context) {
             }
             override fun onAction(action: String, payload: JsonElement?) {
                 mainScope.launch {
-                    if (!media.handleAction(action, payload)) {
+                    if (!handleDeviceAction(action, payload) &&
+                        !media.handleAction(action, payload)
+                    ) {
                         kiosk.handleAction(action, payload)
                     }
                 }
@@ -326,6 +337,18 @@ class AppDeps(context: Context) {
         vaca.start()
         hearthNsd.register()
         lightSensor.start()
+        // Report the current view to HA whenever it changes (select entity mirror). sendStatus is a
+        // no-op until a session connects, so launching before the first session is harmless.
+        scope.launch {
+            currentView
+                .map { it.name.lowercase(Locale.US) }
+                .distinctUntilChanged()
+                .collect { view ->
+                    vaca.sendStatus(buildJsonObject {
+                        putJsonObject("sensors") { put("current_view", view) }
+                    })
+                }
+        }
         vacaRunning = true
     }
 
@@ -367,10 +390,67 @@ class AppDeps(context: Context) {
         }
     }
 
+    /**
+     * Apply the HA->device actions this app owns (set-view / notify / notify-clear). Returns true
+     * when the action was consumed (so [onAction] does not fall through to media/kiosk). Pure
+     * parsing lives in [DashActionParser]; this method applies the effects on the main scope.
+     */
+    private fun handleDeviceAction(action: String, payload: JsonElement?): Boolean {
+        // Parser calls are wrapped in runCatching: DashActionParser mirrors ConfigServer, whose
+        // .jsonPrimitive access throws on object/array-valued fields — the HTTP path catches that
+        // at the top-level parse, but here an arbitrary wire payload must never crash mainScope.
+        when (action) {
+            "set-view" -> {
+                val view = runCatching { DashActionParser.parseSetView(payload) }.getOrNull()
+                if (view == null) {
+                    android.util.Log.i("AppDeps", "set-view ignored: unknown/invalid view $payload")
+                    return true
+                }
+                val cfg = configStore.config.value
+                if (!DashActionParser.isViewAllowed(view, cfg.panels, cfg.entities.cameras.isNotEmpty())) {
+                    android.util.Log.i("AppDeps", "set-view ignored: panel disabled for $view")
+                    return true
+                }
+                // A real, enabled view: switch to it (the composable re-arms idle on the change) and
+                // wake / exit night mode exactly as a user touch would, even if it equals the current.
+                currentView.value = view
+                wakeForHaView()
+                return true
+            }
+            "notify" -> {
+                val cmd = runCatching { DashActionParser.parseNotify(payload) }.getOrNull()
+                if (cmd == null) {
+                    android.util.Log.i("AppDeps", "notify ignored: missing/blank title $payload")
+                    return true
+                }
+                pushStore.post(
+                    cmd.id, cmd.title, cmd.message, cmd.severity, cmd.timeoutSeconds,
+                    System.currentTimeMillis(),
+                )
+                return true
+            }
+            "notify-clear" -> {
+                when (val cmd = runCatching { DashActionParser.parseNotifyClear(payload) }.getOrNull()) {
+                    DashActionParser.NotifyClear.All -> pushStore.clearAll()
+                    is DashActionParser.NotifyClear.One -> pushStore.clear(cmd.id)
+                    null -> android.util.Log.i("AppDeps", "notify-clear ignored: neither id nor all $payload")
+                }
+                return true
+            }
+            else -> return false
+        }
+    }
+
+    /** Wake the screen / exit night mode for an HA-initiated view change, like a user touch. */
+    private fun wakeForHaView() {
+        kiosk.onUserInteraction()
+        nightMode.onUserInteraction(SystemClock.elapsedRealtime())
+    }
+
     private fun statusSnapshot(): JsonObject = buildJsonObject {
         putJsonObject("sensors") {
             put("orientation", "landscape")
-            put("current_path", "dashboard")
+            put("current_view", currentView.value.name.lowercase(Locale.US))
         }
     }
 }
@@ -468,11 +548,11 @@ fun EchoDashApp(deps: AppDeps) {
                     }
                     val configUrl = remember { deps.configUrl() }
                     val configPinValue = remember { deps.configPin() }
-                    var view by remember { mutableStateOf(DashView.HOME) }
+                    val view by deps.currentView.collectAsStateWithLifecycle()
                     val uiScope = rememberCoroutineScope()
                     val idleSeconds = config.home.idleReturnSeconds
                     val idleTimer = remember(idleSeconds) {
-                        IdleReturnTimer(uiScope, timeoutMs = idleSeconds * 1000L) { view = DashView.HOME }
+                        IdleReturnTimer(uiScope, timeoutMs = idleSeconds * 1000L) { deps.currentView.value = DashView.HOME }
                     }
                     DisposableEffect(idleTimer) { onDispose { idleTimer.cancel() } }
                     LaunchedEffect(idleTimer, view) { idleTimer.onViewChanged(view == DashView.HOME) }
@@ -564,7 +644,7 @@ fun EchoDashApp(deps: AppDeps) {
                     DashboardShell(
                         current = view,
                         onSelect = { v ->
-                            view = v
+                            deps.currentView.value = v
                             deps.kiosk.onUserInteraction()
                         },
                         config = config,

@@ -6,8 +6,10 @@ import com.rar.echodash.config.DashConfig
 import com.rar.echodash.media.NowPlayingStore
 import com.rar.echodash.sendspin.coordinator.TransportState
 import com.rar.echodash.sendspin.discovery.NsdDiscoveryManager
+import com.rar.echodash.sendspin.sendspin.PlaybackState
 import com.rar.echodash.sendspin.sendspin.SendSpin
 import com.rar.echodash.sendspin.sendspin.SyncAudioPlayer
+import com.rar.echodash.sendspin.sendspin.SyncAudioPlayerCallback
 import com.rar.echodash.sendspin.sendspin.decoder.AudioDecoder
 import com.rar.echodash.sendspin.sendspin.decoder.AudioDecoderFactory
 import com.rar.echodash.vaca.MediaEngine
@@ -94,15 +96,25 @@ class SendspinEndpoint(
         syncAudioPlayer?.setVolume(duckGain)
     }
 
-    // Transport passthroughs -- forward the now-playing takeover's controls to the SendSpin
-    // server (Music Assistant) when SendSpin is the active source. No-op while disconnected.
-    fun transportPlay() { Log.i(TAG, "transportPlay (connected=${sendSpin != null})"); sendSpin?.play() }
-    fun transportPause() { Log.i(TAG, "transportPause (connected=${sendSpin != null})"); sendSpin?.pause() }
-    fun transportStop() { sendSpin?.stop() }
-    fun transportNext() { Log.i(TAG, "transportNext"); sendSpin?.next() }
-    fun transportPrev() { Log.i(TAG, "transportPrev"); sendSpin?.previous() }
+    // Forward the now-playing takeover's controls to Music Assistant. Play/Pause/Stop set the local
+    // [playWhenReady] intent optimistically and publish, so the takeover's icon flips immediately;
+    // the server's playback_state broadcast then confirms it (and the audio-state callback corrects
+    // it if the server and the actual audio ever disagree). No-op while disconnected.
+    fun transportPlay() { playWhenReady = true; sendSpin?.play(); publishNowPlaying() }
+    fun transportPause() { playWhenReady = false; sendSpin?.pause(); publishNowPlaying() }
+    // Stop maps to PAUSE, exactly as the reference SendSpinPlayer.stop() does: sending a real "stop"
+    // command makes Music Assistant requeue and RESTART the track -- the reported "stop then restarts"
+    // bug. Pausing stops the audio and keeps the (paused) takeover, which the paused-dismiss timer
+    // then hides gracefully.
+    fun transportStop() { playWhenReady = false; sendSpin?.pause(); publishNowPlaying() }
+    fun transportNext() { sendSpin?.next() }
+    fun transportPrev() { sendSpin?.previous() }
     /** Set the SendSpin group volume (0..100). */
-    fun transportVolume(volume: Int) { sendSpin?.setGroupVolume(volume.coerceIn(0, 100)) }
+    fun transportVolume(volume: Int) {
+        val v = volume.coerceIn(0, 100)
+        Log.i(TAG, "transportVolume $v (connected=${sendSpin != null})")
+        sendSpin?.setGroupVolume(v)
+    }
 
     // ---- Audio pipeline ----
 
@@ -115,35 +127,97 @@ class SendspinEndpoint(
     @Volatile private var streaming: Boolean = false
 
     // ---- Now-playing metadata (Part B) ----
-    // The onMetadataUpdate / onArtwork / onVolumeChanged / onStateChanged callbacks arrive
-    // SEPARATELY on the WS-IO thread, so we hold the latest of each and publish the merge into
-    // NowPlayingStore (via publishNowPlaying) on mainScope -- keeping UI-facing writes off WS-IO.
+    // The onMetadataUpdate / onArtwork / onVolumeChanged callbacks arrive SEPARATELY on the WS-IO
+    // thread, so we hold the latest of each and publish the merge into NowPlayingStore (via
+    // publishNowPlaying) on mainScope -- keeping UI-facing writes off WS-IO.
     @Volatile private var npTitle: String? = null
     @Volatile private var npArtist: String? = null
     @Volatile private var npAlbum: String? = null
     @Volatile private var npArtwork: ByteArray? = null
     @Volatile private var npVolume: Int = 90
-    @Volatile private var npPlaying: Boolean = false
 
-    /** Publish the current merged now-playing snapshot. active mirrors [streaming]. */
+    // Play/pause INTENT, mirroring the reference SendSpinPlayer.playWhenReady. Set optimistically by
+    // the transport buttons and reconciled from the server's playback_state broadcasts (WITHOUT
+    // echoing a command back). This -- not the raw stream/start-end flag -- is the takeover's
+    // play/pause icon, so the icon can't get stuck showing "paused" while audio is actually flowing.
+    @Volatile private var playWhenReady: Boolean = false
+
+    // True once we have a track worth showing (first stream/start or first real metadata) and until
+    // the endpoint stops or the transport dies. Drives the takeover's visibility ([active]); it must
+    // PERSIST across pause and across the stream/end that MA fires at every track boundary, so a
+    // pause shows a paused track rather than making the whole takeover vanish.
+    @Volatile private var hasTrack: Boolean = false
+
+    /** Publish the current merged now-playing snapshot to [NowPlayingStore]. */
     private fun publishNowPlaying() {
-        Log.i(TAG, "publish active=$streaming playing=$npPlaying title='$npTitle' artBytes=${npArtwork?.size ?: 0}")
+        val active = hasTrack
+        val playing = playWhenReady
+        Log.i(TAG, "publish active=$active playing=$playing title='$npTitle' art=${npArtwork?.size ?: 0} vol=$npVolume")
         mainScope.launch {
             nowPlaying.onSendspin(
-                active = streaming, playing = npPlaying,
+                active = active, playing = playing,
                 title = npTitle, artist = npArtist, album = npAlbum,
                 artworkData = npArtwork, volume = npVolume,
             )
         }
     }
 
-    /** Map a SendSpin/MA playback-state string to a playing flag; unknown -> playing iff streaming. */
-    private fun resolvePlaying(state: String): Boolean = when {
-        state.equals("playing", ignoreCase = true) -> true
-        state.equals("paused", ignoreCase = true) ||
-            state.equals("stopped", ignoreCase = true) ||
-            state.equals("idle", ignoreCase = true) -> false
-        else -> streaming
+    /**
+     * Drive the local [SyncAudioPlayer] from a server-broadcast playback_state and reconcile the
+     * play/pause [playWhenReady] intent WITHOUT echoing a command back (which would create a feedback
+     * loop). This is the half of the control loop the endpoint was missing: the server saying
+     * "playing/paused/stopped" must actually resume/pause/clear the local audio, not just relabel it.
+     * Mirrors SendSpinDroid PlaybackService.onStateChanged / onGroupUpdate. Runs on mainScope because
+     * the SyncAudioPlayer is owned by the main looper.
+     *
+     * Music Assistant uses "stopped" as its pause signal (it does not emit "paused"), so STOPPED is
+     * handled the reference way -- clear the buffer and pause -- UNLESS we are DRAINING (mid-reconnect
+     * with a live buffer), in which case we ask the server to resume rather than kill the audio.
+     */
+    private fun applyServerPlaybackState(rawState: String) {
+        mainScope.launch {
+            val player = syncAudioPlayer
+            when {
+                rawState.equals("playing", ignoreCase = true) -> {
+                    playWhenReady = true
+                    player?.resume()
+                }
+                rawState.equals("paused", ignoreCase = true) -> {
+                    playWhenReady = false
+                    player?.pause() // keep the buffer for a seamless resume
+                }
+                rawState.equals("stopped", ignoreCase = true) ||
+                    rawState.equals("idle", ignoreCase = true) -> {
+                    if (player?.getPlaybackState() == PlaybackState.DRAINING) {
+                        // Reconnecting with a live buffer -- resume rather than discard it.
+                        sendSpin?.play()
+                    } else {
+                        playWhenReady = false
+                        player?.clearBuffer()
+                        player?.pause()
+                    }
+                }
+                // Unknown state -- leave the intent untouched.
+            }
+            publishNowPlaying()
+        }
+    }
+
+    /**
+     * Reconciles the UI from the ACTUAL audio-player state. Fires only on real state transitions.
+     * When audio physically reaches PLAYING/DRAINING but our intent still says paused, the server
+     * told us "stopped" before audio actually resumed -- correct the intent so the icon is truthful
+     * (this is the reference SendSpinPlayer.updateStateFromPlayer correction). A user pause does not
+     * change the player's state enum, so this never spuriously overrides a genuine pause.
+     */
+    private val audioStateCallback = object : SyncAudioPlayerCallback {
+        override fun onPlaybackStateChanged(state: PlaybackState) {
+            val flowing = state == PlaybackState.PLAYING || state == PlaybackState.DRAINING
+            if (flowing && !playWhenReady) {
+                playWhenReady = true
+            }
+            publishNowPlaying()
+        }
     }
 
     // Fast-path gate read on the WS-IO thread: once onStreamStart is observed we set
@@ -283,6 +357,8 @@ class SendspinEndpoint(
                 // Connecting is deliberately excluded: a transient reconnect must keep the
                 // takeover up while the buffer drains.
                 if (state is TransportState.Failed || state is TransportState.Idle) {
+                    hasTrack = false
+                    playWhenReady = false
                     mainScope.launch {
                         nowPlaying.onSendspin(false, false, null, null, null, null, npVolume)
                     }
@@ -354,7 +430,8 @@ class SendspinEndpoint(
         }
 
         _status.value = SendspinStatus.Disconnected
-        npPlaying = false
+        hasTrack = false
+        playWhenReady = false
         mainScope.launch { nowPlaying.onSendspin(false, false, null, null, null, null, npVolume) }
     }
 
@@ -397,6 +474,11 @@ class SendspinEndpoint(
             // they decode once the worker drains the StartStream ahead of them.
             decoderReady = true
             streaming = true
+            hasTrack = true
+            // A stream starting is the server's strongest "playing" signal; set the intent so the
+            // takeover shows playing immediately. The playback_state broadcast + the audio-state
+            // callback then confirm it.
+            playWhenReady = true
             Log.i(TAG, "onStreamStart codec=$codec ${sampleRate}Hz ${channels}ch ${bitDepth}bit")
             // Do NOT clear metadata here. Music Assistant sends the next track's metadata + artwork
             // BEFORE it starts the audio stream, so by the time onStreamStart fires npTitle/npArtwork
@@ -428,9 +510,12 @@ class SendspinEndpoint(
                         channels = channels,
                         bitDepth = bitDepth,
                     )
+                    // Learn the real audio-player state so the UI reconciles from what is actually
+                    // playing, not from the stream/start-end flag (which flaps on every track change).
+                    player.setStateCallback(audioStateCallback)
                     player.initialize()
                     player.start()
-                    // Honor an in-progress duck (currently a no-op leaf; real gain lands in Task 6).
+                    // Honor an in-progress duck (real per-track gain; see setDuckGain).
                     player.setVolume(duckGain)
                     syncAudioPlayer = player
                     Log.i(TAG, "SyncAudioPlayer created: ${sampleRate}Hz ${channels}ch ${bitDepth}bit")
@@ -462,19 +547,16 @@ class SendspinEndpoint(
         }
 
         override fun onStreamEnd() {
-            Log.i(TAG, "onStreamEnd -> stop local audio")
+            Log.i(TAG, "onStreamEnd -> enterIdle (keep DAC warm)")
             streaming = false
-            // MA ends the stream on pause/stop AND at every track change. In all cases the buffered
-            // audio is stale, so discard it NOW (clearBuffer flushes the queue + AudioTrack) instead
-            // of letting the look-ahead cache drain -- otherwise "pause" keeps playing for seconds.
-            // Also drop any decode-worker backlog so it can't re-fill the queue after the clear.
-            decodeChannel.trySend(DecodeTask.Flush)
-            mainScope.launch { syncAudioPlayer?.clearBuffer() }
+            // MA fires stream/end on pause/stop AND at every track boundary (the ~10s transcode gap
+            // on "next"). Enter idle -- keep the AudioTrack alive writing silence so the DAC stays
+            // warm for the next stream -- but do NOT clear the takeover here: the server's
+            // playback_state is what actually pauses/stops the audio (applyServerPlaybackState), and
+            // clearing now would blank the now-playing mid-track-change. hasTrack/playWhenReady
+            // persist; only a disconnect or an explicit endpoint stop() tears the takeover down.
+            mainScope.launch { syncAudioPlayer?.enterIdle() }
             updateStatus() // -> Connected (while Ready)
-            npPlaying = false
-            mainScope.launch {
-                nowPlaying.onSendspin(false, false, null, null, null, null, npVolume)
-            }
         }
 
         override fun onSyncMuteChanged(muted: Boolean) {
@@ -486,13 +568,13 @@ class SendspinEndpoint(
         override fun onServerDiscovered(name: String, address: String) {}
 
         override fun onStateChanged(state: String) {
-            npPlaying = resolvePlaying(state)
-            publishNowPlaying()
+            Log.i(TAG, "server/state playback_state=$state")
+            applyServerPlaybackState(state)
         }
 
         override fun onGroupUpdate(groupId: String, groupName: String, playbackState: String) {
-            npPlaying = resolvePlaying(playbackState)
-            publishNowPlaying()
+            Log.i(TAG, "group/update playback_state=$playbackState group='$groupName'")
+            applyServerPlaybackState(playbackState)
         }
 
         override fun onMetadataUpdate(
@@ -513,6 +595,7 @@ class SendspinEndpoint(
             npTitle = title
             npArtist = artist
             npAlbum = album
+            hasTrack = true
             Log.i(TAG, "meta title='$title' artist='$artist' album='$album'")
             publishNowPlaying()
         }
@@ -530,6 +613,7 @@ class SendspinEndpoint(
         }
 
         override fun onVolumeChanged(volume: Int) {
+            Log.i(TAG, "onVolumeChanged $volume")
             npVolume = volume
             publishNowPlaying()
         }

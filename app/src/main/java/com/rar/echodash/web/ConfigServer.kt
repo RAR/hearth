@@ -34,6 +34,7 @@ class ConfigServer(
     private val configured: () -> Boolean,
     private val connState: () -> String,
     private val lux: () -> Int? = { null },
+    private val sendspinStatus: () -> String = { "disconnected" },
     private val previewChime: (String, Int) -> Unit,
     private val previewEarcon: (Int) -> Unit,
     private val assetReader: (String) -> ByteArray?,
@@ -110,6 +111,7 @@ class ConfigServer(
             put("lux", lux())            // int, or JSON null when no sensor reading yet
             put("notifyToken", notifyToken())
             put("deviceName", deviceName())
+            put("sendspin", sendspinStatus())
         }.toString())
 
     private fun handlePutName(session: IHTTPSession): Response {

@@ -150,6 +150,7 @@ class AppDeps(context: Context) {
         configured = { settings.refreshToken != null },
         connState = { ws.connectionState.value.name },
         lux = { lastLux },
+        sendspinStatus = { sendspin.status.value.name },
         previewChime = { tone, volume -> timerChime.playOnce(tone, volume) },
         previewEarcon = { volume -> earconPlayer.play("preview", volume) },
         assetReader = { path ->

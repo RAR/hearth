@@ -15,6 +15,7 @@ A native Android wall-dashboard for Home Assistant, plus its own HA integration.
 - **Panels** (right-side rail, swipe-back, auto-return to Home after a configurable idle timeout): Lights, Climate, Media, Weather (current + forecast), Solar power flow, Cameras (RTSP/HLS), and a 3-day Calendar agenda.
 - **Voice** — a Wyoming satellite with **on-device wake word** (openWakeWord TFLite: Okay Nabu / Hey Jarvis / Alexa). Mic audio only leaves the device after a local wake detection; HA runs STT/intent/TTS. Assist timers live on the device with countdown chips and a chime, and survive HA restarts.
 - **Extras** — doorbell camera popups, ambient-light night clock (huge dim clock in a dark room), dark mode, screensaver, ambient auto-brightness.
+- **Multi-room synced audio** — acts as a Music Assistant SendSpin player for sample-accurate multi-room playback (auto-discovered via mDNS; enable on the config page).
 
 ## The web config page
 
@@ -29,6 +30,17 @@ Install via HACS: **HACS → Integrations → ⋮ → Custom repositories → `h
 Each device gets: a **media player** (URLs/radio/Music Assistant via ExoPlayer, plus `announce` — TTS ducks the music instead of stopping it), **switches** for screen / auto-brightness / always-on / screensaver / dark mode, **numbers** for brightness / screen timeout / ducking volume, a **refresh button**, a **View** select that mirrors and drives the on-screen dashboard view, a **notify** entity, and the **`hearth.toast`**, **`hearth.notify`** (title / message / severity / timeout / id), and **`hearth.notify_clear`** services.
 
 Voice is deliberately separate: the satellite speaks to HA core's own Wyoming integration (port 10600) and keeps working with or without the Hearth integration.
+
+### SendSpin bring-up (manual)
+
+After building/flashing a version with SendSpin, verify it on real devices with Music Assistant:
+
+1. Flash the app to each device; on the config page enable "Synced playback (Sendspin)".
+2. Confirm the config page's SendSpin status line moves Disconnected → Connected when Music Assistant is reachable, and the device appears in Music Assistant's player list (pair/add if MA prompts).
+3. Group it with another speaker and start playback → audio plays; the home-screen now-playing takeover shows title/artist/artwork.
+4. Trigger a TTS/announce → SendSpin audio ducks then restores.
+5. Start a URL on the existing media_player → SendSpin stops (mutual exclusion; note it won't auto-rejoin until you re-toggle SendSpin — expected in this version).
+6. Note the sync offset vs. the other speaker; the "Sync delay (ms)" field tunes it (tuning deferred).
 
 ## Build
 

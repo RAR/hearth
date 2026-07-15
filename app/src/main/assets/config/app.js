@@ -795,6 +795,7 @@ function renderSendspin() {
 
   const status = el("div", "muted"); status.id = "sendspin-status";
   host.appendChild(status);
+  updateSendspinStatus(lastStatus);
 
   host.appendChild(el("div", "muted",
     "Joins a Music Assistant Sendspin group for sample-accurate multi-room synced playback. Leave the " +
@@ -1039,6 +1040,15 @@ function updateNightLux(status) {
   else box.textContent = "Current reading: no sensor";
 }
 
+function updateSendspinStatus(st) {
+  const node = document.getElementById("sendspin-status");
+  if (!node) return;                       // card not rendered
+  const s = st && st.sendspin;             // "Disconnected"|"Connecting"|"Connected"|"Playing"
+  const label = { Playing: "Playing", Connected: "Connected", Connecting: "Connecting…",
+                  Disconnected: "Disconnected" }[s] || "Disconnected";
+  node.textContent = "Status: " + label;
+}
+
 // The base page fetches /api/status once at load; poll it here so the live lux reading refreshes.
 function startStatusPoll() {
   if (statusPollStarted) return;
@@ -1046,7 +1056,7 @@ function startStatusPoll() {
   setInterval(async () => {
     try {
       const r = await api("GET", "/api/status");
-      if (r.ok) { lastStatus = await r.json(); updateNightLux(lastStatus); }
+      if (r.ok) { lastStatus = await r.json(); updateNightLux(lastStatus); updateSendspinStatus(lastStatus); }
     } catch (e) { /* device may be briefly unreachable; ignore */ }
   }, 5000);
 }

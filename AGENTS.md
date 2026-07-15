@@ -87,6 +87,14 @@ Voice is deliberately separate from the Hearth integration: the satellite speaks
 to HA **core's** Wyoming (port 10600) and works with or without Hearth installed.
 Don't entangle the two.
 
+`sendspin/` is a **vendored** copy of the MIT-licensed chrisuthe/SendSpinDroid
+engine (see `NOTICE` for attribution and the exact upstream commit), trimmed to
+the LOCAL WebSocket path only (no WebRTC/proxy/Noise) — Music Assistant
+connects to Hearth by mDNS discovery, same as any other SendSpin player. Three
+vendored audio files (`AudioSink` / `AudioTrackSink` / `SyncAudioPlayer.setVolume`)
+were adapted for Hearth's per-track ducking; keep that in mind before reflexively
+re-syncing them from upstream.
+
 ## Device / hardware notes
 
 Primary targets: **Echo Show 5** (LineageOS 18.1 / Android 11, MT8163, 960×480)

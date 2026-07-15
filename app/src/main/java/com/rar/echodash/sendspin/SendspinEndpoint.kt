@@ -1,6 +1,7 @@
 package com.rar.echodash.sendspin
 
 import android.content.Context
+import android.media.AudioManager
 import android.util.Log
 import com.rar.echodash.config.DashConfig
 import com.rar.echodash.media.NowPlayingStore
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
+import kotlin.math.roundToInt
 
 /** User-facing playback status for the SendSpin endpoint (config page / diagnostics). */
 enum class SendspinStatus { Disconnected, Connecting, Connected, Playing }
@@ -96,6 +98,25 @@ class SendspinEndpoint(
         syncAudioPlayer?.setVolume(duckGain)
     }
 
+    // ---- Device output volume (SendSpin group volume -> Android STREAM_MUSIC) ----
+    // SendSpin sends full-scale audio and expects each endpoint to apply the group volume to its OWN
+    // output (the reference SendSpinDroid is "Spotify-style": group volume == device media volume).
+    // Our SyncAudioPlayer AudioTrack is USAGE_MEDIA, so STREAM_MUSIC governs its loudness; the
+    // per-track duck gain (setDuckGain) layers on top. Without this, a volume change only moved the
+    // slider and told MA -- it never changed how loud anything actually was.
+    private val audioManager: AudioManager? by lazy {
+        context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    }
+
+    /** Apply a 0..100 group-volume percentage to the device STREAM_MUSIC volume (flags=0 -> no overlay). */
+    private fun applyDeviceVolume(percent: Int) {
+        val am = audioManager ?: return
+        val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val target = (percent.coerceIn(0, 100) / 100f * max).roundToInt().coerceIn(0, max)
+        runCatching { am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0) }
+            .onFailure { Log.w(TAG, "setStreamVolume($target/$max) failed", it) }
+    }
+
     // Forward the now-playing takeover's controls to Music Assistant. Play/Pause/Stop set the local
     // [playWhenReady] intent optimistically and publish, so the takeover's icon flips immediately;
     // the server's playback_state broadcast then confirms it (and the audio-state callback corrects
@@ -109,10 +130,12 @@ class SendspinEndpoint(
     fun transportStop() { playWhenReady = false; sendSpin?.pause(); publishNowPlaying() }
     fun transportNext() { sendSpin?.next() }
     fun transportPrev() { sendSpin?.previous() }
-    /** Set the SendSpin group volume (0..100). */
+    /** Set the group volume (0..100): apply it to the device output AND sync it to Music Assistant. */
     fun transportVolume(volume: Int) {
         val v = volume.coerceIn(0, 100)
-        Log.i(TAG, "transportVolume $v (connected=${sendSpin != null})")
+        Log.i(TAG, "transportVolume $v -> device STREAM_MUSIC + MA")
+        applyDeviceVolume(v)
+        npVolume = v
         sendSpin?.setGroupVolume(v)
     }
 
@@ -613,7 +636,12 @@ class SendspinEndpoint(
         }
 
         override fun onVolumeChanged(volume: Int) {
-            Log.i(TAG, "onVolumeChanged $volume")
+            // MA broadcasts group-volume changes as a command (server/command "volume"); apply it to
+            // the device output so changing volume in MA actually changes loudness here, not just the
+            // on-screen slider. Only fires on real changes -- not the connect-time controller snapshot
+            // -- so this cannot slam the device to MA's volume on startup.
+            Log.i(TAG, "onVolumeChanged $volume -> device STREAM_MUSIC")
+            applyDeviceVolume(volume)
             npVolume = volume
             publishNowPlaying()
         }

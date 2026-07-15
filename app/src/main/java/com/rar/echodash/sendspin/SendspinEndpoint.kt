@@ -94,6 +94,16 @@ class SendspinEndpoint(
         syncAudioPlayer?.setVolume(duckGain)
     }
 
+    // Transport passthroughs -- forward the now-playing takeover's controls to the SendSpin
+    // server (Music Assistant) when SendSpin is the active source. No-op while disconnected.
+    fun transportPlay() { sendSpin?.play() }
+    fun transportPause() { sendSpin?.pause() }
+    fun transportStop() { sendSpin?.stop() }
+    fun transportNext() { sendSpin?.next() }
+    fun transportPrev() { sendSpin?.previous() }
+    /** Set the SendSpin group volume (0..100). */
+    fun transportVolume(volume: Int) { sendSpin?.setGroupVolume(volume.coerceIn(0, 100)) }
+
     // ---- Audio pipeline ----
 
     // The active player. Written on mainScope, read from the WS callback + decode

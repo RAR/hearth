@@ -40,7 +40,7 @@ object MessageBuilder {
                     }
                 })
                 put("device_info", buildJsonObject {
-                    put("product_name", "SendSpinDroid")
+                    put("product_name", "Hearth")
                     put("manufacturer", manufacturer)
                     put("software_version", softwareVersion)
                 })

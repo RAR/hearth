@@ -732,21 +732,35 @@ fun EchoDashApp(deps: AppDeps) {
                                 entityId = id,
                             )
                         },
-                        onMediaPlay = { deps.mainScope.launch { deps.media.handleAction("play", null) } },
-                        onMediaPause = { deps.mainScope.launch { deps.media.handleAction("pause", null) } },
-                        onMediaStop = { deps.mainScope.launch { deps.media.handleAction("stop", null) } },
+                        // When SendSpin owns playback, route transport to the SendSpin server
+                        // (Music Assistant); otherwise drive the ExoPlayer/companion media_player.
+                        onMediaPlay = {
+                            if (nowPlayingState.sendspin) deps.sendspin.transportPlay()
+                            else deps.mainScope.launch { deps.media.handleAction("play", null) }
+                        },
+                        onMediaPause = {
+                            if (nowPlayingState.sendspin) deps.sendspin.transportPause()
+                            else deps.mainScope.launch { deps.media.handleAction("pause", null) }
+                        },
+                        onMediaStop = {
+                            if (nowPlayingState.sendspin) deps.sendspin.transportStop()
+                            else deps.mainScope.launch { deps.media.handleAction("stop", null) }
+                        },
                         onMediaNext = {
-                            config.media.companionEntity?.let {
+                            if (nowPlayingState.sendspin) deps.sendspin.transportNext()
+                            else config.media.companionEntity?.let {
                                 deps.entityHub.callService("media_player", "media_next_track", entityId = it)
                             }
                         },
                         onMediaPrev = {
-                            config.media.companionEntity?.let {
+                            if (nowPlayingState.sendspin) deps.sendspin.transportPrev()
+                            else config.media.companionEntity?.let {
                                 deps.entityHub.callService("media_player", "media_previous_track", entityId = it)
                             }
                         },
                         onMediaVolume = { vol ->
-                            deps.mainScope.launch {
+                            if (nowPlayingState.sendspin) deps.sendspin.transportVolume(vol)
+                            else deps.mainScope.launch {
                                 deps.media.handleAction("set-volume", buildJsonObject { put("volume", vol) })
                             }
                         },

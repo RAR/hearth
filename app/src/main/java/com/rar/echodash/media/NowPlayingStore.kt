@@ -19,6 +19,8 @@ data class NowPlayingState(
     val localArt: ByteArray? = null,
     val volume: Int = 90,
     val canSkip: Boolean = false,
+    /** True when the active source is the SendSpin endpoint (routes transport controls to it). */
+    val sendspin: Boolean = false,
 ) {
     // ByteArray in a data class defaults to identity equals/hashCode; override so StateFlow dedups by
     // content and tests compare by content.
@@ -27,7 +29,7 @@ data class NowPlayingState(
         if (other !is NowPlayingState) return false
         return active == other.active && playing == other.playing && title == other.title &&
             artist == other.artist && album == other.album && artUrl == other.artUrl &&
-            volume == other.volume && canSkip == other.canSkip &&
+            volume == other.volume && canSkip == other.canSkip && sendspin == other.sendspin &&
             (localArt?.contentEquals(other.localArt ?: ByteArray(0)) ?: (other.localArt == null))
     }
 
@@ -41,6 +43,7 @@ data class NowPlayingState(
         r = 31 * r + (localArt?.contentHashCode() ?: 0)
         r = 31 * r + volume
         r = 31 * r + canSkip.hashCode()
+        r = 31 * r + sendspin.hashCode()
         return r
     }
 }
@@ -119,7 +122,7 @@ class NowPlayingStore {
                 title = sendspinTitle, artist = sendspinArtist, album = sendspinAlbum,
                 // Next/prev route to the companion media_player entity, not SendSpin -- skip
                 // controls would hit the wrong player, so transport controls are out of scope.
-                artUrl = null, localArt = sendspinArt, volume = sendspinVolume, canSkip = false,
+                artUrl = null, localArt = sendspinArt, volume = sendspinVolume, canSkip = true, sendspin = true,
             )
             return
         }

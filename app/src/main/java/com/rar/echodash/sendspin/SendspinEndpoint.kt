@@ -117,6 +117,15 @@ class SendspinEndpoint(
             .onFailure { Log.w(TAG, "setStreamVolume($target/$max) failed", it) }
     }
 
+    /** The device's current STREAM_MUSIC volume as a 0..100 percentage (falls back to [npVolume]). */
+    private fun currentDeviceVolumePercent(): Int {
+        val am = audioManager ?: return npVolume
+        val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (max <= 0) return npVolume
+        return (am.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max * 100)
+            .roundToInt().coerceIn(0, 100)
+    }
+
     // Forward the now-playing takeover's controls to Music Assistant. Play/Pause/Stop set the local
     // [playWhenReady] intent optimistically and publish, so the takeover's icon flips immediately;
     // the server's playback_state broadcast then confirms it (and the audio-state callback corrects
@@ -362,6 +371,9 @@ class SendspinEndpoint(
 
         val cfg = config.value.sendspin
         syncDelayMs = cfg.syncDelayMs // deferred: latency tuning
+        // Seed the volume from the device's real output level so the takeover slider shows the truth
+        // immediately, not a placeholder, before MA ever pushes a volume.
+        npVolume = currentDeviceVolumePercent()
         ensureWorker()
 
         val ss = SendSpin(context, deviceName(), EndpointCallback())
@@ -388,6 +400,17 @@ class SendspinEndpoint(
                     mainScope.launch {
                         nowPlaying.onSendspin(false, false, null, null, null, null, npVolume)
                     }
+                }
+                if (state is TransportState.Ready) {
+                    // Handshake done: reconcile the volume with the device's REAL output level. Show
+                    // it on the slider and report it to MA as PLAYER state (not a group command -- a
+                    // group command would clobber MA's group volume on every reconnect). Fixes MA +
+                    // the slider showing a stale 100% that didn't match the actual loudness.
+                    val devVol = currentDeviceVolumePercent()
+                    npVolume = devVol
+                    Log.i(TAG, "connected: reporting device volume $devVol% to MA")
+                    publishNowPlaying()
+                    sendSpin?.setVolume(devVol / 100.0)
                 }
             }
         }

@@ -361,7 +361,7 @@ class SatelliteSession(
                         put("name", "openWakeWord")
                         putJsonObject("attribution") {
                             put("name", name())
-                            put("url", "https://github.com/rar/echo-dashboard")
+                            put("url", "https://github.com/RAR/hearth")
                         }
                         put("installed", true)
                         put("description", "On-device openWakeWord")
@@ -393,7 +393,7 @@ class SatelliteSession(
                 put("name", name())
                 putJsonObject("attribution") {
                     put("name", name())
-                    put("url", "https://github.com/rar/echo-dashboard")
+                    put("url", "https://github.com/RAR/hearth")
                 }
                 put("installed", true)
                 put("description", "Home Assistant voice satellite")

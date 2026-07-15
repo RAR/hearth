@@ -72,7 +72,7 @@ object VacaOutgoing {
                 put("name", name)
                 putJsonObject("attribution") {
                     put("name", name)
-                    put("url", "https://github.com/rar/echo-dashboard")
+                    put("url", "https://github.com/RAR/hearth")
                 }
                 put("installed", true)
                 put("description", "Native Home Assistant dashboard")

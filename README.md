@@ -14,7 +14,7 @@ Built for landscape kiosk use, minSdk 28 / targetSdk 34. 454 plain-JVM unit test
 ## What's on screen
 
 - **Home** — photo slideshow backdrop (synced from an HA media folder), clock, weather + AQI + rain pills, next-calendar-event card, EV-charging cards while a car is plugged in, a notification area (HA push + NWS weather alerts), and a full now-playing takeover with album art while music plays.
-- **Panels** (right-side rail, swipe-back, optional auto-hide): Lights, Climate, Media, Weather (current + forecast), Solar power flow, Cameras (RTSP/HLS), and a 3-day Calendar agenda.
+- **Panels** (right-side rail, swipe-back, auto-return to Home after a configurable idle timeout): Lights, Climate, Media, Weather (current + forecast), Solar power flow, Cameras (RTSP/HLS), and a 3-day Calendar agenda.
 - **Voice** — a Wyoming satellite with **on-device wake word** (openWakeWord TFLite: Okay Nabu / Hey Jarvis / Alexa). Mic audio only leaves the device after a local wake detection; HA runs STT/intent/TTS. Assist timers live on the device with countdown chips and a chime, and survive HA restarts.
 - **Extras** — doorbell camera popups, ambient-light night clock (huge dim clock in a dark room), dark mode, screensaver, ambient auto-brightness.
 

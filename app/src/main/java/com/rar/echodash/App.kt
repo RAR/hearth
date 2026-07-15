@@ -4,6 +4,10 @@ import android.content.Context
 import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -14,6 +18,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -37,6 +42,8 @@ import com.rar.echodash.ui.IdleReturnTimer
 import com.rar.echodash.ui.KioskOverlays
 import com.rar.echodash.ui.KioskUiState
 import com.rar.echodash.ui.SetupScreen
+import com.rar.echodash.ui.SplashScreen
+import com.rar.echodash.ui.splashDone
 import com.rar.echodash.ui.TimerChips
 import com.rar.echodash.ui.TimerFinishedOverlay
 import com.rar.echodash.ui.VoiceOverlay
@@ -485,6 +492,19 @@ fun EchoDashApp(deps: AppDeps) {
         deps.setupEvents.collect { screen = Screen.Dashboard }
     }
 
+    // Startup brand splash: cover the app with the logo + "Hearth" wordmark until HA connects
+    // (or a short cap), then fade out. Continues the window-background splash the OS shows
+    // pre-first-frame — same dark panel and logo — adding the text the window background can't draw.
+    var showSplash by remember { mutableStateOf(true) }
+    val connectedNow = rememberUpdatedState(connState == ConnState.CONNECTED)
+    LaunchedEffect(Unit) {
+        val start = System.currentTimeMillis()
+        while (!splashDone(System.currentTimeMillis() - start, connectedNow.value)) {
+            delay(50)
+        }
+        showSplash = false
+    }
+
     EchoTheme {
         Box(Modifier.fillMaxSize()) {
             when (screen) {
@@ -777,6 +797,14 @@ fun EchoDashApp(deps: AppDeps) {
                 }
             }
             KioskOverlays(deps.kioskUi, onWakeTouch = { deps.kiosk.onUserInteraction() })
+
+            AnimatedVisibility(
+                visible = showSplash,
+                enter = EnterTransition.None,
+                exit = fadeOut(tween(400)),
+            ) {
+                SplashScreen()
+            }
         }
     }
 }

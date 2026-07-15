@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive-icon foreground: the off-white tile frame + fireplace masonry + flame, no fill (the
+     background layer supplies the dark tile; the launcher supplies the outer mask). The frame is
+     inset within the 72x72 safe zone so no launcher mask (circle/squircle/rounded-square) clips it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+
+    <!-- frame outline, inside the safe zone -->
+    <path android:fillColor="#00000000" android:strokeColor="#FFDCE0EA" android:strokeWidth="2.8"
+        android:pathData="M36,22 H72 A14,14 0 0 1 86,36 V72 A14,14 0 0 1 72,86 H36 A14,14 0 0 1 22,72 V36 A14,14 0 0 1 36,22 Z"/>
+
+    <group android:pivotX="50" android:pivotY="51"
+        android:scaleX="0.44" android:scaleY="0.44"
+        android:translateX="4" android:translateY="3">
+
+        <path android:fillColor="#FFDCE0EA"
+            android:pathData="M57,10 H73 V33 H57 Z M15,32 H85 V41 H15 Z M11,84 H89 V92 H11 Z"/>
+        <path android:fillColor="#FFDCE0EA" android:fillType="evenOdd"
+            android:pathData="M22,41 H78 V84 H22 Z M34,84 V60 A16,11 0 0 1 66,60 V84 Z"/>
+
+        <path android:pathData="M50,57 C53,62 58,66 58,73 C58,80 54,84 50,84 C46,84 42,81 42,76 C42,71 45,70 46,66 C47,69 49,69 49,66 C49,62 48,60 50,57 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear"
+                    android:startX="50" android:startY="84" android:endX="50" android:endY="57">
+                    <item android:offset="0" android:color="#FFBD2F0B"/>
+                    <item android:offset="0.45" android:color="#FFEF6A17"/>
+                    <item android:offset="1" android:color="#FFF8B62D"/>
+                </gradient>
+            </aapt:attr>
+        </path>
+        <path android:fillColor="#FFFFCE49"
+            android:pathData="M50,68 C52.4,71.5 53,73.5 53,76.5 C53,79.8 51.5,82 50,82 C48.5,82 47,79.8 47,77 C47,74 49,73.2 49.4,70.6 C49.7,72 50,72 50,70.6 C50,69.7 49.7,69 50,68 Z"/>
+    </group>
+</vector>

@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Window background shown between process start and first Compose frame.
-     Color matches PanelSurface (#12141C) so the handoff into the app is seamless. -->
+<!-- Window background shown between process start and first Compose frame. Black backdrop so the
+     brand-dark tile logo reads as a distinct rounded tile — the same way the app icon sits on a
+     home screen. Matches SplashScreen's Compose backdrop. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
-        <color android:color="#FF12141C"/>
+        <color android:color="#FF000000"/>
     </item>
     <item
         android:gravity="center"
-        android:width="64dp"
-        android:height="64dp"
-        android:drawable="@drawable/ic_splash_logo"/>
+        android:width="200dp"
+        android:height="150dp"
+        android:drawable="@drawable/ic_splash_lockup"/>
 </layer-list>

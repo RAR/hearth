@@ -1,4 +1,8 @@
-# Hearth
+<p align="center">
+  <img src="docs/logo.png" width="132" alt="Hearth logo" />
+</p>
+
+<h1 align="center">Hearth</h1>
 
 A native Android wall-dashboard for Home Assistant, plus its own HA integration — one repo, both halves.
 

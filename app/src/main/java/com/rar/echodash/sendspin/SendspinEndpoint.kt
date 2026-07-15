@@ -96,11 +96,11 @@ class SendspinEndpoint(
 
     // Transport passthroughs -- forward the now-playing takeover's controls to the SendSpin
     // server (Music Assistant) when SendSpin is the active source. No-op while disconnected.
-    fun transportPlay() { sendSpin?.play() }
-    fun transportPause() { sendSpin?.pause() }
+    fun transportPlay() { Log.i(TAG, "transportPlay (connected=${sendSpin != null})"); sendSpin?.play() }
+    fun transportPause() { Log.i(TAG, "transportPause (connected=${sendSpin != null})"); sendSpin?.pause() }
     fun transportStop() { sendSpin?.stop() }
-    fun transportNext() { sendSpin?.next() }
-    fun transportPrev() { sendSpin?.previous() }
+    fun transportNext() { Log.i(TAG, "transportNext"); sendSpin?.next() }
+    fun transportPrev() { Log.i(TAG, "transportPrev"); sendSpin?.previous() }
     /** Set the SendSpin group volume (0..100). */
     fun transportVolume(volume: Int) { sendSpin?.setGroupVolume(volume.coerceIn(0, 100)) }
 
@@ -127,6 +127,7 @@ class SendspinEndpoint(
 
     /** Publish the current merged now-playing snapshot. active mirrors [streaming]. */
     private fun publishNowPlaying() {
+        Log.i(TAG, "publish active=$streaming playing=$npPlaying title='$npTitle' artBytes=${npArtwork?.size ?: 0}")
         mainScope.launch {
             nowPlaying.onSendspin(
                 active = streaming, playing = npPlaying,
@@ -396,14 +397,13 @@ class SendspinEndpoint(
             // they decode once the worker drains the StartStream ahead of them.
             decoderReady = true
             streaming = true
-            // Clear the previous stream's metadata so this new stream starts blank instead of
-            // flashing the prior track until the first onMetadataUpdate arrives. npVolume is
-            // left as-is (it's a device/output property, not per-stream).
-            npTitle = null
-            npArtist = null
-            npAlbum = null
-            npArtwork = null
-            publishNowPlaying() // active -> true (metadata fills in as onMetadataUpdate/onArtwork arrive)
+            Log.i(TAG, "onStreamStart codec=$codec ${sampleRate}Hz ${channels}ch ${bitDepth}bit")
+            // Do NOT clear metadata here. Music Assistant sends the next track's metadata + artwork
+            // BEFORE it starts the audio stream, so by the time onStreamStart fires npTitle/npArtwork
+            // already hold the NEW track -- clearing them would wipe the art the user just saw (and
+            // there is no stale-flash window to guard against, since new metadata always precedes the
+            // stream). A fresh connection simply has null fields until the first metadata arrives.
+            publishNowPlaying() // active -> true; metadata already present or fills in shortly
             // Sent synchronously on the WS-IO callback thread (not via scope.launch) so
             // enqueue order matches callback order -- a launch here could race with the
             // Chunk/Flush launches below and reorder relative to them on the channel.
@@ -451,6 +451,7 @@ class SendspinEndpoint(
         }
 
         override fun onStreamClear() {
+            Log.i(TAG, "onStreamClear -> flush + clearBuffer")
             streaming = false
             // Sent synchronously (see onStreamStart) to preserve FIFO order.
             if (decodeChannel.trySend(DecodeTask.Flush).isFailure) {
@@ -461,8 +462,14 @@ class SendspinEndpoint(
         }
 
         override fun onStreamEnd() {
+            Log.i(TAG, "onStreamEnd -> stop local audio")
             streaming = false
-            mainScope.launch { syncAudioPlayer?.enterIdle() }
+            // MA ends the stream on pause/stop AND at every track change. In all cases the buffered
+            // audio is stale, so discard it NOW (clearBuffer flushes the queue + AudioTrack) instead
+            // of letting the look-ahead cache drain -- otherwise "pause" keeps playing for seconds.
+            // Also drop any decode-worker backlog so it can't re-fill the queue after the clear.
+            decodeChannel.trySend(DecodeTask.Flush)
+            mainScope.launch { syncAudioPlayer?.clearBuffer() }
             updateStatus() // -> Connected (while Ready)
             npPlaying = false
             mainScope.launch {
@@ -497,20 +504,27 @@ class SendspinEndpoint(
             positionMs: Long,
             playbackSpeed: Int,
         ) {
+            // MA interleaves progress-only server/state updates (no title/artist/album -- the
+            // vendored callback flattens the absent fields to blanks) between full metadata
+            // snapshots. Ignore the progress-only ones so they don't wipe the real track info;
+            // a genuine track change always carries a non-blank title.
             // MA sends binary artwork via onArtwork -- ignore artworkUrl (do not fetch it).
-            // duration/position/speed unused this task.
+            if (title.isBlank()) return
             npTitle = title
             npArtist = artist
             npAlbum = album
+            Log.i(TAG, "meta title='$title' artist='$artist' album='$album'")
             publishNowPlaying()
         }
 
         override fun onArtwork(imageData: ByteArray) {
+            Log.i(TAG, "onArtwork ${imageData.size} bytes")
             npArtwork = imageData
             publishNowPlaying()
         }
 
         override fun onArtworkCleared() {
+            Log.i(TAG, "onArtworkCleared")
             npArtwork = null
             publishNowPlaying()
         }

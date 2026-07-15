@@ -691,7 +691,13 @@ abstract class SendSpinProtocolHandler(
         val rolesArray = payload?.get("roles")?.jsonArray
         val roles = rolesArray?.map { it.jsonPrimitive.content }
 
-        if (roles != null && SendSpinProtocol.Roles.PLAYER !in roles) {
+        // Match on the BASE role name (strip any "@vN" version suffix). Current Music Assistant
+        // sends the un-versioned "player" in stream/end while our Roles.PLAYER constant is
+        // "player@v1"; a strict equality check ignored every player stream-end, so pause/stop and
+        // track changes never flushed the audio buffer (it drained the look-ahead cache instead of
+        // stopping). Hearth adaptation for SendSpin protocol drift.
+        val playerBase = SendSpinProtocol.Roles.PLAYER.substringBefore("@")
+        if (roles != null && roles.none { it.substringBefore("@") == playerBase }) {
             Log.d(tag, "Stream end for non-player roles: $roles - ignoring")
             return
         }

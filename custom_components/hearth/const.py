@@ -6,7 +6,7 @@ DOMAIN = "hearth"
 DEFAULT_PORT = 10700
 MANUFACTURER = "Hearth"
 
-PLATFORMS = ["media_player", "switch", "number", "button", "select"]
+PLATFORMS = ["media_player", "switch", "number", "button", "select", "notify"]
 
 # Kiosk settings keys (bool/int device state, echoed in settings feedback).
 SETTING_SCREEN_ON = "screen_on"
@@ -32,6 +32,9 @@ ACTION_SET_VIEW = "set-view"
 # Dashboard views (lowercase DashView names, in enum declaration order) — the select options.
 VIEW_OPTIONS = ["home", "lights", "climate", "media", "calendar", "weather", "solar", "cameras"]
 
+ACTION_NOTIFY = "notify"
+ACTION_NOTIFY_CLEAR = "notify-clear"
+
 # Scales / announce tuning.
 MAX_MUSIC_VOLUME = 10  # the music_volume SETTING is 0-10; action volumes are percent 0-100
 ANNOUNCE_RATE = 22050
@@ -41,3 +44,11 @@ ANNOUNCE_CHUNK = 4096
 
 SERVICE_TOAST = "toast"
 ATTR_MESSAGE = "message"
+
+SERVICE_NOTIFY = "notify"
+SERVICE_NOTIFY_CLEAR = "notify_clear"
+ATTR_TITLE = "title"
+ATTR_SEVERITY = "severity"
+ATTR_TIMEOUT = "timeout"
+ATTR_ID = "id"
+ATTR_ALL = "all"

@@ -14,3 +14,71 @@ toast:
       example: Dinner is ready
       selector:
         text:
+
+notify:
+  name: Notify
+  description: Posts a notification to the Hearth device's notification area.
+  target:
+    entity:
+      integration: hearth
+    device:
+      integration: hearth
+  fields:
+    title:
+      name: Title
+      description: The notification title (required).
+      required: true
+      example: Laundry done
+      selector:
+        text:
+    message:
+      name: Message
+      description: Optional body text.
+      example: The dryer has finished.
+      selector:
+        text:
+    severity:
+      name: Severity
+      description: Visual severity of the notification row.
+      selector:
+        select:
+          options:
+            - info
+            - warning
+            - critical
+    timeout:
+      name: Timeout
+      description: Seconds until the notification auto-dismisses. Omit or 0 for persistent.
+      selector:
+        number:
+          min: 0
+          max: 86400
+          unit_of_measurement: seconds
+          mode: box
+    id:
+      name: ID
+      description: Stable id; re-posting the same id replaces that row.
+      example: laundry
+      selector:
+        text:
+
+notify_clear:
+  name: Clear notification
+  description: Clears one notification by id, or all notifications. Provide exactly one of id or all.
+  target:
+    entity:
+      integration: hearth
+    device:
+      integration: hearth
+  fields:
+    id:
+      name: ID
+      description: The id to clear.
+      example: laundry
+      selector:
+        text:
+    all:
+      name: All
+      description: Clear all notifications on the device.
+      selector:
+        boolean:

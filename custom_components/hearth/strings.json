@@ -39,6 +39,9 @@
     },
     "select": {
       "view": { "name": "View" }
+    },
+    "notify": {
+      "notify": { "name": "Notify" }
     }
   },
   "services": {
@@ -49,6 +52,46 @@
         "message": {
           "name": "Message",
           "description": "The text to show."
+        }
+      }
+    },
+    "notify": {
+      "name": "Notify",
+      "description": "Posts a notification to the Hearth device's notification area.",
+      "fields": {
+        "title": {
+          "name": "Title",
+          "description": "The notification title (required)."
+        },
+        "message": {
+          "name": "Message",
+          "description": "Optional body text."
+        },
+        "severity": {
+          "name": "Severity",
+          "description": "Visual severity of the notification row."
+        },
+        "timeout": {
+          "name": "Timeout",
+          "description": "Seconds until the notification auto-dismisses. Omit or 0 for persistent."
+        },
+        "id": {
+          "name": "ID",
+          "description": "Stable id; re-posting the same id replaces that row."
+        }
+      }
+    },
+    "notify_clear": {
+      "name": "Clear notification",
+      "description": "Clears one notification by id, or all notifications. Provide exactly one of id or all.",
+      "fields": {
+        "id": {
+          "name": "ID",
+          "description": "The id to clear."
+        },
+        "all": {
+          "name": "All",
+          "description": "Clear all notifications on the device."
         }
       }
     }

@@ -24,7 +24,7 @@ Plain HTTP, LAN-only trust: PIN-gated session cookies, 5-strike lockout, no TLS 
 
 Install via HACS: **HACS → Integrations → ⋮ → Custom repositories → `https://github.com/RAR/hearth`** (type: Integration), install *Hearth*, restart HA. Devices are auto-discovered via mDNS (`_hearth._tcp`, port 10700); manual host/port also works.
 
-Each device gets: a **media player** (URLs/radio/Music Assistant via ExoPlayer, plus `announce` — TTS ducks the music instead of stopping it), **switches** for screen / auto-brightness / always-on / screensaver / dark mode, **numbers** for brightness / screen timeout / ducking volume, a **refresh button**, and a **`hearth.toast`** service.
+Each device gets: a **media player** (URLs/radio/Music Assistant via ExoPlayer, plus `announce` — TTS ducks the music instead of stopping it), **switches** for screen / auto-brightness / always-on / screensaver / dark mode, **numbers** for brightness / screen timeout / ducking volume, a **refresh button**, a **View** select that mirrors and drives the on-screen dashboard view, a **notify** entity, and the **`hearth.toast`**, **`hearth.notify`** (title / message / severity / timeout / id), and **`hearth.notify_clear`** services.
 
 Voice is deliberately separate: the satellite speaks to HA core's own Wyoming integration (port 10600) and keeps working with or without the Hearth integration.
 

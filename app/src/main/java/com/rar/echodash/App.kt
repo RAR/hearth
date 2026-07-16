@@ -579,7 +579,7 @@ fun EchoDashApp(deps: AppDeps) {
                         }
                     }
                     // Calendar events at Dashboard scope so the home card has data without opening
-                    // the panel. Immediate fetch, then every 15 minutes. Calendars are fetched one
+                    // the panel. Immediate fetch, then every 5 minutes. Calendars are fetched one
                     // per call — HA fails a batched get_events entirely when any one calendar
                     // errors, which would let a single broken calendar freeze the rest. Per
                     // calendar, a failed fetch (null) keeps its last good events while a non-null
@@ -609,8 +609,8 @@ fun EchoDashApp(deps: AppDeps) {
                             }
                             // A sweep that failed before ANY calendar ever succeeded is almost
                             // always the cold-start race with the websocket connect — retry
-                            // quickly until first data lands, then settle into the 15-min cadence.
-                            delay(if (anyFailed && lastGood.isEmpty()) 15_000L else 15 * 60_000L)
+                            // quickly until first data lands, then settle into the 5-min cadence.
+                            delay(if (anyFailed && lastGood.isEmpty()) 15_000L else 5 * 60_000L)
                         }
                     }
                     val configUrl = remember { deps.configUrl() }

@@ -232,27 +232,30 @@ class SendspinEndpoint(
     private fun applyServerPlaybackState(rawState: String) {
         mainScope.launch {
             val player = syncAudioPlayer
-            when {
-                rawState.equals("playing", ignoreCase = true) -> {
+            // Pure state->action mapping lives in playbackIntent (unit-pinned); the side effects stay
+            // here. getPlaybackState() is a pure read, so evaluating it up front is behavior-neutral.
+            val draining = player?.getPlaybackState() == PlaybackState.DRAINING
+            when (playbackIntent(rawState, draining)) {
+                PlaybackAction.RESUME -> {
                     playWhenReady = true
                     player?.resume()
                 }
-                rawState.equals("paused", ignoreCase = true) -> {
+                PlaybackAction.PAUSE_KEEP_BUFFER -> {
                     playWhenReady = false
                     player?.pause() // keep the buffer for a seamless resume
                 }
-                rawState.equals("stopped", ignoreCase = true) ||
-                    rawState.equals("idle", ignoreCase = true) -> {
-                    if (player?.getPlaybackState() == PlaybackState.DRAINING) {
-                        // Reconnecting with a live buffer -- resume rather than discard it.
-                        sendSpin?.play()
-                    } else {
-                        playWhenReady = false
-                        player?.clearBuffer()
-                        player?.pause()
-                    }
+                PlaybackAction.RESUME_FROM_DRAINING -> {
+                    // Reconnecting with a live buffer -- resume rather than discard it.
+                    sendSpin?.play()
                 }
-                // Unknown state -- leave the intent untouched.
+                PlaybackAction.CLEAR_AND_PAUSE -> {
+                    playWhenReady = false
+                    player?.clearBuffer()
+                    player?.pause()
+                }
+                PlaybackAction.IGNORE -> {
+                    // Unknown state -- leave the intent untouched.
+                }
             }
             publishNowPlaying()
         }

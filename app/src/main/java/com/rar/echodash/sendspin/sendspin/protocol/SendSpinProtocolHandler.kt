@@ -16,6 +16,20 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
+ * True when a SendSpin `stream/end` addressed to [roles] concerns the player role and must be acted
+ * on (flush + stop), false when it targets only other roles and must be ignored. Matches on the BASE
+ * role name (strips any "@vN" suffix) because Music Assistant sends the un-versioned "player" while
+ * our [playerRole] constant is "player@v1". Null [roles] (no roles field) means "all roles" -> act;
+ * an empty list matches nothing -> ignore. Extracted from [SendSpinProtocolHandler.handleStreamEnd]
+ * (437baec) and pinned by `IsPlayerStreamEndTest`.
+ */
+internal fun isPlayerStreamEnd(roles: List<String>?, playerRole: String): Boolean {
+    if (roles == null) return true
+    val playerBase = playerRole.substringBefore("@")
+    return roles.any { it.substringBefore("@") == playerBase }
+}
+
+/**
  * Abstract base class for SendSpin protocol handling.
  *
  * Contains shared protocol logic used by [SendSpin]:
@@ -695,9 +709,8 @@ abstract class SendSpinProtocolHandler(
         // sends the un-versioned "player" in stream/end while our Roles.PLAYER constant is
         // "player@v1"; a strict equality check ignored every player stream-end, so pause/stop and
         // track changes never flushed the audio buffer (it drained the look-ahead cache instead of
-        // stopping). Hearth adaptation for SendSpin protocol drift.
-        val playerBase = SendSpinProtocol.Roles.PLAYER.substringBefore("@")
-        if (roles != null && roles.none { it.substringBefore("@") == playerBase }) {
+        // stopping). Hearth adaptation for SendSpin protocol drift; logic pinned by isPlayerStreamEnd.
+        if (!isPlayerStreamEnd(roles, SendSpinProtocol.Roles.PLAYER)) {
             Log.d(tag, "Stream end for non-player roles: $roles - ignoring")
             return
         }

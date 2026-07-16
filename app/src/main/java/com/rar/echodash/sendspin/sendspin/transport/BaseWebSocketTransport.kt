@@ -183,7 +183,7 @@ abstract class BaseWebSocketTransport(
                             when (frame) {
                                 is Frame.Text -> {
                                     val txt = frame.readText()
-                                    Log.i(tag, "[cmd-trace] T0 wire-text len=${txt.length}")
+                                    Log.d(tag, "[cmd-trace] T0 wire-text len=${txt.length}")
                                     listener?.onMessage(txt)
                                 }
                                 is Frame.Binary -> listener?.onMessage(frame.readBytes())

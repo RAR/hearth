@@ -648,7 +648,7 @@ class SyncAudioPlayer(
                             result.latencyMicros,
                             com.rar.echodash.sendspin.sendspin.latency.StaticDelaySource.AUTO,
                         )
-                        AppLog.Audio.i("[delay-cal] converged: ${result.latencyMicros}us from ${result.sampleCount} samples")
+                        AppLog.Audio.d("[delay-cal] converged: ${result.latencyMicros}us from ${result.sampleCount} samples")
                     }
                     is com.rar.echodash.sendspin.sendspin.latency.OutputLatencyEstimator.Result.TimedOut -> {
                         timeFilter.setAutoMeasuredDelayMicros(
@@ -919,7 +919,7 @@ class SyncAudioPlayer(
             // run, leaving stale audio in the pipeline after stream/end.
             streamGeneration++
 
-            AppLog.Audio.i("[cmd-trace] T4 enterIdle ts=${nowNs() / 1_000_000} thread=${Thread.currentThread().name} gen=$streamGeneration")
+            AppLog.Audio.d("[cmd-trace] T4 enterIdle ts=${nowNs() / 1_000_000} thread=${Thread.currentThread().name} gen=$streamGeneration")
 
             // Clear all audio buffers
             chunkQueue.clear()
@@ -1144,7 +1144,7 @@ class SyncAudioPlayer(
         stateLock.withLock {
             streamGeneration++
 
-            AppLog.Audio.i("[cmd-trace] T4 clearBuffer ts=${nowNs() / 1_000_000} thread=${Thread.currentThread().name} gen=$streamGeneration")
+            AppLog.Audio.d("[cmd-trace] T4 clearBuffer ts=${nowNs() / 1_000_000} thread=${Thread.currentThread().name} gen=$streamGeneration")
 
             // Reset paused state - we're starting a fresh stream (e.g., after seek)
             // This ensures playback loop will process new chunks even if we were paused

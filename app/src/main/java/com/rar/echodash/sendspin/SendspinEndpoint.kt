@@ -645,7 +645,7 @@ class SendspinEndpoint(
             syncAudioPlayer?.setSyncMuted(muted)
         }
 
-        // ---- Log-only / no-op for now ----
+        // ---- Server/controller state callbacks (playback_state, metadata, volume/mute) ----
 
         override fun onServerDiscovered(name: String, address: String) {}
 

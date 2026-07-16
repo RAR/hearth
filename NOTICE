@@ -4,3 +4,7 @@ MIT License, Copyright (c) 2024-2026 Chris Uthe.
 Vendored from upstream commit 594251fb4b45201208a474efb3ba5ad30bd22153,
 adapted into com.rar.echodash.sendspin
 (local-only transport; UI, MediaSession, WebRTC, and proxy paths removed).
+The musicassistant/ Music Assistant API client (models, transport, command
+client, auth helper) is vendored from the same commit into
+com.rar.echodash.sendspin.musicassistant, trimmed to library browse/search/queue
+(no podcasts/audiobooks/playlist-editing/WebRTC/proxy).

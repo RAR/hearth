@@ -237,7 +237,9 @@ class AppDeps(context: Context) {
         scope = scope,
         mainScope = mainScope,
     )
-    val media = MediaBridge(
+    // Explicit type: the onUrlEnded lambda below reads `media.ui` (a deferred self-reference,
+    // resolved at invoke time), which trips recursive type inference without the annotation.
+    val media: MediaBridge = MediaBridge(
         mediaEngine,
         nowPlaying,
         restoredDucking = settings.duckingVolume,
@@ -246,11 +248,26 @@ class AppDeps(context: Context) {
         sendStatus = { status -> scope.launch { vaca.sendStatus(status) } },
         duckSendspin = { g -> sendspin.setDuckGain(g) },
         onStartUrl = { sendspin.stop() },
-        // Local URL session ended -> rearm SendSpin so the device rejoins its Music Assistant group,
-        // but only when SendSpin is enabled in config (respect the toggle; a no-op on the tablet,
-        // where it is off). start() is @Synchronized + idempotent, so racing the reactive
+        // Local URL session ended -> rearm SendSpin so the device rejoins its Music Assistant group.
+        // Delayed recheck, not an immediate start: a stale engine onEnded can arrive just after a
+        // NEW play-media (see MediaBridgeTest.playingCallbackReactivatesAfterStaleEnded), and an
+        // immediate rejoin would reconnect to MA mid-URL -- if the MA group is actively playing,
+        // MA's stream/start would pause the fresh local URL (mutual exclusion firing the wrong
+        // way). 750ms is enough for the new session's onPlayingChanged(true) to land, so the
+        // recheck sees ui.playing=true and skips; a real end/stop leaves playing=false and the
+        // rejoin proceeds. All orderings converge: a URL started during the delay flips
+        // playing->true (skip), one started after the rejoin fires onStartUrl -> stop() as
+        // normal. The enabled check respects the config toggle (no-op on the tablet, where
+        // SendSpin is off); start() is @Synchronized + idempotent, so racing the reactive
         // startSendspin() collector's own start is safe.
-        onUrlEnded = { if (configStore.config.value.sendspin.enabled) sendspin.start() },
+        onUrlEnded = {
+            scope.launch {
+                delay(750)
+                if (configStore.config.value.sendspin.enabled && !media.ui.value.playing) {
+                    sendspin.start()
+                }
+            }
+        },
     )
     val announce = AnnouncePlayer(
         scope,

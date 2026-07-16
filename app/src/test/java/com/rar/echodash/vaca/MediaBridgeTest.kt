@@ -300,10 +300,14 @@ class MediaBridgeTest {
         // Track A ends just as a new play-media was handled: stale onEnded fires after activate.
         engine.onEnded!!.invoke()
         assertFalse(store.state.value.active)
+        assertFalse(bridge.ui.value.playing)
         // The new track's playback start must restore active.
         engine.onPlayingChanged!!.invoke(true)
         assertTrue(store.state.value.active)
         assertTrue(store.state.value.playing)
+        // ui.playing is the signal App.kt's delayed auto-rejoin recheck reads after a stale
+        // onEnded: once the new session is playing it must read true so the rejoin skips.
+        assertTrue(bridge.ui.value.playing)
     }
 
     @Test

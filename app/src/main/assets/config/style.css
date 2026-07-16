@@ -74,18 +74,14 @@ h1, h2, h3 { margin: 0; }
 .login-card label { color: var(--text-mid); font-size: .9rem; }
 .login-card .error { text-align: center; }
 
+/* The logo SVG carries its own tile, frame and rounded corners (it's the app-icon mark), so the
+   container is just a sizing box — no decorative background/border of its own. */
 .brand-mark {
   width: 3.4rem; height: 3.4rem; margin: 0 auto .25rem;
   display: grid; place-items: center;
-  border-radius: 16px;
-  color: var(--accent-hi);
-  background: linear-gradient(160deg, #223250, #172033);
-  border: 1px solid #2b3a58;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
 }
-.brand-mark svg { width: 2rem; height: 2rem; }
-.brand-mark.small { width: 2.4rem; height: 2.4rem; border-radius: 12px; }
-.brand-mark.small svg { width: 1.5rem; height: 1.5rem; }
+.brand-mark svg { width: 100%; height: 100%; display: block; }
+.brand-mark.small { width: 2.4rem; height: 2.4rem; }
 
 #pin {
   text-align: center; letter-spacing: .35em; font-size: 1.5rem; font-weight: 700;

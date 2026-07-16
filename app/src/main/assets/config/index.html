@@ -9,16 +9,34 @@
   <script defer src="app.js"></script>
 </head>
 <body>
+  <!-- Hearth logo sprite (fireplace-tile mark) — path data lifted from the launcher icon / splash
+       lockup vector drawables, so the web config wears the same brand mark. Colors are baked in (not
+       currentColor) so it reads as the app icon; referenced by the brand marks below via <use>. -->
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <symbol id="hearth-logo" viewBox="0 0 100 100">
+      <path fill="#12141C" stroke="#DCE0EA" stroke-width="3.5"
+        d="M28 6H72A22 22 0 0 1 94 28V72A22 22 0 0 1 72 94H28A22 22 0 0 1 6 72V28A22 22 0 0 1 28 6Z"/>
+      <g transform="translate(50 51) scale(.6) translate(-50 -51)">
+        <path fill="#DCE0EA" d="M57 10H73V33H57Z M15 32H85V41H15Z M11 84H89V92H11Z"/>
+        <path fill="#DCE0EA" fill-rule="evenodd" d="M22 41H78V84H22Z M34 84V60A16 11 0 0 1 66 60V84Z"/>
+        <path fill="url(#hearth-flame)"
+          d="M50 57C53 62 58 66 58 73C58 80 54 84 50 84C46 84 42 81 42 76C42 71 45 70 46 66C47 69 49 69 49 66C49 62 48 60 50 57Z"/>
+        <path fill="#FFCE49"
+          d="M50 68C52.4 71.5 53 73.5 53 76.5C53 79.8 51.5 82 50 82C48.5 82 47 79.8 47 77C47 74 49 73.2 49.4 70.6C49.7 72 50 72 50 70.6C50 69.7 49.7 69 50 68Z"/>
+      </g>
+      <linearGradient id="hearth-flame" x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0" stop-color="#BD2F0B"/>
+        <stop offset=".45" stop-color="#EF6A17"/>
+        <stop offset="1" stop-color="#F8B62D"/>
+      </linearGradient>
+    </symbol>
+  </svg>
+
   <!-- Login gate. Hidden via the .hidden property in app.js; the [hidden] rule below wins over display. -->
   <div id="login" class="overlay">
     <form id="login-form" class="login-card card">
       <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="5.5"/>
-          <path d="M8.5 15a4.2 4.2 0 0 1 0-6"/>
-          <path d="M15.5 9a4.2 4.2 0 0 1 0 6"/>
-          <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>
-        </svg>
+        <svg viewBox="0 0 100 100"><use href="#hearth-logo"/></svg>
       </span>
       <h1>Hearth</h1>
       <label for="pin">Enter the PIN shown on the device</label>
@@ -32,12 +50,7 @@
     <div class="topbar">
       <div class="brand">
         <span class="brand-mark small" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="5.5"/>
-            <path d="M8.5 15a4.2 4.2 0 0 1 0-6"/>
-            <path d="M15.5 9a4.2 4.2 0 0 1 0 6"/>
-            <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>
-          </svg>
+          <svg viewBox="0 0 100 100"><use href="#hearth-logo"/></svg>
         </span>
         <span class="brand-text">
           <span class="brand-title">Hearth</span>

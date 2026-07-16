@@ -90,6 +90,66 @@ class MediaBridgeTest {
     }
 
     @Test
+    fun stopActionInvokesOnUrlEnded() {
+        val engine = FakeEngine()
+        var endedCount = 0
+        val bridge = MediaBridge(
+            engine, NowPlayingStore(),
+            sendStatus = {},
+            // Symmetric re-arm: a local URL session ending must let SendSpin rejoin its MA group.
+            onUrlEnded = { endedCount++ },
+        )
+        assertTrue(bridge.handleAction("stop", null))
+        assertEquals(1, endedCount)
+    }
+
+    @Test
+    fun engineEndedInvokesOnUrlEnded() {
+        val engine = FakeEngine()
+        var endedCount = 0
+        val bridge = MediaBridge(
+            engine, NowPlayingStore(),
+            sendStatus = {},
+            onUrlEnded = { endedCount++ },
+        )
+        // Natural end-of-media and a terminal player error both surface via engine.onEnded.
+        engine.onEnded!!.invoke()
+        assertEquals(1, endedCount)
+    }
+
+    @Test
+    fun pauseDoesNotInvokeOnUrlEnded() {
+        val engine = FakeEngine()
+        var ended = false
+        val bridge = MediaBridge(
+            engine, NowPlayingStore(),
+            sendStatus = {},
+            onUrlEnded = { ended = true },
+        )
+        // A paused radio session is still the active local source -- SendSpin must stay down.
+        assertTrue(bridge.handleAction("pause", null))
+        assertFalse(ended)
+    }
+
+    @Test
+    fun playMediaDoesNotInvokeOnUrlEnded() {
+        val engine = FakeEngine()
+        var startCount = 0
+        var endedCount = 0
+        val bridge = MediaBridge(
+            engine, NowPlayingStore(),
+            sendStatus = {},
+            onStartUrl = { startCount++ },
+            onUrlEnded = { endedCount++ },
+        )
+        assertTrue(bridge.handleAction("play-media",
+            json("""{"url":"http://radio/stream.mp3","volume":80}""")))
+        // Starting a URL fires the reverse exclusion (onStartUrl) but must NOT fire onUrlEnded.
+        assertEquals(1, startCount)
+        assertEquals(0, endedCount)
+    }
+
+    @Test
     fun transportActionsMapToEngine() {
         val engine = FakeEngine()
         val bridge = MediaBridge(engine, NowPlayingStore(), sendStatus = {})

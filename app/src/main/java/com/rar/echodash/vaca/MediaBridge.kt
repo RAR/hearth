@@ -70,6 +70,12 @@ class MediaBridge(
     private val duckSendspin: (Float) -> Unit = {},
     // Starting a local URL stops SendSpin (one audio source at a time; reverse mutual-exclusion).
     private val onStartUrl: () -> Unit = {},
+    // ...and when that local URL session ENDS -- explicit stop, natural end-of-media, or a terminal
+    // player error -- re-arm SendSpin so the device rejoins its Music Assistant group. The symmetric
+    // other half of the mutual exclusion: onStartUrl tore SendSpin down and nothing else re-arms it.
+    // NOT fired on pause -- a paused radio session is still the active local source, so SendSpin must
+    // stay down.
+    private val onUrlEnded: () -> Unit = {},
 ) {
     // active/playing/volumePercent are written from both the VACA server thread
     // (handleAction) and the Android main thread (engine callbacks); @Volatile
@@ -123,6 +129,7 @@ class MediaBridge(
             playing = false
             _ui.update { it.copy(playing = false, nowPlaying = "Nothing playing") }
             pushEngine()
+            onUrlEnded() // natural end / terminal error -> let SendSpin rejoin its MA group
         }
     }
 
@@ -158,6 +165,7 @@ class MediaBridge(
             engine.stop()
             _ui.update { it.copy(playing = false, nowPlaying = "Nothing playing") }
             pushEngine()
+            onUrlEnded() // explicit stop -> let SendSpin rejoin its MA group
             true
         }
         "set-volume" -> {

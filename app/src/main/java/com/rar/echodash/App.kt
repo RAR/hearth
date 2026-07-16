@@ -246,6 +246,11 @@ class AppDeps(context: Context) {
         sendStatus = { status -> scope.launch { vaca.sendStatus(status) } },
         duckSendspin = { g -> sendspin.setDuckGain(g) },
         onStartUrl = { sendspin.stop() },
+        // Local URL session ended -> rearm SendSpin so the device rejoins its Music Assistant group,
+        // but only when SendSpin is enabled in config (respect the toggle; a no-op on the tablet,
+        // where it is off). start() is @Synchronized + idempotent, so racing the reactive
+        // startSendspin() collector's own start is safe.
+        onUrlEnded = { if (configStore.config.value.sendspin.enabled) sendspin.start() },
     )
     val announce = AnnouncePlayer(
         scope,

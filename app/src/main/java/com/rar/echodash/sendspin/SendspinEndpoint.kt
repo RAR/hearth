@@ -558,6 +558,14 @@ class SendspinEndpoint(
                         sampleRate = sampleRate,
                         channels = channels,
                         bitDepth = bitDepth,
+                        // Bound memory on a 24/7 kiosk: the scheduled-audio queue is otherwise
+                        // unbounded (param default 0), so a server that streams while we are
+                        // paused-with-buffer would grow it without limit -> latent OOM. Eviction is
+                        // drop-oldest of the scheduled queue. totalQueuedSamples counts FRAMES
+                        // (per-channel sample periods, channel-independent -- see queueChunk), so 30s
+                        // is sampleRate * 30. That is far above the adaptive jitter buffer's ceiling,
+                        // so it never bites in normal synced playback.
+                        maxQueueSamples = sampleRate * 30L,
                     )
                     // Learn the real audio-player state so the UI reconciles from what is actually
                     // playing, not from the stream/start-end flag (which flaps on every track change).

@@ -45,21 +45,26 @@ fun sendspinStatus(state: TransportState, streaming: Boolean): SendspinStatus = 
  * object owned by `AppDeps`.
  *
  * Responsibilities:
- *  - Build/tear down the vendored [SendSpin] client (connect via manual address or mDNS).
+ *  - Lifecycle: idempotent [start]/[stop] (both @Synchronized) build and tear down the
+ *    vendored [SendSpin] client and connect via manual address or mDNS discovery.
  *  - Own the decode -> queue audio path: [SendSpin.Callback.onAudioChunk] delivers
  *    codec-encoded bytes, which a single-owner decode worker turns into PCM and feeds
  *    to a [SyncAudioPlayer]. (The vendored facade has no `setSyncAudioPlayer`.)
- *  - Publish a coarse [status] flow.
- *
- * Ducking routing and now-playing metadata mapping land in Task 6; this task only wires
- * the plumbing (see `setDuckGain` note and the `// Task 6:` markers).
+ *  - State model: a coarse [status] flow from the transport state + a `streaming` flag; a
+ *    `playWhenReady` play/pause intent reconciled from the server's playback_state broadcasts
+ *    WITHOUT echoing a command back (see [applyServerPlaybackState]); and a `hasTrack` flag
+ *    that keeps the now-playing takeover up across the stream/end at every track boundary.
+ *  - Ducking: [setDuckGain] applies the REAL per-track AudioTrack gain via
+ *    SyncAudioPlayer.setVolume, orthogonal to the device/MA absolute volume (STREAM_MUSIC).
+ *  - Now-playing: merge SendSpin metadata / artwork / volume into [NowPlayingStore] and
+ *    forward the takeover's transport controls back to Music Assistant.
  */
 class SendspinEndpoint(
     private val context: Context,
     private val deviceName: () -> String,
     private val config: StateFlow<DashConfig>,
     private val mediaEngine: MediaEngine,
-    private val nowPlaying: NowPlayingStore, // SendSpin now-playing mapping (Part B)
+    private val nowPlaying: NowPlayingStore, // SendSpin now-playing mapping target
     private val scope: CoroutineScope, // Dispatchers.Default work
     private val mainScope: CoroutineScope, // Dispatchers.Main.immediate for SyncAudioPlayer + NSD
 ) {
@@ -89,7 +94,10 @@ class SendspinEndpoint(
     /** deferred: latency tuning -- read but intentionally NOT wired into the time filter yet. */
     @Volatile private var syncDelayMs: Int = 0
 
-    // ---- Ducking (routing only in Task 5; SyncAudioPlayer.setVolume is a documented no-op) ----
+    // ---- Ducking (per-track AudioTrack gain) ----
+    // setDuckGain drives SyncAudioPlayer.setVolume, which applies the REAL per-track gain (since
+    // 7bd0977 it is no longer a no-op). Orthogonal to the device/MA absolute volume, which maps to
+    // STREAM_MUSIC via applyDeviceVolume.
 
     @Volatile private var duckGain: Float = 1f
 
@@ -158,7 +166,7 @@ class SendspinEndpoint(
     // we disconnect. Drives the Playing vs Connected status distinction.
     @Volatile private var streaming: Boolean = false
 
-    // ---- Now-playing metadata (Part B) ----
+    // ---- Now-playing metadata ----
     // The onMetadataUpdate / onArtwork / onVolumeChanged callbacks arrive SEPARATELY on the WS-IO
     // thread, so we hold the latest of each and publish the merge into NowPlayingStore (via
     // publishNowPlaying) on mainScope -- keeping UI-facing writes off WS-IO.

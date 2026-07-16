@@ -544,21 +544,13 @@ class SendspinEndpoint(
             codecHeader: ByteArray?,
         ) {
             // Optimistic gate so chunks arriving during reconfiguration are still enqueued;
-            // they decode once the worker drains the StartStream ahead of them.
+            // they decode once the worker drains the StartStream ahead of them. decoderReady,
+            // streaming, and the StartStream enqueue below stay synchronous on WS-IO: the decode
+            // channel's FIFO ordering depends on enqueueing here, and deferring the gates would
+            // widen the early-chunk drop window.
             decoderReady = true
             streaming = true
-            hasTrack = true
-            // A stream starting is the server's strongest "playing" signal; set the intent so the
-            // takeover shows playing immediately. The playback_state broadcast + the audio-state
-            // callback then confirm it.
-            playWhenReady = true
             Log.i(TAG, "onStreamStart codec=$codec ${sampleRate}Hz ${channels}ch ${bitDepth}bit")
-            // Do NOT clear metadata here. Music Assistant sends the next track's metadata + artwork
-            // BEFORE it starts the audio stream, so by the time onStreamStart fires npTitle/npArtwork
-            // already hold the NEW track -- clearing them would wipe the art the user just saw (and
-            // there is no stale-flash window to guard against, since new metadata always precedes the
-            // stream). A fresh connection simply has null fields until the first metadata arrives.
-            publishNowPlaying() // active -> true; metadata already present or fills in shortly
             // Sent synchronously on the WS-IO callback thread (not via scope.launch) so
             // enqueue order matches callback order -- a launch here could race with the
             // Chunk/Flush launches below and reorder relative to them on the channel.
@@ -571,6 +563,25 @@ class SendspinEndpoint(
             // Player lifecycle lives on the main looper.
             mainScope.launch {
                 val ss = sendSpin ?: return@launch
+                // The UI-facing writes sit HERE, behind the liveness bail, not eagerly on WS-IO:
+                // a stream/start racing a concurrent stop() (config change / onStartUrl) used to
+                // set hasTrack/playWhenReady and publish before stop()'s onSendspin(false, ...)
+                // clear landed -- leaving a phantom "playing" takeover nothing would ever dismiss.
+                // stop() nulls sendSpin under @Synchronized BEFORE queueing its clear on this same
+                // dispatcher, so either we bail above (stop already ran) or our publish is ordered
+                // before stop()'s clear -- the phantom cannot outlive stop in any interleaving.
+                hasTrack = true
+                // A stream starting is the server's strongest "playing" signal; set the intent so
+                // the takeover shows playing immediately. The playback_state broadcast + the
+                // audio-state callback then confirm it.
+                playWhenReady = true
+                // Do NOT clear metadata here. Music Assistant sends the next track's metadata +
+                // artwork BEFORE it starts the audio stream, so by the time onStreamStart fires
+                // npTitle/npArtwork already hold the NEW track -- clearing them would wipe the art
+                // the user just saw (and there is no stale-flash window to guard against, since new
+                // metadata always precedes the stream). A fresh connection simply has null fields
+                // until the first metadata arrives.
+                publishNowPlaying() // active -> true; metadata already present or fills in shortly
                 val existing = syncAudioPlayer
                 if (existing != null && existing.matchesFormat(sampleRate, channels, bitDepth)) {
                     // Reuse -- DAC stays warm.

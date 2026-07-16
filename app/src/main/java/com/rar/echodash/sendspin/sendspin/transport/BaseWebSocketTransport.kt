@@ -180,21 +180,36 @@ abstract class BaseWebSocketTransport(
                     // Receive loop
                     try {
                         for (frame in incoming) {
-                            when (frame) {
-                                is Frame.Text -> {
-                                    val txt = frame.readText()
-                                    Log.d(tag, "[cmd-trace] T0 wire-text len=${txt.length}")
-                                    listener?.onMessage(txt)
+                            // Per-frame fault isolation (Hearth adaptation): a throw from parsing
+                            // or the listener dispatch used to escape to the outer catch, flip the
+                            // state to Failed, and -- since unknown throwables are deliberately
+                            // unrecoverable -- kill the session for good. ONE malformed/unexpected
+                            // server message must not do that: log it and keep consuming frames,
+                            // same philosophy as the decode worker's per-task catch. Cancellation
+                            // is rethrown (it is an Exception subtype) so close/destroy still tears
+                            // the loop down normally.
+                            try {
+                                when (frame) {
+                                    is Frame.Text -> {
+                                        val txt = frame.readText()
+                                        Log.d(tag, "[cmd-trace] T0 wire-text len=${txt.length}")
+                                        listener?.onMessage(txt)
+                                    }
+                                    is Frame.Binary -> listener?.onMessage(frame.readBytes())
+                                    is Frame.Close -> {
+                                        val reason = closeReason.await()
+                                        val code = reason?.code?.toInt() ?: 1000
+                                        val msg = reason?.message ?: ""
+                                        Log.d(tag, "WebSocket closing: $code $msg")
+                                        listener?.onClosing(code, msg)
+                                    }
+                                    else -> { /* Ping/Pong handled by Ktor */ }
                                 }
-                                is Frame.Binary -> listener?.onMessage(frame.readBytes())
-                                is Frame.Close -> {
-                                    val reason = closeReason.await()
-                                    val code = reason?.code?.toInt() ?: 1000
-                                    val msg = reason?.message ?: ""
-                                    Log.d(tag, "WebSocket closing: $code $msg")
-                                    listener?.onClosing(code, msg)
-                                }
-                                else -> { /* Ping/Pong handled by Ktor */ }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                Log.w(tag, "Dropping ${frame::class.simpleName} frame " +
+                                    "(len=${frame.data.size}) after dispatch failure: ${e.message}")
                             }
                         }
                     } catch (_: CancellationException) {

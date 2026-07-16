@@ -90,10 +90,13 @@ Don't entangle the two.
 `sendspin/` is a **vendored** copy of the MIT-licensed chrisuthe/SendSpinDroid
 engine (see `NOTICE` for attribution and the exact upstream commit), trimmed to
 the LOCAL WebSocket path only (no WebRTC/proxy/Noise) — Music Assistant
-connects to Hearth by mDNS discovery, same as any other SendSpin player. Three
-vendored audio files (`AudioSink` / `AudioTrackSink` / `SyncAudioPlayer.setVolume`)
-were adapted for Hearth's per-track ducking; keep that in mind before reflexively
-re-syncing them from upstream.
+connects to Hearth by mDNS discovery, same as any other SendSpin player. The
+vendored files carry small, documented Hearth adaptations: per-track ducking in
+the three audio files (`AudioSink` / `AudioTrackSink` / `SyncAudioPlayer.setVolume`),
+the stream-end role match + `isPlayerStreamEnd` extraction in
+`SendSpinProtocolHandler`, and per-frame fault isolation + debug-level logging
+in the transport — see `NOTICE` and git history for the exact delta. Keep that
+in mind before reflexively re-syncing from upstream.
 
 ## Device / hardware notes
 

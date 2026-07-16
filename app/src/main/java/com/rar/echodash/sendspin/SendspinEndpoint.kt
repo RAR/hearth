@@ -101,9 +101,21 @@ class SendspinEndpoint(
 
     @Volatile private var duckGain: Float = 1f
 
+    // Music Assistant mute, folded into the per-track gain -- NOT STREAM_MUSIC (muting the stream
+    // would also silence TTS/announce). Written on the WS-IO callback thread (onMutedChanged), read
+    // wherever the effective gain is applied (setDuckGain, player recreation) -- @Volatile for
+    // cross-thread visibility, matching duckGain.
+    @Volatile private var muted: Boolean = false
+
+    /** Effective per-track gain: silent while MA-muted, otherwise the current duck gain. */
+    private fun effectiveGain(): Float = if (muted) 0f else duckGain
+
+    /** Push the effective gain to the active player (thread-safe; no-op if there is no player yet). */
+    private fun applyGain() { syncAudioPlayer?.setVolume(effectiveGain()) }
+
     fun setDuckGain(fraction: Float) {
         duckGain = fraction.coerceIn(0f, 1f)
-        syncAudioPlayer?.setVolume(duckGain)
+        applyGain()
     }
 
     // ---- Device output volume (SendSpin group volume -> Android STREAM_MUSIC) ----
@@ -489,6 +501,7 @@ class SendspinEndpoint(
         _status.value = SendspinStatus.Disconnected
         hasTrack = false
         playWhenReady = false
+        muted = false // MA mute is per-session; a fresh start() begins unmuted (duckGain persists)
         mainScope.launch { nowPlaying.onSendspin(false, false, null, null, null, null, npVolume) }
     }
 
@@ -580,8 +593,9 @@ class SendspinEndpoint(
                     player.setStateCallback(audioStateCallback)
                     player.initialize()
                     player.start()
-                    // Honor an in-progress duck (real per-track gain; see setDuckGain).
-                    player.setVolume(duckGain)
+                    // Honor an in-progress duck AND an MA mute (real per-track gain; see applyGain)
+                    // so both survive this format-change player recreation.
+                    player.setVolume(effectiveGain())
                     syncAudioPlayer = player
                     Log.i(TAG, "SyncAudioPlayer created: ${sampleRate}Hz ${channels}ch ${bitDepth}bit")
                 }
@@ -690,7 +704,14 @@ class SendspinEndpoint(
             publishNowPlaying()
         }
 
-        override fun onMutedChanged(muted: Boolean) {}
+        override fun onMutedChanged(muted: Boolean) {
+            // MA mute folds into the per-track AudioTrack gain (applyGain), NOT STREAM_MUSIC --
+            // muting the stream would also silence TTS/announce. Applied directly on the WS-IO
+            // thread like onVolumeChanged (setVolume is thread-safe); it survives a format-change
+            // player recreation because onStreamStart re-applies effectiveGain().
+            this@SendspinEndpoint.muted = muted
+            applyGain()
+        }
 
         override fun onSyncOffsetApplied(offsetMs: Double, source: String) {}
 

@@ -171,6 +171,7 @@ fun HomeView(
     onMediaNext: () -> Unit,
     onMediaPrev: () -> Unit,
     onMediaVolume: (Int) -> Unit,
+    onBrowse: () -> Unit = {},
     calendarEvents: List<CalendarEvent> = emptyList(),
     onOpenCalendar: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -216,6 +217,7 @@ fun HomeView(
                     onNext = onMediaNext,
                     onPrev = onMediaPrev,
                     onVolume = onMediaVolume,
+                    onBrowse = onBrowse,
                 )
             } else {
                 Box(Modifier.fillMaxSize()) {

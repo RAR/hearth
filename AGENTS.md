@@ -96,7 +96,15 @@ the three audio files (`AudioSink` / `AudioTrackSink` / `SyncAudioPlayer.setVolu
 the stream-end role match + `isPlayerStreamEnd` extraction in
 `SendSpinProtocolHandler`, and per-frame fault isolation + debug-level logging
 in the transport — see `NOTICE` and git history for the exact delta. Keep that
-in mind before reflexively re-syncing from upstream.
+in mind before reflexively re-syncing from upstream. The
+`sendspin/musicassistant/` subpackage is vendored from the same commit: the MA
+JSON-RPC API client (models, Ktor WebSocket transport, `MaCommandClient`,
+`MaAuthHelper`), trimmed to the library search/shelves/queue command surface
+(no players/groups/favorites, playlist editing, podcasts/audiobooks, browse
+folders, or WebRTC/proxy; `SearchResults` drops those result lists). Hearth
+drives it through `MaLibrary` with `isRemoteMode` hard-wired `false` (LOCAL
+path only) and authenticates with the MA token the config page's sign-in
+stores in the web config (`sendspin.maToken`).
 
 ## Device / hardware notes
 

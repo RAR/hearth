@@ -63,8 +63,11 @@ import com.rar.echodash.vaca.LightSensorReporter
 import com.rar.echodash.vaca.MediaBridge
 import com.rar.echodash.media.NowPlayingStore
 import com.rar.echodash.media.ArtFetcher
+import com.rar.echodash.media.MaThumbs
 import com.rar.echodash.night.NightModeController
+import com.rar.echodash.sendspin.MaLibrary
 import com.rar.echodash.sendspin.SendspinEndpoint
+import com.rar.echodash.sendspin.UserSettings
 import com.rar.echodash.vaca.NsdAdvertiser
 import com.rar.echodash.vaca.VacaOutgoing
 import com.rar.echodash.vaca.VacaServer
@@ -152,6 +155,22 @@ class AppDeps(context: Context) {
         connState = { ws.connectionState.value.name },
         lux = { lastLux },
         sendspinStatus = { sendspin.status.value.name },
+        // MA sign-in: exchange credentials for a token on the device, persist token + display
+        // name BEFORE returning (the browser re-pulls config right after, and the maToken
+        // collector in startSendspin() reacts by connecting the library socket).
+        maSignIn = { username, password ->
+            maLibrary.signIn(username, password).map { r ->
+                configStore.update(configStore.config.value.let { c ->
+                    c.copy(sendspin = c.sendspin.copy(maToken = r.accessToken, maUser = r.userName))
+                })
+                r.userName
+            }
+        },
+        maSignOut = {
+            configStore.update(configStore.config.value.let { c ->
+                c.copy(sendspin = c.sendspin.copy(maToken = "", maUser = ""))
+            })
+        },
         previewChime = { tone, volume -> timerChime.playOnce(tone, volume) },
         previewEarcon = { volume -> earconPlayer.play("preview", volume) },
         assetReader = { path ->
@@ -237,6 +256,21 @@ class AppDeps(context: Context) {
         nowPlaying = nowPlaying,
         scope = scope,
         mainScope = mainScope,
+    )
+    /** Thumbnail loader for the MA library browser; shares the app-wide OkHttp client (like ArtFetcher). */
+    val maThumbs = MaThumbs(client)
+    // Constructed AFTER `sendspin`: getPlayerId() needs UserSettings.initialize, which runs in
+    // SendspinEndpoint's init. The MA API socket targets the same server as the audio path —
+    // manual config host when set (SendSpin port stripped by MaLibrary), else the endpoint's
+    // connected/last-known server.
+    /** Music Assistant library browser backend (API socket + search/shelves/queue ops). */
+    val maLibrary = MaLibrary(
+        scope = scope,
+        playerId = UserSettings.getPlayerId(),
+        hostProvider = {
+            configStore.config.value.sendspin.serverAddress.substringBefore(':').trim().ifBlank { null }
+                ?: sendspin.connectedHost()
+        },
     )
     // Explicit type: the onUrlEnded lambda below reads `media.ui` (a deferred self-reference,
     // resolved at invoke time), which trips recursive type inference without the annotation.
@@ -469,6 +503,17 @@ class AppDeps(context: Context) {
                 .map { it.sendspin.syncDelayMs }
                 .distinctUntilChanged()
                 .collect { sendspin.setSyncDelay(it) }
+        }
+        // MA library API socket follows (enabled, maToken): sign-in/out and the config toggle
+        // (re)configure it; configure() is idempotent so unrelated config saves are no-ops.
+        // serverAddress changes deliberately don't restart it — hostProvider re-reads the
+        // address on every (re)connect attempt, and the audio path's own restart drops the
+        // shared server anyway.
+        scope.launch {
+            configStore.config
+                .map { it.sendspin.enabled to it.sendspin.maToken }
+                .distinctUntilChanged()
+                .collect { (enabled, token) -> maLibrary.configure(enabled, token) }
         }
     }
 
@@ -807,6 +852,14 @@ fun EchoDashApp(deps: AppDeps) {
                             else deps.mainScope.launch {
                                 deps.media.handleAction("set-volume", buildJsonObject { put("volume", vol) })
                             }
+                        },
+                        library = deps.maLibrary,
+                        thumbs = deps.maThumbs,
+                        // Takeover's browse button: land on the MEDIA view's library browser
+                        // (mirrors onSelect above, incl. the kiosk interaction poke).
+                        onBrowse = {
+                            deps.currentView.value = DashView.MEDIA
+                            deps.kiosk.onUserInteraction()
                         },
                         fetchForecast = { id -> deps.entityHub.getForecasts(id) },
                         configUrl = configUrl,

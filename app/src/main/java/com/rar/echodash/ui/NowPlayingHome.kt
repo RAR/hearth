@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.automirrored.outlined.VolumeOff
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Pause
@@ -39,6 +40,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rar.echodash.media.ArtBitmaps
@@ -59,6 +61,7 @@ fun NowPlayingHome(
     onNext: () -> Unit,
     onPrev: () -> Unit,
     onVolume: (Int) -> Unit,
+    onBrowse: () -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize()) {
         if (art != null) {
@@ -68,6 +71,15 @@ fun NowPlayingHome(
             DuskBackground()
         }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)))
+
+        // Browse the MA library (jumps to the MEDIA view). TopEnd: TopStart holds the compact
+        // clock HomeView draws above this layer. 48 dp (not the transport 64) so it clears the
+        // top edge of the 360 dp art card on the Echo's 480 px height.
+        Box(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 16.dp)) {
+            NpTransportButton(Icons.AutoMirrored.Outlined.QueueMusic, size = 48.dp, iconSize = 24.dp) {
+                onBrowse()
+            }
+        }
 
         // Sharp art card, right side, clear of the pills row.
         Box(
@@ -148,15 +160,20 @@ fun NowPlayingHome(
 }
 
 @Composable
-private fun NpTransportButton(icon: ImageVector, onClick: () -> Unit) {
+private fun NpTransportButton(
+    icon: ImageVector,
+    size: Dp = 64.dp,
+    iconSize: Dp = 30.dp,
+    onClick: () -> Unit,
+) {
     Box(
         Modifier
-            .size(64.dp)
+            .size(size)
             .clip(CircleShape)
             .background(Color(0xFF2A2F3C))
             .clickable { onClick() },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(30.dp))
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(iconSize))
     }
 }

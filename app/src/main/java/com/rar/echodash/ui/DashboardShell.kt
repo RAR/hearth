@@ -57,7 +57,9 @@ import com.rar.echodash.ui.panels.MediaPanel
 import com.rar.echodash.ui.panels.SolarPanel
 import com.rar.echodash.ui.panels.WeatherPanel
 import com.rar.echodash.media.ArtBitmaps
+import com.rar.echodash.media.MaThumbs
 import com.rar.echodash.media.NowPlayingState
+import com.rar.echodash.sendspin.MaLibrary
 import java.io.File
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonElement
@@ -86,6 +88,9 @@ fun DashboardShell(
     onMediaNext: () -> Unit,
     onMediaPrev: () -> Unit,
     onMediaVolume: (Int) -> Unit,
+    library: MaLibrary?,
+    thumbs: MaThumbs?,
+    onBrowse: () -> Unit,
     fetchForecast: suspend (String) -> JsonElement?,
     configUrl: String,
     configPin: String,
@@ -232,6 +237,7 @@ fun DashboardShell(
                         onMediaNext = onMediaNext,
                         onMediaPrev = onMediaPrev,
                         onMediaVolume = onMediaVolume,
+                        onBrowse = onBrowse,
                     )
                 }
                 DashView.LIGHTS -> {
@@ -249,6 +255,7 @@ fun DashboardShell(
                 DashView.MEDIA -> MediaPanel(
                     nowPlaying, art, onMediaPlay, onMediaPause, onMediaStop,
                     onMediaNext, onMediaPrev, onMediaVolume,
+                    library = library, thumbs = thumbs,
                 )
                 DashView.CALENDAR -> CalendarPanel(
                     events = calendarEvents,

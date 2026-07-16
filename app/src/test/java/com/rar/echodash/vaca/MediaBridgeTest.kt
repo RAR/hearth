@@ -171,10 +171,10 @@ class MediaBridgeTest {
         assertEquals(0.9f, engine.volume, 0.001f)
         bridge.applySettings(json("""{"ducking_volume":1}""").jsonObject)
         // Ducking is an engine-side gain (duckingVolume/10); it never touches the system volume.
-        bridge.setDucked(true)
+        bridge.setDucked(DuckSource.ANNOUNCE, true)
         assertEquals(0.1f, engine.duckGain, 0.001f)
         assertEquals(0.9f, engine.volume, 0.001f)
-        bridge.setDucked(false)
+        bridge.setDucked(DuckSource.ANNOUNCE, false)
         assertEquals(1.0f, engine.duckGain, 0.001f)
         assertEquals(0.9f, engine.volume, 0.001f)
     }
@@ -362,7 +362,7 @@ class MediaBridgeTest {
     fun restoredDuckingDrivesEngineGain() {
         val engine = FakeEngine()
         val bridge = MediaBridge(engine, NowPlayingStore(), restoredDucking = 5, sendStatus = {})
-        bridge.setDucked(true)
+        bridge.setDucked(DuckSource.ANNOUNCE, true)
         assertEquals(0.5f, engine.duckGain, 0.001f)
     }
 
@@ -376,7 +376,7 @@ class MediaBridgeTest {
             sendStatus = {},
             duckSendspin = { sendspinFraction = it },
         )
-        bridge.setDucked(true)
+        bridge.setDucked(DuckSource.ANNOUNCE, true)
         assertEquals("SendSpin and the local engine must duck by the same fraction",
             engine.duckGain, sendspinFraction!!, 0.001f)
         assertEquals(0.5f, sendspinFraction!!, 0.001f)
@@ -392,10 +392,33 @@ class MediaBridgeTest {
             sendStatus = {},
             duckSendspin = { sendspinFraction = it },
         )
-        bridge.setDucked(true)
-        bridge.setDucked(false)
+        bridge.setDucked(DuckSource.ANNOUNCE, true)
+        bridge.setDucked(DuckSource.ANNOUNCE, false)
         assertEquals(1f, sendspinFraction!!, 0.001f)
         assertEquals(engine.duckGain, sendspinFraction!!, 0.001f)
+    }
+
+    @Test
+    fun overlappingDuckClaimsHoldUntilLastRelease() {
+        val engine = FakeEngine()
+        var sendspinFraction: Float? = null
+        val bridge = MediaBridge(
+            engine, NowPlayingStore(),
+            restoredDucking = 3,
+            sendStatus = {},
+            duckSendspin = { sendspinFraction = it },
+        )
+        // A TTS announce fires WHILE the doorbell popup is up (the standard automation).
+        bridge.setDucked(DuckSource.DOORBELL, true)
+        bridge.setDucked(DuckSource.ANNOUNCE, true)
+        // The announce ends first: its release must NOT restore full volume under the popup.
+        bridge.setDucked(DuckSource.ANNOUNCE, false)
+        assertEquals(0.3f, engine.duckGain, 0.001f)
+        assertEquals(0.3f, sendspinFraction!!, 0.001f)
+        // Only the LAST claim's release restores full volume, on both fan-out targets.
+        bridge.setDucked(DuckSource.DOORBELL, false)
+        assertEquals(1f, engine.duckGain, 0.001f)
+        assertEquals(1f, sendspinFraction!!, 0.001f)
     }
 
     @Test

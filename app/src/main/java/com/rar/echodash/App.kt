@@ -56,6 +56,7 @@ import com.rar.echodash.vaca.AndroidKioskDevice
 import com.rar.echodash.vaca.AnnouncePlayer
 import com.rar.echodash.vaca.AndroidPcmSink
 import com.rar.echodash.vaca.DashActionParser
+import com.rar.echodash.vaca.DuckSource
 import com.rar.echodash.vaca.ExoPlayerEngine
 import com.rar.echodash.vaca.KioskController
 import com.rar.echodash.vaca.LightSensorReporter
@@ -273,7 +274,7 @@ class AppDeps(context: Context) {
         scope,
         AndroidPcmSink(),
         onPlayed = { scope.launch { vaca.sendPlayed() } },
-        setDucking = { ducked -> mainScope.launch { media.setDucked(ducked) } },
+        setDucking = { ducked -> mainScope.launch { media.setDucked(DuckSource.ANNOUNCE, ducked) } },
     )
     val lightSensor = LightSensorReporter(appContext) { lux ->
         lastLux = lux.toInt()
@@ -338,7 +339,7 @@ class AppDeps(context: Context) {
         scope,
         voiceSink,
         onPlayed = { satellite.onPlaybackFinished() },
-        setDucking = { ducked -> mainScope.launch { media.setDucked(ducked) } },
+        setDucking = { ducked -> mainScope.launch { media.setDucked(DuckSource.VOICE, ducked) } },
     )
     private val micStreamer = MicStreamer(
         onChunk = { pcm -> satellite.submitMicChunk(pcm) },

@@ -49,6 +49,9 @@ data class MediaUiState(
     val volume: Int = 90,
 )
 
+/** Who is holding a duck claim -- see [MediaBridge.setDucked]. */
+enum class DuckSource { ANNOUNCE, VOICE, DOORBELL }
+
 /**
  * Drives the HA media_player entity: play-media/play/pause/stop/set-volume
  * actions, music_volume + ducking_volume settings, playing-state status.
@@ -83,7 +86,13 @@ class MediaBridge(
     @Volatile private var volumePercent = 90 // HA media player default volume_level 0.9
     // 0..10 scale; restored from device-local prefs, else the integration default of 1.
     private var duckingVolume = restoredDucking?.coerceIn(0, 10) ?: 1
-    private var ducked = false
+    // Ducking is claim-based: each source holds/releases its OWN claim and music stays ducked
+    // while ANY claim is active. A plain boolean was last-writer-wins -- a TTS announce ending
+    // during the doorbell popup would restore full volume under the still-visible popup.
+    // synchronized(duckClaims): claims arrive from the VACA server thread and the main thread,
+    // and the mutation + the any-claim derivation must be atomic together.
+    private val duckClaims = mutableSetOf<DuckSource>()
+    private var ducked = false // derived under the duckClaims lock: any claim active
     @Volatile private var active = false   // engine has media loaded (play-media until stop/error)
     @Volatile private var playing = false  // mirrors the engine isPlaying callback
 
@@ -200,8 +209,11 @@ class MediaBridge(
         if (changed) { _ui.update { it.copy(volume = volumePercent) }; pushEngine() }
     }
 
-    fun setDucked(ducked: Boolean) {
-        this.ducked = ducked
+    fun setDucked(source: DuckSource, ducked: Boolean) {
+        synchronized(duckClaims) {
+            if (ducked) duckClaims.add(source) else duckClaims.remove(source)
+            this.ducked = duckClaims.isNotEmpty()
+        }
         applyDucking()
     }
 

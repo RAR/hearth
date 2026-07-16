@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,13 +36,51 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rar.echodash.media.ArtBitmaps
+import com.rar.echodash.media.MaThumbs
 import com.rar.echodash.media.NowPlayingState
+import com.rar.echodash.sendspin.MaLibrary
+import com.rar.echodash.sendspin.MaLibraryState
 
 @Composable
 fun MediaPanel(
+    state: NowPlayingState,
+    art: ArtBitmaps?,
+    onPlay: () -> Unit,
+    onPause: () -> Unit,
+    onStop: () -> Unit,
+    onNext: () -> Unit,
+    onPrev: () -> Unit,
+    onVolume: (Int) -> Unit,
+    library: MaLibrary? = null,
+    thumbs: MaThumbs? = null,
+) {
+    // Deps not wired (Task 6) -> the classic panel, unchanged.
+    if (library == null || thumbs == null) {
+        ClassicMediaPanel(state, art, onPlay, onPause, onStop, onNext, onPrev, onVolume)
+        return
+    }
+    val maState by library.state.collectAsStateWithLifecycle()
+    if (maState is MaLibraryState.Disabled) {
+        // SendSpin off or signed out: the browser has nothing to offer; keep today's layout.
+        ClassicMediaPanel(state, art, onPlay, onPause, onStop, onNext, onPrev, onVolume)
+        return
+    }
+    PanelSurface {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            MusicBrowser(library, thumbs, Modifier.weight(1f).fillMaxWidth())
+            NowPlayingStrip(state, art, onPlay, onPause, onNext, onPrev)
+        }
+    }
+}
+
+/** The pre-browser media panel, byte-for-byte: art card, transport row, volume slider. */
+@Composable
+private fun ClassicMediaPanel(
     state: NowPlayingState,
     art: ArtBitmaps?,
     onPlay: () -> Unit,
@@ -106,16 +145,76 @@ fun MediaPanel(
     }
 }
 
+/**
+ * The classic panel condensed to one 64 dp row under the browser: art thumb, title/artist,
+ * prev/play-pause/next. Stop and the volume slider deliberately don't ride along — they
+ * don't fit the strip and stay reachable via the takeover (and the classic layout).
+ */
 @Composable
-private fun TransportButton(icon: ImageVector, onClick: () -> Unit) {
+private fun NowPlayingStrip(
+    state: NowPlayingState,
+    art: ArtBitmaps?,
+    onPlay: () -> Unit,
+    onPause: () -> Unit,
+    onNext: () -> Unit,
+    onPrev: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().height(64.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF11151F)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (art != null) {
+                Image(art.sharp, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            } else {
+                Icon(Icons.Outlined.MusicNote, contentDescription = null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(24.dp))
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                if (state.active) state.title ?: "Playing" else "Nothing playing",
+                color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            val sub = listOfNotNull(state.artist, state.album).joinToString(" — ")
+            if (state.active && sub.isNotBlank()) {
+                Text(sub, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        if (state.active) {
+            if (state.canSkip) TransportButton(Icons.Outlined.SkipPrevious, size = 44.dp, iconSize = 22.dp) { onPrev() }
+            TransportButton(
+                if (state.playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
+                size = 44.dp, iconSize = 22.dp,
+            ) { if (state.playing) onPause() else onPlay() }
+            if (state.canSkip) TransportButton(Icons.Outlined.SkipNext, size = 44.dp, iconSize = 22.dp) { onNext() }
+        }
+    }
+}
+
+@Composable
+private fun TransportButton(
+    icon: ImageVector,
+    size: Dp = 64.dp,
+    iconSize: Dp = 30.dp,
+    onClick: () -> Unit,
+) {
     Box(
         Modifier
-            .size(64.dp)
+            .size(size)
             .clip(CircleShape)
             .background(Color(0xFF2A2F3C))
             .clickable { onClick() },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(30.dp))
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(iconSize))
     }
 }

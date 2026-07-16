@@ -21,6 +21,8 @@ data class NowPlayingState(
     val canSkip: Boolean = false,
     /** True when the active source is the SendSpin endpoint (routes transport controls to it). */
     val sendspin: Boolean = false,
+    /** Music Assistant muted this player (SendSpin source only; the engine path never mutes). */
+    val muted: Boolean = false,
 ) {
     // ByteArray in a data class defaults to identity equals/hashCode; override so StateFlow dedups by
     // content and tests compare by content.
@@ -30,6 +32,7 @@ data class NowPlayingState(
         return active == other.active && playing == other.playing && title == other.title &&
             artist == other.artist && album == other.album && artUrl == other.artUrl &&
             volume == other.volume && canSkip == other.canSkip && sendspin == other.sendspin &&
+            muted == other.muted &&
             (localArt?.contentEquals(other.localArt ?: ByteArray(0)) ?: (other.localArt == null))
     }
 
@@ -44,6 +47,7 @@ data class NowPlayingState(
         r = 31 * r + volume
         r = 31 * r + canSkip.hashCode()
         r = 31 * r + sendspin.hashCode()
+        r = 31 * r + muted.hashCode()
         return r
     }
 }
@@ -77,6 +81,7 @@ class NowPlayingStore {
     private var sendspinAlbum: String? = null
     private var sendspinArt: ByteArray? = null
     private var sendspinVolume = 90
+    private var sendspinMuted = false // display only; the endpoint handles the audio-side mute
 
     @Synchronized
     fun onEngine(active: Boolean, playing: Boolean, volume: Int) {
@@ -103,7 +108,8 @@ class NowPlayingStore {
 
     @Synchronized
     fun onSendspin(active: Boolean, playing: Boolean, title: String?, artist: String?,
-                   album: String?, artworkData: ByteArray?, volume: Int) {
+                   album: String?, artworkData: ByteArray?, volume: Int,
+                   muted: Boolean = false) {
         sendspinActive = active
         sendspinPlaying = playing
         sendspinTitle = title?.takeIf { it.isNotBlank() }
@@ -111,6 +117,7 @@ class NowPlayingStore {
         sendspinAlbum = album?.takeIf { it.isNotBlank() }
         sendspinArt = artworkData
         sendspinVolume = volume
+        sendspinMuted = muted
         recompute()
     }
 
@@ -123,6 +130,7 @@ class NowPlayingStore {
                 // Next/prev route to the companion media_player entity, not SendSpin -- skip
                 // controls would hit the wrong player, so transport controls are out of scope.
                 artUrl = null, localArt = sendspinArt, volume = sendspinVolume, canSkip = true, sendspin = true,
+                muted = sendspinMuted,
             )
             return
         }

@@ -31,4 +31,22 @@ class NowPlayingSendspinTest {
         assertEquals("S", s.title)
         assertEquals(60, s.volume)
     }
+
+    @Test fun mutedFlowsThroughOnSendspinIntoState() {
+        val store = NowPlayingStore()
+        // Callers that don't pass muted (the omitted param) must default to unmuted.
+        store.onSendspin(true, true, "Song", "Artist", "Album", null, 55)
+        assertEquals(false, store.state.value.muted)
+        store.onSendspin(true, true, "Song", "Artist", "Album", null, 55, muted = true)
+        assertTrue(store.state.value.muted)
+        store.onSendspin(true, true, "Song", "Artist", "Album", null, 55, muted = false)
+        assertEquals(false, store.state.value.muted)
+    }
+
+    @Test fun enginePathStaysUnmuted() {
+        val store = NowPlayingStore()
+        store.onEngine(true, true, 80)
+        // Only the SendSpin source carries a mute; the local ExoPlayer path never sets it.
+        assertEquals(false, store.state.value.muted)
+    }
 }

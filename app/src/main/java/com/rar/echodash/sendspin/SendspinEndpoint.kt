@@ -223,12 +223,13 @@ class SendspinEndpoint(
     private fun publishNowPlaying() {
         val active = hasTrack
         val playing = playWhenReady
-        Log.d(TAG, "publish active=$active playing=$playing title='$npTitle' art=${npArtwork?.size ?: 0} vol=$npVolume")
+        val mutedNow = muted
+        Log.d(TAG, "publish active=$active playing=$playing muted=$mutedNow title='$npTitle' art=${npArtwork?.size ?: 0} vol=$npVolume")
         mainScope.launch {
             nowPlaying.onSendspin(
                 active = active, playing = playing,
                 title = npTitle, artist = npArtist, album = npAlbum,
-                artworkData = npArtwork, volume = npVolume,
+                artworkData = npArtwork, volume = npVolume, muted = mutedNow,
             )
         }
     }
@@ -440,7 +441,7 @@ class SendspinEndpoint(
                     hasTrack = false
                     playWhenReady = false
                     mainScope.launch {
-                        nowPlaying.onSendspin(false, false, null, null, null, null, npVolume)
+                        nowPlaying.onSendspin(false, false, null, null, null, null, npVolume, muted = false)
                     }
                 }
                 if (state is TransportState.Ready) {
@@ -524,7 +525,7 @@ class SendspinEndpoint(
         hasTrack = false
         playWhenReady = false
         muted = false // MA mute is per-session; a fresh start() begins unmuted (duckGain persists)
-        mainScope.launch { nowPlaying.onSendspin(false, false, null, null, null, null, npVolume) }
+        mainScope.launch { nowPlaying.onSendspin(false, false, null, null, null, null, npVolume, muted = false) }
     }
 
     /** Recompute the published status from the current transport state + streaming flag. */
@@ -741,9 +742,11 @@ class SendspinEndpoint(
             // MA mute folds into the per-track AudioTrack gain (applyGain), NOT STREAM_MUSIC --
             // muting the stream would also silence TTS/announce. Applied directly on the WS-IO
             // thread like onVolumeChanged (setVolume is thread-safe); it survives a format-change
-            // player recreation because onStreamStart re-applies effectiveGain().
+            // player recreation because onStreamStart re-applies effectiveGain(). Then publish so
+            // the takeover shows the muted state immediately (publishNowPlaying hops to mainScope).
             this@SendspinEndpoint.muted = muted
             applyGain()
+            publishNowPlaying()
         }
 
         override fun onSyncOffsetApplied(offsetMs: Double, source: String) {}

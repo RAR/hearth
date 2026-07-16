@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.VolumeOff
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -119,13 +121,27 @@ fun NowPlayingHome(
                     if (state.canSkip) NpTransportButton(Icons.Outlined.SkipNext) { onNext() }
                 }
                 var slider by remember(state.volume) { mutableFloatStateOf(state.volume.toFloat()) }
-                Slider(
-                    value = slider,
-                    onValueChange = { slider = it },
-                    onValueChangeFinished = { onVolume(slider.toInt()) },
-                    valueRange = 0f..100f,
+                // While Music Assistant has this player muted, show it: muted-speaker glyph +
+                // dimmed slider -- otherwise the takeover reads "playing at volume N" while
+                // silent. Display only (mute/unmute lives in MA); the slider still sets the
+                // underlying group volume, which applies once MA unmutes.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth(),
-                )
+                ) {
+                    if (state.muted) {
+                        Icon(Icons.AutoMirrored.Outlined.VolumeOff, contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(22.dp))
+                    }
+                    Slider(
+                        value = slider,
+                        onValueChange = { slider = it },
+                        onValueChangeFinished = { onVolume(slider.toInt()) },
+                        valueRange = 0f..100f,
+                        modifier = Modifier.weight(1f).alpha(if (state.muted) 0.35f else 1f),
+                    )
+                }
             }
         }
     }

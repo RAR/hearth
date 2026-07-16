@@ -710,6 +710,17 @@ fun EchoDashApp(deps: AppDeps) {
                         }
                     }
 
+                    // The popup's porch audio plays unmuted over whatever music is up (SendSpin or
+                    // radio) -- duck the music under it like an announce, via the same fan-out that
+                    // covers both. Keyed on the VISIBILITY boolean, not the popup object, so a
+                    // popup-to-popup replacement (second ring extending the first) doesn't flap the
+                    // duck; onDispose guarantees the claim releases on tap-dismiss, timeout, and
+                    // composition teardown alike.
+                    DisposableEffect(doorbellPopup != null) {
+                        if (doorbellPopup != null) deps.media.setDucked(DuckSource.DOORBELL, true)
+                        onDispose { deps.media.setDucked(DuckSource.DOORBELL, false) }
+                    }
+
                     val nightActive by deps.nightMode.nightActive.collectAsStateWithLifecycle()
                     val nightTicking by deps.nightMode.ticking.collectAsStateWithLifecycle()
                     LaunchedEffect(config.night) {

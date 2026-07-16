@@ -82,6 +82,14 @@ class SendspinEndpoint(
     private val _status = MutableStateFlow(SendspinStatus.Disconnected)
     val status: StateFlow<SendspinStatus> = _status.asStateFlow()
 
+    /**
+     * Address (host or host:port) of the SendSpin server the engine last attached to, or null
+     * before the first connection. [MaLibrary]'s hostProvider falls back to this so the MA API
+     * socket targets the same server the audio path uses; the engine keeps the address across
+     * transient drops for its own auto-reconnect, so it stays useful mid-reconnect too.
+     */
+    fun connectedHost(): String? = sendSpin?.getServerAddress()
+
     // ---- Lifecycle state (touched on the caller thread; start/stop are not re-entrant) ----
 
     private var started = false

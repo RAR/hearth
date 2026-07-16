@@ -33,6 +33,9 @@ class ConfigServerTest {
     private var customName: String? = null
     private val setNameCalls = mutableListOf<String?>()
     private val defaultName = "Hearth (Pixel 1234)"
+    private val maSignInCalls = mutableListOf<Pair<String, String>>()
+    private var maSignInResult: Result<String> = Result.success("Andrew")
+    private var maSignOutCalls = 0
 
     private fun tempDir(): File =
         File.createTempFile("cfgserver", "").let { it.delete(); it.mkdirs(); it }
@@ -55,6 +58,8 @@ class ConfigServerTest {
             configured = { false },
             connState = { "OFFLINE" },
             lux = { 42 },
+            maSignIn = { username, password -> maSignInCalls += username to password; maSignInResult },
+            maSignOut = { maSignOutCalls++ },
             previewChime = { tone, volume -> previewCalls += tone to volume },
             previewEarcon = { },
             assetReader = { path ->
@@ -451,5 +456,79 @@ class ConfigServerTest {
                 assertEquals(200, r.code)
                 assertTrue(r.body!!.string().contains("\"deviceName\":\"Hearth (Pixel 1234)\""))
             }
+    }
+
+    @Test
+    fun maLoginRequiresSession() {
+        http.newCall(Request.Builder().url("$base/api/sendspin/login")
+            .post("""{"username":"andrew","password":"secret"}""".toRequestBody(json)).build())
+            .execute().use { r -> assertEquals(401, r.code) }
+        assertTrue(maSignInCalls.isEmpty())
+    }
+
+    @Test
+    fun maLogoutRequiresSession() {
+        http.newCall(Request.Builder().url("$base/api/sendspin/logout")
+            .post("{}".toRequestBody(json)).build())
+            .execute().use { r -> assertEquals(401, r.code) }
+        assertEquals(0, maSignOutCalls)
+    }
+
+    @Test
+    fun maLoginReturnsUserNameOnlyAndPassesPasswordVerbatim() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/sendspin/login").header("Cookie", cookie)
+            .post("""{"username":"  andrew ","password":" s3cret! "}""".toRequestBody(json)).build())
+            .execute().use { r ->
+                assertEquals(200, r.code)
+                // Exact body: display name only — the token must never travel in the login response.
+                assertEquals("""{"ok":true,"userName":"Andrew"}""", r.body!!.string())
+            }
+        // Username is trimmed (copy-paste whitespace); the password goes through verbatim.
+        assertEquals(listOf("andrew" to " s3cret! "), maSignInCalls)
+    }
+
+    @Test
+    fun maLoginFailureReturns502WithError() {
+        maSignInResult = Result.failure(Exception("MA server unreachable"))
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/sendspin/login").header("Cookie", cookie)
+            .post("""{"username":"andrew","password":"pw"}""".toRequestBody(json)).build())
+            .execute().use { r ->
+                assertEquals(502, r.code)
+                val body = r.body!!.string()
+                assertTrue(body.contains("\"ok\":false"))
+                assertTrue(body.contains("MA server unreachable"))
+            }
+    }
+
+    @Test
+    fun maLoginMalformedBodyReturns400() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/sendspin/login").header("Cookie", cookie)
+            .post("{ not json".toRequestBody(json)).build())
+            .execute().use { r -> assertEquals(400, r.code) }
+        assertTrue(maSignInCalls.isEmpty())
+    }
+
+    @Test
+    fun maLoginMissingCredentialsReturns400() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/sendspin/login").header("Cookie", cookie)
+            .post("""{"username":"   "}""".toRequestBody(json)).build())
+            .execute().use { r -> assertEquals(400, r.code) }
+        assertTrue(maSignInCalls.isEmpty())
+    }
+
+    @Test
+    fun maLogoutInvokesSignOutAndReturnsOk() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/sendspin/logout").header("Cookie", cookie)
+            .post("{}".toRequestBody(json)).build())
+            .execute().use { r ->
+                assertEquals(200, r.code)
+                assertTrue(r.body!!.string().contains("\"ok\":true"))
+            }
+        assertEquals(1, maSignOutCalls)
     }
 }

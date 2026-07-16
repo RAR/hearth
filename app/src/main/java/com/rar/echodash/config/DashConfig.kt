@@ -197,10 +197,14 @@ data class SendspinConfig(
     val enabled: Boolean = false,
     val syncDelayMs: Int = 0,          // per-player fixed-latency offset for tuning
     val serverAddress: String = "",    // optional manual MA server host:port; blank = mDNS discovery
+    val maToken: String = "",          // MA API access token from device-side sign-in; blank = signed out
+    val maUser: String = "",           // MA display name for the config card's signed-in line
 ) {
     fun clamped(): SendspinConfig = copy(
         syncDelayMs = syncDelayMs.coerceIn(-2000, 2000),
         serverAddress = serverAddress.trim(),
+        maToken = maToken.trim(),
+        maUser = maUser.trim(),
     )
 }
 

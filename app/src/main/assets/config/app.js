@@ -777,6 +777,8 @@ function renderSendspin() {
   const s = config.sendspin;
   if (typeof s.syncDelayMs !== "number") s.syncDelayMs = 0;
   if (s.serverAddress == null) s.serverAddress = "";
+  if (s.maToken == null) s.maToken = "";
+  if (s.maUser == null) s.maUser = "";
 
   const toggle = el("input"); toggle.type = "checkbox"; toggle.checked = !!s.enabled;
   toggle.setAttribute("aria-label", "Sendspin sync playback enabled");
@@ -802,6 +804,55 @@ function renderSendspin() {
     "server address blank to auto-discover the Music Assistant server via mDNS. Sync delay offsets this " +
     "device's playback by up to ±2000 ms to compensate for its own audio-pipeline latency (positive = " +
     "this device plays later; applies live, clamped on save)."));
+
+  // Music Assistant account: sign-in enables the on-panel library browser in the media view.
+  // The device exchanges the password for a token and persists token + display name itself;
+  // the password is sent once and never stored, so signed-in state is read back from config.
+  if (!s.maToken) {
+    const user = el("input"); user.placeholder = "username";
+    user.setAttribute("autocomplete", "off");
+    host.appendChild(labeledRow("MA username", user));
+    const pass = el("input"); pass.type = "password"; pass.placeholder = "password";
+    pass.setAttribute("autocomplete", "off");
+    host.appendChild(labeledRow("MA password", pass));
+    const err = el("div", "muted"); err.id = "sendspin-ma-error";
+    const signIn = el("button", "ghost small", "Sign in");
+    signIn.type = "button";
+    signIn.addEventListener("click", async () => {
+      err.textContent = "";
+      signIn.disabled = true;
+      try {
+        const r = await api("POST", "/api/sendspin/login",
+          { username: user.value.trim(), password: pass.value });
+        if (r.status === 401) { showLogin(); return; }
+        const b = await r.json().catch(() => ({}));
+        if (r.ok && b.ok) { await tryLoad(); return; } // re-pull config: card re-renders signed in
+        err.textContent = b.error || ("Sign-in failed (" + r.status + ")");
+      } catch (e) {
+        err.textContent = "Can't reach the device — is it on and connected?";
+      } finally {
+        signIn.disabled = false;
+      }
+    });
+    host.appendChild(signIn);
+    host.appendChild(err);
+    if (!s.enabled) {
+      host.appendChild(el("div", "muted", "Enable SendSpin and let it connect before signing in."));
+    }
+  } else {
+    host.appendChild(el("div", "muted", "Signed in as " + (s.maUser || "Music Assistant user") + "."));
+    const signOut = el("button", "ghost small", "Sign out");
+    signOut.type = "button";
+    signOut.addEventListener("click", async () => {
+      signOut.disabled = true;
+      try {
+        const r = await api("POST", "/api/sendspin/logout");
+        if (r.status === 401) { showLogin(); return; }
+      } catch (e) { /* best-effort; the reload below shows the truth */ }
+      await tryLoad();
+    });
+    host.appendChild(signOut);
+  }
 }
 
 function renderNight() {

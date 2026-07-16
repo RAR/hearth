@@ -7,6 +7,7 @@ import com.rar.echodash.config.VoiceSettings
 import com.rar.echodash.config.decodeConfig
 import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayInputStream
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
@@ -35,6 +36,11 @@ class ConfigServer(
     private val connState: () -> String,
     private val lux: () -> Int? = { null },
     private val sendspinStatus: () -> String = { "disconnected" },
+    // MA sign-in bridge: exchanges credentials for a token device-side and persists it before
+    // returning the display name. Defaults keep App.kt compiling until Task 6 wires MaLibrary.
+    private val maSignIn: suspend (username: String, password: String) -> Result<String> =
+        { _, _ -> Result.failure(IllegalStateException("not wired")) },
+    private val maSignOut: () -> Unit = {},
     private val previewChime: (String, Int) -> Unit,
     private val previewEarcon: (Int) -> Unit,
     private val assetReader: (String) -> ByteArray?,
@@ -69,6 +75,8 @@ class ConfigServer(
                 uri == "/api/setup/complete" && method == Method.POST -> handleSetupComplete(session)
                 uri == "/api/voice/preview-chime" && method == Method.POST -> handlePreviewChime(session)
                 uri == "/api/voice/preview-wake" && method == Method.POST -> handlePreviewWake(session)
+                uri == "/api/sendspin/login" && method == Method.POST -> handleMaLogin(session)
+                uri == "/api/sendspin/logout" && method == Method.POST -> handleMaLogout()
                 else -> error(Response.Status.NOT_FOUND, "not found")
             }
         }
@@ -196,6 +204,38 @@ class ConfigServer(
         val volume = obj?.get("volume")?.jsonPrimitive?.intOrNull ?: saved.wakeSoundVolume
         val norm = VoiceSettings(wakeSoundVolume = volume).clamped()
         previewEarcon(norm.wakeSoundVolume)
+        return ok("""{"ok":true}""")
+    }
+
+    private fun handleMaLogin(session: IHTTPSession): Response {
+        val obj = runCatching { ConfigJson.json.parseToJsonElement(readBody(session)) as JsonObject }
+            .getOrNull() ?: return error(Response.Status.BAD_REQUEST, "invalid request")
+        // The username is trimmed (copy-paste whitespace); the password is passed through
+        // verbatim and exists only in this request scope — never logged, never persisted here.
+        val username = obj["username"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+        val password = obj["password"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        if (username.isBlank() || password.isEmpty()) {
+            return error(Response.Status.BAD_REQUEST, "missing credentials")
+        }
+        // runBlocking is fine here: we're on a NanoHTTPD worker thread, and the MA auth handshake
+        // has a 10s upstream timeout, so the request returns promptly instead of pinning the worker.
+        val result = runBlocking { maSignIn(username, password) }
+        return result.fold(
+            // Display name only — the token travels to the browser solely as part of the persisted
+            // config document (GET /api/config), never in the login response.
+            onSuccess = { userName ->
+                ok(buildJsonObject { put("ok", true); put("userName", userName) }.toString())
+            },
+            onFailure = { e ->
+                json(STATUS_502, buildJsonObject {
+                    put("ok", false); put("error", e.message ?: "sign-in failed")
+                }.toString())
+            },
+        )
+    }
+
+    private fun handleMaLogout(): Response {
+        maSignOut()
         return ok("""{"ok":true}""")
     }
 

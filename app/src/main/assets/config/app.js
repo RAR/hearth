@@ -800,7 +800,8 @@ function renderSendspin() {
   host.appendChild(el("div", "muted",
     "Joins a Music Assistant Sendspin group for sample-accurate multi-room synced playback. Leave the " +
     "server address blank to auto-discover the Music Assistant server via mDNS. Sync delay offsets this " +
-    "device's playback by up to ±2000 ms to compensate for its own audio-pipeline latency (clamped on save)."));
+    "device's playback by up to ±2000 ms to compensate for its own audio-pipeline latency (positive = " +
+    "this device plays later; applies live, clamped on save)."));
 }
 
 function renderNight() {

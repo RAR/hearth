@@ -444,6 +444,7 @@ class AppDeps(context: Context) {
      * Reactively (re)run the SendSpin playback endpoint. Restarts on any change to
      * sendspin.enabled or sendspin.serverAddress (mirrors how [startVoice] restarts on
      * config change): tears down any running instance, then starts it if enabled.
+     * Sync-delay changes ride a separate live-apply collector and never restart anything.
      */
     fun startSendspin() {
         scope.launch {
@@ -458,6 +459,15 @@ class AppDeps(context: Context) {
                         if (enabled) sendspin.start()
                     }.onFailure { android.util.Log.e("AppDeps", "SendSpin start/stop failed", it) }
                 }
+        }
+        // Sync-delay tuning is deliberately a SEPARATE collector: setSyncDelay applies live to the
+        // running client's time filter, so nudging the slider must never tear down / reconnect the
+        // MA session the way (enabled, serverAddress) changes intentionally do.
+        scope.launch {
+            configStore.config
+                .map { it.sendspin.syncDelayMs }
+                .distinctUntilChanged()
+                .collect { sendspin.setSyncDelay(it) }
         }
     }
 

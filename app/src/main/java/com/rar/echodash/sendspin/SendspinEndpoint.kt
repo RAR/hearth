@@ -91,8 +91,24 @@ class SendspinEndpoint(
     @Volatile private var nsd: NsdDiscoveryManager? = null
     private var stateCollectorJob: Job? = null
 
-    /** deferred: latency tuning -- read but intentionally NOT wired into the time filter yet. */
+    // User sync-delay (ms) from config, applied to the time filter's USER static-delay slot -- the
+    // seam upstream SendSpinDroid's settings slider used (setUserSyncOffsetMs). Positive = this
+    // device plays LATER: serverToClient() ADDS the slot to each chunk's render instant. @Volatile:
+    // written by the config collector (Default dispatcher), read on start()'s caller thread.
     @Volatile private var syncDelayMs: Int = 0
+
+    /**
+     * Store the user sync-delay and apply it LIVE to the running client's time filter -- no
+     * reconnect needed, serverToClient reads the slot lock-free on the audio path. Also seeded onto
+     * each fresh client in [start] (a new SendSpin means a new filter with an empty USER slot); the
+     * slot deliberately survives the filter's reconnect resets (reset/resetAndDiscard keep the
+     * static-delay components) and SyncAudioPlayer recreations share the same filter object, so no
+     * per-player reapply is needed. No-op while disconnected beyond storing for the next start.
+     */
+    fun setSyncDelay(ms: Int) {
+        syncDelayMs = ms
+        sendSpin?.getTimeFilter()?.setUserSyncOffsetMs(ms.toDouble())
+    }
 
     // ---- Ducking (per-track AudioTrack gain) ----
     // setDuckGain drives SyncAudioPlayer.setVolume, which applies the REAL per-track gain (since
@@ -393,7 +409,7 @@ class SendspinEndpoint(
         started = true
 
         val cfg = config.value.sendspin
-        syncDelayMs = cfg.syncDelayMs // deferred: latency tuning
+        syncDelayMs = cfg.syncDelayMs
         // Seed the volume from the device's real output level so the takeover slider shows the truth
         // immediately, not a placeholder, before MA ever pushes a volume.
         npVolume = currentDeviceVolumePercent()
@@ -401,6 +417,9 @@ class SendspinEndpoint(
 
         val ss = SendSpin(context, deviceName(), EndpointCallback())
         sendSpin = ss
+        // Seed the sync-delay onto the fresh client's time filter (see setSyncDelay, which keeps it
+        // live thereafter without dropping the connection).
+        ss.getTimeFilter().setUserSyncOffsetMs(syncDelayMs.toDouble())
 
         // Publish status derived from the transport state + streaming flag.
         stateCollectorJob = scope.launch {

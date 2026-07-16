@@ -17,7 +17,7 @@ User-approved scope (2026-07-16): **search + quick picks**. A search box over th
 
 ## Scope & Boundaries
 
-- App-side only; the hearth HA integration is untouched **unless** the View select entity's option list turns out to be hard-coded there (open check below) — then a 0.2.x bump adds the `music` option.
+- App-side only; the hearth HA integration is untouched. (Resolved at plan time: the browser lives inside the existing MEDIA view, whose `media` option is already in the integration's hard-coded `VIEW_OPTIONS` — no new view, no integration bump.)
 - LAN plaintext WebSocket, same trust posture as sub-project A and the config server.
 - Targets the panel's own playback. Commands resolve the panel's *effective* queue (`player_queues/get_active_queue` with our SendSpin client id), so if the user grouped the panel in MA, control correctly lands on the group queue. No group management UI.
 
@@ -40,9 +40,9 @@ Same convention as the engine: vendor from chrisuthe/SendSpinDroid @ `594251f` (
 ## Architecture & Components
 
 1. **`MaLibrary` (new Hearth glue, sibling of `SendspinEndpoint`)** — owns the API WebSocket lifecycle. Runs only when `sendspin.enabled` **and** an MA token exists. Derives the URL from the same server the audio path uses (mDNS-discovered or manual address host) at fixed port 8095, path `/ws`. Exposes StateFlows: connection state (NoToken / AuthFailed / Offline / Connected), shelves, search results, queue. Reconnect with sendspin-style backoff. API-socket failures never touch the audio path, and vice versa.
-2. **`MusicView` (new Compose view in the rail)** — search field on top; below, horizontal shelves: Playlists, Radio, Recently Played (Favorites shelf only if the API's favorites *listing* proves usable — open check). An active query replaces shelves with grouped results (tracks / albums / artists / playlists / radio as returned by `music/search`; albums/artists play as a whole via their URI — no drill-down). Tap = play now (playlists/albums/artists play whole via their URI); long-press = play next / add to queue. A queue button on the view opens the upcoming list: tap an item jumps to it (`play_index`), plus a clear-queue action.
-3. **Takeover browse button** — small affordance on the now-playing takeover that switches the dashboard to the Music view.
-4. **View select** — `music` joins the view set so voice/HA switching works like other views.
+2. **`MusicBrowser` (new Compose UI inside the existing MEDIA view)** — `MediaPanel` becomes browser-on-top + compact now-playing strip at the bottom (reusing the transport callbacks it already receives); when SendSpin is disabled or signed out it renders exactly as today. Browser: search field on top; below, horizontal shelves: Playlists, Radio, Recently Played. (Favorites shelf dropped — resolved at plan time: the MA API reference has no favorites *listing* command, only add.) An active query replaces shelves with grouped results (tracks / albums / artists / playlists / radio as returned by `music/search`). Tap = play now (playlists/albums/artists play whole via their URI); long-press = play next / add to queue. A queue button opens the upcoming list: tap an item jumps to it (`play_index`), plus a clear-queue action. A ninth rail view was rejected: 9 × 52dp rail icons don't fit the Echo's 480px height, and MEDIA already carries the MusicNote icon.
+3. **Takeover browse button** — small affordance on the now-playing takeover that switches the dashboard to the MEDIA view (`currentView.value = DashView.MEDIA`, the existing hoisted-state pattern).
+4. **View select** — no change needed; `media` is already an option, so "show me the media view" voice switching reaches the browser as-is.
 
 ## Auth & Config
 
@@ -67,12 +67,12 @@ View opened → `MaLibrary` fetches shelves (paged, e.g. limit 25) → user taps
 - New plain-JVM pins: `MaLibrary` state machine (no-token / auth-fail / connected / offline transitions), enqueue-mode mapping, effective-queue-id resolution falling back to own player id on error, shelf/search → UI-state mapping.
 - Manual verification on both devices: sign-in from config page, search-and-play, enqueue-next ordering, queue jump/clear, grouped-panel case (commands land on group queue).
 
-## Open Checks (resolve during planning)
+## Open Checks — all resolved 2026-07-16 during planning
 
-1. View select options: app-reported or hard-coded in the hearth integration? Hard-coded → integration 0.2.x bump ships alongside.
-2. Which image-loading path does takeover art use, and is it reusable for shelf thumbnails (MA image URLs are plain HTTP on the LAN)?
-3. Favorites listing command availability (upstream only shows favorites *add*). If unusable, ship without the Favorites shelf.
-4. Exact `music/search` result shape for radio (SearchResults model covers it upstream — confirm after trim).
+1. View select options are hard-coded in the integration (`const.py` `VIEW_OPTIONS`) — but moot: the browser lives in the existing MEDIA view, so no option is added and the integration is untouched.
+2. Takeover art uses `ArtFetcher` (custom OkHttp → BitmapFactory), but it attaches the HA bearer token to every request and is single-slot — not reusable for MA thumbnails. A small separate token-less thumb loader with a bounded cache is part of the plan. Upstream's client emits `imageUri` values already resolved to absolute image-proxy URLs, so thumbnails are plain GETs.
+3. No favorites listing in the reference client (only `favorites/add_item`) → Favorites shelf dropped from v1.
+4. `music/search` returns radios (`SearchResults.radios`, parsed from the `radio` result array) — radio appears in search results as designed.
 
 ## Risks & Deferred Items
 

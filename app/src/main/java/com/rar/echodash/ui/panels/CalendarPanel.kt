@@ -4,6 +4,7 @@ import android.text.format.DateFormat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -29,11 +30,12 @@ import com.rar.echodash.config.ClockFormat
 import com.rar.echodash.ui.clockIs24
 import com.rar.echodash.ui.model.AgendaDay
 import com.rar.echodash.ui.model.CalendarEvent
+import com.rar.echodash.ui.model.agendaDayCount
 import com.rar.echodash.ui.model.agendaDays
 import com.rar.echodash.ui.model.eventClockLabel
 import java.time.ZoneId
 
-/** 3-day agenda: three equal-weight day columns of color-coded event rows. */
+/** Adaptive agenda (3–5 equal-weight day columns, chosen by panel width): color-coded event rows. */
 @Composable
 fun CalendarPanel(
     events: List<CalendarEvent>,
@@ -49,10 +51,14 @@ fun CalendarPanel(
         val is24 = clockIs24(clockFormat, DateFormat.is24HourFormat(context))
         val zone = ZoneId.systemDefault()
         val nowMs = System.currentTimeMillis()
-        val days = agendaDays(events, nowMs, zone)
-        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            days.forEach { day ->
-                DayColumn(day, nowMs, zone, is24, Modifier.weight(1f))
+        // Inside PanelSurface (its 24dp pads already applied), so maxWidth IS the agenda's content
+        // width — the day count grows with it: 739dp → 3 (Show 5), 913 → 4 (Show 8), 1292 → 5 (M9).
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val days = agendaDays(events, nowMs, zone, dayCount = agendaDayCount(maxWidth.value))
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                days.forEach { day ->
+                    DayColumn(day, nowMs, zone, is24, Modifier.weight(1f))
+                }
             }
         }
     }

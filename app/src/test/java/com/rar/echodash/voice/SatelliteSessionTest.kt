@@ -411,4 +411,33 @@ class SatelliteSessionTest {
             (s.onTick(nowMs = 32_000).last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
         assertEquals(VoiceOverlayPhase.HIDDEN, s.overlay.phase)
     }
+
+    @Test
+    fun errorDuringThinkingShowsFailedThenAutoHides() {
+        val s = session()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onEvent(event("detection", """{"name":"x"}"""), nowMs = 0)
+        s.onEvent(event("transcript", """{"text":"hi"}"""), nowMs = 1_000)  // THINKING
+        val err = s.onEvent(event("error", """{"text":"boom"}"""), nowMs = 2_000)
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.FAILED, "No response — try again"),
+            (err.last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
+        assertTrue(s.onTick(nowMs = 4_999).none { it is SatelliteAction.Overlay })  // before +3 s
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.HIDDEN),
+            (s.onTick(nowMs = 5_000).last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
+    }
+
+    @Test
+    fun midRunRunSatelliteFailsButAtStartArmsNormally() {
+        val s = session()
+        // Session start (phase HIDDEN): run-satellite arms as today, no FAILED overlay.
+        val start = s.onEvent(event("run-satellite"), nowMs = 0)
+        assertTrue(start.none { it is SatelliteAction.Overlay })
+        assertTrue(sends(start).map { it.type }.contains("run-pipeline"))
+        // Mid-run (THINKING): a fresh run-satellite means HA abandoned the pipeline -> FAILED.
+        s.onEvent(event("detection", """{"name":"x"}"""), nowMs = 0)
+        s.onEvent(event("transcript", """{"text":"hi"}"""), nowMs = 1_000)  // THINKING
+        val mid = s.onEvent(event("run-satellite"), nowMs = 2_000)
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.FAILED, "No response — try again"),
+            (mid.last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
+    }
 }

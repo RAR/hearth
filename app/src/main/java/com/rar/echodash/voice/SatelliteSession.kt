@@ -99,7 +99,10 @@ class SatelliteSession(
     fun onEvent(event: WyomingEvent, nowMs: Long = 0L): List<SatelliteAction> = when (event.type) {
         "describe" -> listOf(SatelliteAction.Send(infoEvent()))
         "ping" -> listOf(SatelliteAction.Send(pongEvent((event.data["text"] as? JsonPrimitive)?.contentOrNull)))
-        "run-satellite" -> if (localWake) {
+        "run-satellite" -> if (overlay.phase == VoiceOverlayPhase.LISTENING || overlay.phase == VoiceOverlayPhase.THINKING) {
+            // HA abandoned the pipeline mid-run (e.g. empty LLM response). Fail rather than re-arm silently.
+            failActions(nowMs)
+        } else if (localWake) {
             // Arm on-device detection: mic on, but no pipeline and no streaming yet.
             wakeState = WakeState.DETECTING
             micTimestampMs = 0L
@@ -149,12 +152,7 @@ class SatelliteSession(
                 base
             }
         }
-        "error" -> if (localWake) {
-            wakeState = WakeState.DETECTING
-            listOf(SatelliteAction.Send(WyomingEvent("streaming-stopped")), SatelliteAction.ResetDetector)
-        } else {
-            emptyList()
-        }
+        "error" -> failActions(nowMs)
         "synthesize" -> {
             watchdogAtMs = nowMs + WATCHDOG_MS
             listOf(overlayAction(VoiceOverlayState(VoiceOverlayPhase.RESPONSE, textOf(event))))

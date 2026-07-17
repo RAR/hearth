@@ -113,6 +113,8 @@ async function tryLoad() {
     }
     renderSetup(status.configured === false);
     render();
+    if (status.configured === false) location.hash = "#device";
+    showPage(currentPage());
     startStatusPoll();
     setStatus("Connected", "ok");
   } catch (e) {
@@ -228,6 +230,8 @@ async function completeSetup() {
   // On failure the params stay in the URL; show the card so the user can retry Connect.
   renderSetup(true);
   render();
+  location.hash = "#device";
+  showPage(currentPage());
   setStatus("Setup failed", "err");
 }
 
@@ -294,6 +298,29 @@ function reorderButtons(canUp, canDown, onUp, onDown) {
   down.addEventListener("click", onDown);
   nav.appendChild(up); nav.appendChild(down);
   return nav;
+}
+
+// ---------- nav (hash-routed pages) ----------
+const PAGES = ["device", "screens", "climate", "lights", "cameras", "energy", "calendars", "media", "alerts"];
+
+function currentPage() {
+  const key = (location.hash || "").replace(/^#/, "");
+  return PAGES.includes(key) ? key : "device";
+}
+
+function showPage(key) {
+  PAGES.forEach(k => {
+    const page = document.getElementById("page-" + k);
+    if (page) page.hidden = (k !== key);
+    const item = document.getElementById("nav-" + k);
+    if (item) {
+      if (k === key) item.setAttribute("aria-current", "page");
+      else item.removeAttribute("aria-current");
+    }
+  });
+  const active = document.getElementById("nav-" + key);
+  if (active && active.scrollIntoView) active.scrollIntoView({ inline: "nearest", block: "nearest" });
+  window.scrollTo(0, 0);
 }
 
 // ---------- render ----------
@@ -1195,4 +1222,5 @@ function startStatusPoll() {
 document.getElementById("login-form").addEventListener("submit", doLogin);
 document.getElementById("save").addEventListener("click", save);
 document.getElementById("setup-form").addEventListener("submit", beginSetup);
+window.addEventListener("hashchange", () => showPage(currentPage()));
 tryLoad();

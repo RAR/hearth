@@ -24,6 +24,7 @@
   --err:       #ff8a80;
   --radius:    18px;
   --radius-sm: 12px;
+  --topbar-h:  3.8rem;
 }
 
 /* Bulletproof the hide/show contract: an author display rule must never defeat [hidden]. */
@@ -110,7 +111,76 @@ h1, h2, h3 { margin: 0; }
 .brand-sub { font-size: .72rem; color: var(--text-dim); font-weight: 700; text-transform: uppercase; letter-spacing: .09em; }
 .actions { display: flex; align-items: center; gap: .55rem; }
 
-.content { max-width: 46rem; margin: 0 auto; padding: 1.1rem 1rem 4rem; }
+.content { max-width: 46rem; margin: 0 auto; padding: 0 1rem 4rem; }
+
+/* =========================================================
+   Navigation (scrollable pill row; sidebar ≥860px)
+   ========================================================= */
+#nav {
+  position: sticky; top: var(--topbar-h); z-index: 15;
+  display: flex; flex-wrap: nowrap; gap: .4rem;
+  margin: 0 -1rem; padding: .55rem 1rem;
+  overflow-x: auto; overflow-y: hidden;
+  background: rgba(15,20,32,.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+#nav::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+.nav-item {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .45rem .75rem; border-radius: 999px;
+  text-decoration: none; white-space: nowrap;
+  font-weight: 700; font-size: .85rem;
+  color: var(--text-mid);
+  background: var(--card-2);
+  border: 1px solid var(--line-soft);
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.nav-item svg { width: 1.05rem; height: 1.05rem; flex: none; }
+.nav-item:hover { color: var(--text); border-color: var(--line); }
+.nav-item[aria-current="page"] {
+  color: var(--accent-hi);
+  background: rgba(58,110,165,.14);
+  border-color: var(--accent);
+}
+
+.pages { min-width: 0; }
+
+@media (min-width: 860px) {
+  .content {
+    display: flex; align-items: flex-start; gap: 1.4rem;
+    max-width: 62rem;
+  }
+  #nav {
+    position: sticky; top: calc(var(--topbar-h) + .2rem); z-index: 10;
+    flex: 0 0 13rem; flex-direction: column; gap: .15rem;
+    margin: 0; padding: .2rem 0 0;
+    overflow: visible;
+    background: none;
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+  }
+  .nav-item {
+    position: relative; width: 100%;
+    gap: .6rem; padding: .5rem .7rem; font-size: .92rem;
+    background: none; border-color: transparent; border-radius: 10px;
+  }
+  .nav-item svg { width: 1.2rem; height: 1.2rem; }
+  .nav-item:hover { background: var(--card-2); border-color: transparent; color: var(--text); }
+  .nav-item[aria-current="page"] {
+    background: rgba(58,110,165,.14);
+    border-color: transparent;
+  }
+  .nav-item[aria-current="page"]::before {
+    content: ""; position: absolute; left: 0; top: 50%;
+    transform: translateY(-50%);
+    width: 3px; height: 1.4rem; border-radius: 0 3px 3px 0;
+    background: var(--accent);
+  }
+  .pages { flex: 1 1 auto; min-width: 0; max-width: 46rem; }
+}
 
 /* =========================================================
    Cards

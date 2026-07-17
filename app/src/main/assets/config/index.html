@@ -64,307 +64,357 @@
     </div>
 
     <div class="content">
+      <nav id="nav" aria-label="Configuration sections">
+        <a id="nav-device" class="nav-item" href="#device">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-6.6-6.6A2 2 0 0 1 3.4 12.6V5a1.6 1.6 0 0 1 1.6-1.6h7.6a2 2 0 0 1 1.4.6l6.6 6.6a2 2 0 0 1 0 2.8Z"/><circle cx="8" cy="8" r="1.4"/></svg>
+          <span class="nav-label">Device</span>
+        </a>
+        <a id="nav-screens" class="nav-item" href="#screens">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/></svg>
+          <span class="nav-label">Screens</span>
+        </a>
+        <a id="nav-climate" class="nav-item" href="#climate">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.6V5a2 2 0 1 1 4 0v8.6a4 4 0 1 1-4 0Z"/><circle cx="12" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>
+          <span class="nav-label">Climate &amp; Weather</span>
+        </a>
+        <a id="nav-lights" class="nav-item" href="#lights">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.5.5.8 1 .8 1.6V16h6v-.8c0-.6.3-1.1.8-1.6A6 6 0 0 0 12 3Z"/></svg>
+          <span class="nav-label">Lights &amp; Buttons</span>
+        </a>
+        <a id="nav-cameras" class="nav-item" href="#cameras">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="12" height="11" rx="2"/><path d="M15 10l6-3v10l-6-3Z"/></svg>
+          <span class="nav-label">Cameras</span>
+        </a>
+        <a id="nav-energy" class="nav-item" href="#energy">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.6"/><path d="M12 2.5v2.4M12 19.1v2.4M21.5 12h-2.4M4.9 12H2.5M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7M18.4 18.4l-1.7-1.7M7.3 7.3 5.6 5.6"/></svg>
+          <span class="nav-label">Energy</span>
+        </a>
+        <a id="nav-calendars" class="nav-item" href="#calendars">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="2.5"/><path d="M3.5 9h17"/><path d="M8 3v3"/><path d="M16 3v3"/></svg>
+          <span class="nav-label">Calendars</span>
+        </a>
+        <a id="nav-media" class="nav-item" href="#media">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10.2 8.3 16 12l-5.8 3.7Z" fill="currentColor" stroke="none"/></svg>
+          <span class="nav-label">Media &amp; Voice</span>
+        </a>
+        <a id="nav-alerts" class="nav-item" href="#alerts">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
+          <span class="nav-label">Alerts</span>
+        </a>
+      </nav>
 
-      <section id="setup-section" class="card-section" hidden>
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 3v6l4 2"/>
-            </svg>
-          </span>
-          <div class="card-titles">
-            <h2>Connect to Home Assistant</h2>
-            <p>Sign in through your Home Assistant to finish setup.</p>
-          </div>
-        </div>
-        <form id="setup-form" class="setup">
-          <div class="row">
-            <label for="setup-url">Home Assistant URL</label>
-            <span class="picker">
-              <input id="setup-url" inputmode="url" autocomplete="off" placeholder="http://homeassistant.local:8123">
-            </span>
-          </div>
-          <div class="setup-actions">
-            <button id="setup-connect" type="submit" class="btn-primary">Connect</button>
-          </div>
-          <div id="setup-error" class="error" role="alert"></div>
-        </form>
-      </section>
+      <div class="pages">
+        <section class="page" id="page-device" hidden>
+          <section id="setup-section" class="card-section" hidden>
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 3v6l4 2"/>
+                </svg>
+              </span>
+              <div class="card-titles">
+                <h2>Connect to Home Assistant</h2>
+                <p>Sign in through your Home Assistant to finish setup.</p>
+              </div>
+            </div>
+            <form id="setup-form" class="setup">
+              <div class="row">
+                <label for="setup-url">Home Assistant URL</label>
+                <span class="picker">
+                  <input id="setup-url" inputmode="url" autocomplete="off" placeholder="http://homeassistant.local:8123">
+                </span>
+              </div>
+              <div class="setup-actions">
+                <button id="setup-connect" type="submit" class="btn-primary">Connect</button>
+              </div>
+              <div id="setup-error" class="error" role="alert"></div>
+            </form>
+          </section>
 
-      <section id="device-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-6.6-6.6A2 2 0 0 1 3.4 12.6V5a1.6 1.6 0 0 1 1.6-1.6h7.6a2 2 0 0 1 1.4.6l6.6 6.6a2 2 0 0 1 0 2.8Z"/>
-              <circle cx="8" cy="8" r="1.4"/>
-            </svg>
-          </span>
-          <div class="card-titles">
-            <h2>Device</h2>
-            <p>How this device identifies itself to Home Assistant and on the network.</p>
-          </div>
-        </div>
-        <div id="device"></div>
-      </section>
+          <section id="device-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-6.6-6.6A2 2 0 0 1 3.4 12.6V5a1.6 1.6 0 0 1 1.6-1.6h7.6a2 2 0 0 1 1.4.6l6.6 6.6a2 2 0 0 1 0 2.8Z"/>
+                  <circle cx="8" cy="8" r="1.4"/>
+                </svg>
+              </span>
+              <div class="card-titles">
+                <h2>Device</h2>
+                <p>How this device identifies itself to Home Assistant and on the network.</p>
+              </div>
+            </div>
+            <div id="device"></div>
+          </section>
 
-      <section id="backup-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
-              <path d="M8.5 4v7"/><path d="M6 8.5 8.5 11 11 8.5"/>
-              <path d="M15.5 11V4"/><path d="M13 6.5 15.5 4 18 6.5"/>
-            </svg>
-          </span>
-          <div class="card-titles">
-            <h2>Backup</h2>
-            <p>Export this device's configuration to a file, or restore one — handy for cloning a setup onto a new device.</p>
-          </div>
-        </div>
-        <div id="backup"></div>
-      </section>
+          <section id="backup-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+                  <path d="M8.5 4v7"/><path d="M6 8.5 8.5 11 11 8.5"/>
+                  <path d="M15.5 11V4"/><path d="M13 6.5 15.5 4 18 6.5"/>
+                </svg>
+              </span>
+              <div class="card-titles">
+                <h2>Backup</h2>
+                <p>Export this device's configuration to a file, or restore one — handy for cloning a setup onto a new device.</p>
+              </div>
+            </div>
+            <div id="backup"></div>
+          </section>
+        </section>
+        <section class="page" id="page-screens" hidden>
+          <section id="panels-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/>
+                  <rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/>
+                </svg>
+              </span>
+              <div class="card-titles">
+                <h2>Panels</h2>
+                <p>Choose which screens appear and the order they cycle in.</p>
+              </div>
+            </div>
+            <div id="panels"></div>
+          </section>
 
-      <section id="panels-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/>
-              <rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/>
-            </svg>
-          </span>
-          <div class="card-titles">
-            <h2>Panels</h2>
-            <p>Choose which screens appear and the order they cycle in.</p>
-          </div>
-        </div>
-        <div id="panels"></div>
-      </section>
+          <section id="home-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v10h12V10"/><path d="M10 20v-5h4v5"/>
+                </svg>
+              </span>
+              <div class="card-titles">
+                <h2>Home screen</h2>
+                <p>Idle behaviour, clock, and the photo slideshow.</p>
+              </div>
+            </div>
+            <div id="home"></div>
+          </section>
 
-      <section id="home-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v10h12V10"/><path d="M10 20v-5h4v5"/>
-            </svg>
-          </span>
-          <div class="card-titles">
-            <h2>Home screen</h2>
-            <p>Idle behaviour, clock, and the photo slideshow.</p>
-          </div>
-        </div>
-        <div id="home"></div>
-      </section>
+          <section id="night-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4 7 7 0 1 0 20 14.5Z"/></svg>
+              </span>
+              <div class="card-titles">
+                <h2>Night mode</h2>
+                <p>Dim clock on a black screen when the room goes dark.</p>
+              </div>
+            </div>
+            <div id="night"></div>
+          </section>
+        </section>
+        <section class="page" id="page-climate" hidden>
+          <section id="sensors-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-.4-8A5.5 5.5 0 0 1 17 9.2 3.6 3.6 0 0 1 16.8 18Z"/></svg>
+              </span>
+              <div class="card-titles">
+                <h2>Sensors</h2>
+                <p>Temperature, weather, air quality, and rain for the panels and home screen.</p>
+              </div>
+            </div>
+            <div id="sensors"></div>
+          </section>
 
-      <section id="night-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4 7 7 0 1 0 20 14.5Z"/></svg>
-          </span>
-          <div class="card-titles">
-            <h2>Night mode</h2>
-            <p>Dim clock on a black screen when the room goes dark.</p>
-          </div>
-        </div>
-        <div id="night"></div>
-      </section>
+          <section id="thermostats-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.6V5a2 2 0 1 1 4 0v8.6a4 4 0 1 1-4 0Z"/><circle cx="12" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>
+              </span>
+              <div class="card-titles">
+                <h2>Thermostats</h2>
+                <p>Climate entities for the thermostat panel.</p>
+              </div>
+            </div>
+            <div id="thermostats"></div>
+          </section>
+        </section>
+        <section class="page" id="page-lights" hidden>
+          <section id="lightgroups-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.5.5.8 1 .8 1.6V16h6v-.8c0-.6.3-1.1.8-1.6A6 6 0 0 0 12 3Z"/></svg>
+              </span>
+              <div class="card-titles">
+                <h2>Light groups</h2>
+                <p>Grouped lights, switches, and fans for the lights panel.</p>
+              </div>
+            </div>
+            <div id="lightgroups"></div>
+          </section>
 
-      <section id="sensors-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-.4-8A5.5 5.5 0 0 1 17 9.2 3.6 3.6 0 0 1 16.8 18Z"/></svg>
-          </span>
-          <div class="card-titles">
-            <h2>Sensors</h2>
-            <p>Temperature, weather, air quality, and rain for the panels and home screen.</p>
-          </div>
-        </div>
-        <div id="sensors"></div>
-      </section>
+          <section id="quickbuttons-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.5.5.8 1 .8 1.6V16h6v-.8c0-.6.3-1.1.8-1.6A6 6 0 0 0 12 3Z"/></svg>
+              </span>
+              <div class="card-titles">
+                <h2>Quick buttons</h2>
+                <p>Up to four tappable controls on the home screen.</p>
+              </div>
+            </div>
+            <div id="quickbuttons"></div>
+          </section>
+        </section>
+        <section class="page" id="page-cameras" hidden>
+          <section id="cameras-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="12" height="11" rx="2"/><path d="M15 10l6-3v10l-6-3Z"/></svg>
+              </span>
+              <div class="card-titles">
+                <h2>Cameras</h2>
+                <p>Live camera streams for the cameras panel.</p>
+              </div>
+            </div>
+            <div id="cameras"></div>
+          </section>
 
-      <section id="thermostats-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.6V5a2 2 0 1 1 4 0v8.6a4 4 0 1 1-4 0Z"/><circle cx="12" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>
-          </span>
-          <div class="card-titles">
-            <h2>Thermostats</h2>
-            <p>Climate entities for the thermostat panel.</p>
-          </div>
-        </div>
-        <div id="thermostats"></div>
-      </section>
+          <section id="doorbells-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="12" height="11" rx="2"/><path d="M15 10l6-3v10l-6-3Z"/></svg>
+              </span>
+              <div class="card-titles">
+                <h2>Doorbells</h2>
+                <p>Pop up a camera when a doorbell triggers.</p>
+              </div>
+            </div>
+            <div id="doorbells"></div>
+          </section>
+        </section>
+        <section class="page" id="page-energy" hidden>
+          <section id="solar-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.6"/><path d="M12 2.5v2.4M12 19.1v2.4M21.5 12h-2.4M4.9 12H2.5M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7M18.4 18.4l-1.7-1.7M7.3 7.3 5.6 5.6"/></svg>
+              </span>
+              <div class="card-titles">
+                <h2>Solar</h2>
+                <p>Production, battery, and per-array sensors for the solar card and panel.</p>
+              </div>
+            </div>
+            <div id="solar"></div>
+          </section>
 
-      <section id="lightgroups-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.5.5.8 1 .8 1.6V16h6v-.8c0-.6.3-1.1.8-1.6A6 6 0 0 0 12 3Z"/></svg>
-          </span>
-          <div class="card-titles">
-            <h2>Light groups</h2>
-            <p>Grouped lights, switches, and fans for the lights panel.</p>
-          </div>
-        </div>
-        <div id="lightgroups"></div>
-      </section>
+          <section id="ev-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 17v-4l2-4.5A2 2 0 0 1 7.8 7.3h6.4A2 2 0 0 1 16 8.5L18 13v4"/>
+                  <path d="M4 17h2M18 17h2"/><circle cx="7.5" cy="17" r="1.5"/><circle cx="16.5" cy="17" r="1.5"/>
+                  <path d="M12 8.5 11 11.5h2L11.8 14.5"/>
+                </svg>
+              </span>
+              <div class="card-titles">
+                <h2>EV charging</h2>
+                <p>Home-screen card while a car charges — assign EVCC entities.</p>
+              </div>
+            </div>
+            <div id="ev"></div>
+          </section>
+        </section>
+        <section class="page" id="page-calendars" hidden>
+          <section id="calendars-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3.5" y="4.5" width="17" height="16" rx="2.5"/>
+                  <path d="M3.5 9h17"/><path d="M8 3v3"/><path d="M16 3v3"/>
+                </svg>
+              </span>
+              <div class="card-titles">
+                <h2>Calendars</h2>
+                <p>Home Assistant calendars for the home-screen card and agenda panel.</p>
+              </div>
+            </div>
+            <div id="calendars"></div>
+          </section>
+        </section>
+        <section class="page" id="page-media" hidden>
+          <section id="media-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10.2 8.3 16 12l-5.8 3.7Z" fill="currentColor" stroke="none"/></svg>
+              </span>
+              <div class="card-titles">
+                <h2>Media</h2>
+                <p>Album art and track info for on-device playback.</p>
+              </div>
+            </div>
+            <div id="media"></div>
+          </section>
 
-      <section id="quickbuttons-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.5.5.8 1 .8 1.6V16h6v-.8c0-.6.3-1.1.8-1.6A6 6 0 0 0 12 3Z"/></svg>
-          </span>
-          <div class="card-titles">
-            <h2>Quick buttons</h2>
-            <p>Up to four tappable controls on the home screen.</p>
-          </div>
-        </div>
-        <div id="quickbuttons"></div>
-      </section>
+          <section id="sendspin-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/>
+                  <path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/>
+                </svg>
+              </span>
+              <div class="card-titles">
+                <h2>Sendspin</h2>
+                <p>Sample-accurate synced playback with other Music Assistant players.</p>
+              </div>
+            </div>
+            <div id="sendspin"></div>
+          </section>
 
-      <section id="cameras-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="12" height="11" rx="2"/><path d="M15 10l6-3v10l-6-3Z"/></svg>
-          </span>
-          <div class="card-titles">
-            <h2>Cameras</h2>
-            <p>Live camera streams for the cameras panel.</p>
-          </div>
-        </div>
-        <div id="cameras"></div>
-      </section>
+          <section id="voice-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>
+                </svg>
+              </span>
+              <div class="card-titles">
+                <h2>Voice</h2>
+                <p>Turn the dashboard into a Home Assistant voice satellite.</p>
+              </div>
+            </div>
+            <div id="voice"></div>
+          </section>
+        </section>
+        <section class="page" id="page-alerts" hidden>
+          <section id="nws-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>
+                </svg>
+              </span>
+              <div class="card-titles">
+                <h2>Weather alerts</h2>
+                <p>Active weather alerts shown under the weather.</p>
+              </div>
+            </div>
+            <div id="nws"></div>
+          </section>
 
-      <section id="doorbells-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.5" width="12" height="11" rx="2"/><path d="M15 10l6-3v10l-6-3Z"/></svg>
-          </span>
-          <div class="card-titles">
-            <h2>Doorbells</h2>
-            <p>Pop up a camera when a doorbell triggers.</p>
-          </div>
-        </div>
-        <div id="doorbells"></div>
-      </section>
-
-      <section id="solar-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.6"/><path d="M12 2.5v2.4M12 19.1v2.4M21.5 12h-2.4M4.9 12H2.5M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7M18.4 18.4l-1.7-1.7M7.3 7.3 5.6 5.6"/></svg>
-          </span>
-          <div class="card-titles">
-            <h2>Solar</h2>
-            <p>Production, battery, and per-array sensors for the solar card and panel.</p>
-          </div>
-        </div>
-        <div id="solar"></div>
-      </section>
-
-      <section id="ev-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 17v-4l2-4.5A2 2 0 0 1 7.8 7.3h6.4A2 2 0 0 1 16 8.5L18 13v4"/>
-              <path d="M4 17h2M18 17h2"/><circle cx="7.5" cy="17" r="1.5"/><circle cx="16.5" cy="17" r="1.5"/>
-              <path d="M12 8.5 11 11.5h2L11.8 14.5"/>
-            </svg>
-          </span>
-          <div class="card-titles">
-            <h2>EV charging</h2>
-            <p>Home-screen card while a car charges — assign EVCC entities.</p>
-          </div>
-        </div>
-        <div id="ev"></div>
-      </section>
-
-      <section id="calendars-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3.5" y="4.5" width="17" height="16" rx="2.5"/>
-              <path d="M3.5 9h17"/><path d="M8 3v3"/><path d="M16 3v3"/>
-            </svg>
-          </span>
-          <div class="card-titles">
-            <h2>Calendars</h2>
-            <p>Home Assistant calendars for the home-screen card and agenda panel.</p>
-          </div>
-        </div>
-        <div id="calendars"></div>
-      </section>
-
-      <section id="media-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10.2 8.3 16 12l-5.8 3.7Z" fill="currentColor" stroke="none"/></svg>
-          </span>
-          <div class="card-titles">
-            <h2>Media</h2>
-            <p>Album art and track info for on-device playback.</p>
-          </div>
-        </div>
-        <div id="media"></div>
-      </section>
-
-      <section id="sendspin-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/>
-              <path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/>
-            </svg>
-          </span>
-          <div class="card-titles">
-            <h2>Sendspin</h2>
-            <p>Sample-accurate synced playback with other Music Assistant players.</p>
-          </div>
-        </div>
-        <div id="sendspin"></div>
-      </section>
-
-      <section id="voice-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>
-            </svg>
-          </span>
-          <div class="card-titles">
-            <h2>Voice</h2>
-            <p>Turn the dashboard into a Home Assistant voice satellite.</p>
-          </div>
-        </div>
-        <div id="voice"></div>
-      </section>
-
-      <section id="nws-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>
-            </svg>
-          </span>
-          <div class="card-titles">
-            <h2>Weather alerts</h2>
-            <p>Active weather alerts shown under the weather.</p>
-          </div>
-        </div>
-        <div id="nws"></div>
-      </section>
-
-      <section id="push-section" class="card-section">
-        <div class="card-head">
-          <span class="ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>
-            </svg>
-          </span>
-          <div class="card-titles">
-            <h2>Push from Home Assistant</h2>
-            <p>Show notifications sent from a Home Assistant automation.</p>
-          </div>
-        </div>
-        <div id="push"></div>
-      </section>
+          <section id="push-section" class="card-section">
+            <div class="card-head">
+              <span class="ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>
+                </svg>
+              </span>
+              <div class="card-titles">
+                <h2>Push from Home Assistant</h2>
+                <p>Show notifications sent from a Home Assistant automation.</p>
+              </div>
+            </div>
+            <div id="push"></div>
+          </section>
+        </section>
+      </div>
     </div>
   </main>
 

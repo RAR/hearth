@@ -174,6 +174,12 @@ async function save() {
 
 function renderSetup(show) {
   document.getElementById("setup-section").hidden = !show;
+  // After a disconnect baseUrl is retained (clearAuth keeps it); prefill the empty field so
+  // reconnecting is Connect -> HA login -> done.
+  if (show) {
+    const urlEl = document.getElementById("setup-url");
+    if (urlEl && !urlEl.value && lastStatus && lastStatus.haUrl) urlEl.value = lastStatus.haUrl;
+  }
 }
 
 function showSetupError(msg) {
@@ -325,6 +331,7 @@ function showPage(key) {
 
 // ---------- render ----------
 function render() {
+  renderHa();
   renderDevice();
   renderBackup();
   renderPanels();
@@ -343,6 +350,68 @@ function render() {
   renderSendspin();
   renderVoice();
   renderNws();
+}
+
+function renderHa() {
+  // Complementary to the setup card: shown only when configured. Visibility is owned here
+  // (render()/tryLoad()), never by the poll.
+  document.getElementById("ha-section").hidden = !(lastStatus && lastStatus.configured);
+  const host = document.getElementById("ha");
+  clear(host);
+
+  const pill = el("span", "status info", "Unknown");
+  pill.id = "ha-conn";
+  host.appendChild(labeledRow("Status", pill));
+  updateHaConn(lastStatus);   // paint the real state now; the 5s poll refreshes it after
+
+  const urlInput = el("input");
+  urlInput.readOnly = true;
+  urlInput.value = (lastStatus && lastStatus.haUrl) || "";
+  urlInput.setAttribute("aria-label", "Home Assistant server address");
+  urlInput.addEventListener("focus", () => urlInput.select());   // select-on-focus, read-only
+  host.appendChild(labeledRow("Server", urlInput));
+
+  const row = el("div", "row");
+  const disc = el("button", "ghost danger", "Disconnect…");
+  disc.type = "button";
+  disc.addEventListener("click", disconnectHa);
+  row.appendChild(disc);
+  host.appendChild(row);
+
+  host.appendChild(el("div", "muted",
+    "Signs this device out of Home Assistant and returns it to setup. Panels, entities, and " +
+    "all other settings are kept; the server address stays filled in for reconnecting."));
+}
+
+// Live status pill; called after render and from the 5s poll. Sets text + class ONLY — never
+// toggles card visibility (that is render()/tryLoad()'s job).
+function updateHaConn(status) {
+  const node = document.getElementById("ha-conn");
+  if (!node) return;                       // card not rendered
+  const map = {
+    CONNECTED: ["ok", "Connected"],
+    CONNECTING: ["busy", "Connecting…"],
+    OFFLINE: ["err", "Offline"],
+    AUTH_FAILED: ["err", "Authentication failed"],
+  };
+  const [kind, label] = map[status && status.connState] || ["info", "Unknown"];
+  node.className = "status " + kind;
+  node.textContent = label;
+}
+
+async function disconnectHa() {
+  if (!confirm("Disconnect from Home Assistant? The dashboard stops until you reconnect.")) return;
+  setStatus("Disconnecting…", "busy");
+  try {
+    const r = await api("POST", "/api/disconnect");
+    if (r.status === 401) { showLogin(); return; }
+    // On ok the device has cleared auth; tryLoad() re-pulls status (now configured:false),
+    // which hides this card, shows setup, and forces the #device page.
+    if (r.ok) { await tryLoad(); return; }
+    setStatus("Can't reach the device — not disconnected.", "err");
+  } catch (e) {
+    setStatus("Can't reach the device — not disconnected.", "err");
+  }
 }
 
 function renderDevice() {
@@ -1175,7 +1244,7 @@ function startStatusPoll() {
   setInterval(async () => {
     try {
       const r = await api("GET", "/api/status");
-      if (r.ok) { lastStatus = await r.json(); updateNightLux(lastStatus); updateSendspinStatus(lastStatus); }
+      if (r.ok) { lastStatus = await r.json(); updateNightLux(lastStatus); updateSendspinStatus(lastStatus); updateHaConn(lastStatus); }
     } catch (e) { /* device may be briefly unreachable; ignore */ }
   }, 5000);
 }

@@ -29,9 +29,24 @@ data class SolarConfig(
     val loadToday: String? = null,
     val battSoc: String? = null,   // home battery % sensor
     val battPower: String? = null, // battery power W/kW; negative = charging (evcc convention)
+    val gridImportToday: String? = null, // kWh energy sensor, grid → house today
+    val gridExportToday: String? = null, // kWh energy sensor, house → grid today
+    val battInToday: String? = null,     // kWh energy sensor, charged into battery today
+    val battOutToday: String? = null,    // kWh energy sensor, discharged from battery today
+    val arrays: List<SolarArrayConfig> = emptyList(), // up to 4 per-array PV power sensors
 ) {
-    fun ids(): List<String> = listOfNotNull(pv, load, grid, pvToday, loadToday, battSoc, battPower)
+    fun ids(): List<String> = listOfNotNull(
+        pv, load, grid, pvToday, loadToday, battSoc, battPower,
+        gridImportToday, gridExportToday, battInToday, battOutToday,
+    ) + arrays.mapNotNull { it.power }
 }
+
+/** One per-array/string PV power sensor. [name] blank falls back to "A".."D" by slot index. */
+@Serializable
+data class SolarArrayConfig(
+    val name: String = "",
+    val power: String? = null,
+)
 
 @Serializable
 data class EvConfig(
@@ -297,6 +312,14 @@ data class DashConfig(
                     loadToday = entities.solar.loadToday?.trim()?.ifBlank { null },
                     battSoc = entities.solar.battSoc?.trim()?.ifBlank { null },
                     battPower = entities.solar.battPower?.trim()?.ifBlank { null },
+                    gridImportToday = entities.solar.gridImportToday?.trim()?.ifBlank { null },
+                    gridExportToday = entities.solar.gridExportToday?.trim()?.ifBlank { null },
+                    battInToday = entities.solar.battInToday?.trim()?.ifBlank { null },
+                    battOutToday = entities.solar.battOutToday?.trim()?.ifBlank { null },
+                    arrays = entities.solar.arrays
+                        .map { it.copy(name = it.name.trim(), power = it.power?.trim()?.ifBlank { null }) }
+                        .filter { it.name.isNotBlank() || it.power != null }
+                        .take(4),
                 ),
                 lightGroups = entities.lightGroups
                     .map { it.copy(entities = it.entities.filter { id -> id.isNotBlank() }) }

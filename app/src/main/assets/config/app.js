@@ -435,6 +435,8 @@ function renderEntities() {
   host.appendChild(subhead("solar", "Solar"));
   const solarSlots = [["pv", "PV power"], ["load", "Home load"], ["grid", "Grid power"],
     ["pvToday", "PV today"], ["loadToday", "Load today"],
+    ["gridImportToday", "Grid import today (kWh)"], ["gridExportToday", "Grid export today (kWh)"],
+    ["battInToday", "Battery charged today (kWh)"], ["battOutToday", "Battery discharged today (kWh)"],
     ["battSoc", "Battery %"], ["battPower", "Battery power"]];
   solarSlots.forEach(([k, lbl]) => {
     host.appendChild(labeledRow(lbl, entityPicker(["sensor"], e.solar[k], v => e.solar[k] = v)));
@@ -442,6 +444,28 @@ function renderEntities() {
   host.appendChild(el("div", "muted",
     "Battery % and battery power add a solar card to the home screen (gauge shimmers green while charging, amber in reverse while discharging). " +
     "Battery power: negative = charging (evcc convention). Grid power: positive = importing."));
+
+  // solar array slots (per-string PV power; panel-scale detail only). Fixed four slots like EVs.
+  if (!Array.isArray(e.solar.arrays)) e.solar.arrays = [];
+  const solarArrays = e.solar.arrays;
+  while (solarArrays.length < 4) solarArrays.push({});
+  solarArrays.slice(0, 4).forEach((slot, i) => {
+    const box = el("div", "group");
+    const head = el("div", "group-head");
+    head.appendChild(el("span", "panel-name", "Array " + String.fromCharCode(65 + i)));
+    box.appendChild(head);
+    const name = el("input");
+    name.value = slot.name || "";
+    name.setAttribute("aria-label", "Array name");
+    name.addEventListener("change", () => slot.name = name.value.trim());
+    box.appendChild(labeledRow("Name", name));
+    box.appendChild(labeledRow("PV power",
+      entityPicker(["sensor"], slot.power, v => slot.power = v)));
+    host.appendChild(box);
+  });
+  host.appendChild(el("div", "muted",
+    "Per-array PV power (e.g. TigoMonitor sensor.solar_array_a–d) shows on the full-screen Solar panel only. " +
+    "Blank name falls back to A–D. Empty slots are dropped on save."));
 
   // light groups
   host.appendChild(subhead("lights", "Light groups"));

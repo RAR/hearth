@@ -602,4 +602,74 @@ class DashConfigTest {
         )
         assertEquals(listOf("sensor.t"), cfg.referencedEntityIds())
     }
+
+    @Test
+    fun solarTodayAndArrayFieldsRoundTrip() {
+        val cfg = DashConfig(
+            entities = Entities(
+                solar = SolarConfig(
+                    pv = "sensor.pv",
+                    gridImportToday = "sensor.gi", gridExportToday = "sensor.ge",
+                    battInToday = "sensor.bi", battOutToday = "sensor.bo",
+                    arrays = listOf(
+                        SolarArrayConfig(name = "South", power = "sensor.solar_array_a"),
+                        SolarArrayConfig(power = "sensor.solar_array_b"),
+                    ),
+                ),
+            ),
+        )
+        val text = ConfigJson.json.encodeToString(DashConfig.serializer(), cfg)
+        assertEquals(cfg, decodeConfig(text))
+        // old configs (no keys) decode to defaults
+        val old = decodeConfig("""{"version":1}""")
+        assertEquals(emptyList<SolarArrayConfig>(), old.entities.solar.arrays)
+        assertEquals(null, old.entities.solar.gridImportToday)
+    }
+
+    @Test
+    fun clampedSolarArraysTrimmedDroppedAndCapped() {
+        val cfg = DashConfig(
+            entities = Entities(
+                solar = SolarConfig(
+                    gridImportToday = "  sensor.gi  ", battOutToday = "  ",
+                    arrays = listOf(
+                        SolarArrayConfig(name = "  South  ", power = "  sensor.a  "),
+                        SolarArrayConfig(name = "", power = "sensor.b"),
+                        SolarArrayConfig(name = "  ", power = "  "),          // all blank -> dropped
+                        SolarArrayConfig(name = "Named", power = null),       // named, no power -> kept
+                        SolarArrayConfig(name = "Fifth", power = "sensor.e"), // 5th valid -> capped out
+                    ),
+                ),
+            ),
+        ).clamped().entities.solar
+        assertEquals("sensor.gi", cfg.gridImportToday)
+        assertEquals(null, cfg.battOutToday)
+        assertEquals(4, cfg.arrays.size)
+        assertEquals(SolarArrayConfig("South", "sensor.a"), cfg.arrays[0])
+        assertEquals(SolarArrayConfig("", "sensor.b"), cfg.arrays[1])
+        assertEquals(SolarArrayConfig("Named", null), cfg.arrays[2])
+        assertEquals(SolarArrayConfig("Fifth", "sensor.e"), cfg.arrays[3])
+    }
+
+    @Test
+    fun referencedEntityIdsIncludeSolarTodayAndArrayPower() {
+        val cfg = DashConfig(
+            entities = Entities(
+                solar = SolarConfig(
+                    pv = "sensor.pv",
+                    gridImportToday = "sensor.gi", gridExportToday = "sensor.ge",
+                    battInToday = "sensor.bi", battOutToday = "sensor.bo",
+                    arrays = listOf(
+                        SolarArrayConfig(power = "sensor.a"),
+                        SolarArrayConfig(name = "b-only-name"), // no power -> contributes nothing
+                        SolarArrayConfig(power = "sensor.c"),
+                    ),
+                ),
+            ),
+        )
+        assertEquals(
+            listOf("sensor.pv", "sensor.gi", "sensor.ge", "sensor.bi", "sensor.bo", "sensor.a", "sensor.c"),
+            cfg.referencedEntityIds(),
+        )
+    }
 }

@@ -78,7 +78,8 @@ fun NowPlayingHome(
 
         // Browse the MA library (jumps to the MEDIA view). TopEnd: TopStart holds the compact
         // clock HomeView draws above this layer. 48 dp (not the transport 64) so it clears the
-        // top edge of the 360 dp art card on the Echo's 480 px height.
+        // art card's top edge on the smallest canvas (787×394, art at its height-limited 360dp);
+        // taller screens only add clearance.
         Box(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 16.dp)) {
             NpTransportButton(Icons.AutoMirrored.Outlined.QueueMusic, size = 48.dp, iconSize = 24.dp) {
                 onBrowse()

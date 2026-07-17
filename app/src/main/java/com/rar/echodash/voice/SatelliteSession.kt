@@ -72,6 +72,7 @@ class SatelliteSession(
     private var micTimestampMs = 0L
     private var dismissAtMs: Long? = null
     private var watchdogAtMs: Long? = null
+    private var suppressRun = false
     var overlay: VoiceOverlayState = VoiceOverlayState()
         private set
 
@@ -105,6 +106,7 @@ class SatelliteSession(
             failActions(nowMs)
         } else if (localWake) {
             // Arm on-device detection: mic on, but no pipeline and no streaming yet.
+            suppressRun = false
             wakeState = WakeState.DETECTING
             micTimestampMs = 0L
             listOf(
@@ -113,6 +115,7 @@ class SatelliteSession(
                 SatelliteAction.StartMic,
             )
         } else {
+            suppressRun = false
             streaming = true
             micTimestampMs = 0L
             listOf(
@@ -134,6 +137,7 @@ class SatelliteSession(
         }
         "detection" -> {
             // Legacy/fallback: HA reports the wake word. In localWake HA never sends this.
+            suppressRun = false
             watchdogAtMs = nowMs + WATCHDOG_MS
             listOf(
                 SatelliteAction.Earcon(EarconKind.WAKE),
@@ -154,11 +158,11 @@ class SatelliteSession(
             }
         }
         "error" -> failActions(nowMs)
-        "synthesize" -> {
+        "synthesize" -> if (suppressRun) emptyList() else {
             watchdogAtMs = nowMs + WATCHDOG_MS
             listOf(overlayAction(VoiceOverlayState(VoiceOverlayPhase.RESPONSE, textOf(event))))
         }
-        "audio-start" -> {
+        "audio-start" -> if (suppressRun) emptyList() else {
             ttsActive = true
             watchdogAtMs = null
             listOf(
@@ -169,8 +173,8 @@ class SatelliteSession(
                 ),
             )
         }
-        "audio-chunk" -> listOf(SatelliteAction.PlaybackChunk(event.payload))
-        "audio-stop" -> listOf(SatelliteAction.PlaybackStop)
+        "audio-chunk" -> if (suppressRun) emptyList() else listOf(SatelliteAction.PlaybackChunk(event.payload))
+        "audio-stop" -> if (suppressRun) listOf(SatelliteAction.Send(WyomingEvent("played"))) else listOf(SatelliteAction.PlaybackStop)
         "timer-started" -> {
             val id = strOf(event, "id")
             timers[id] = TimerRec(
@@ -216,6 +220,7 @@ class SatelliteSession(
         if (wakeState != WakeState.DETECTING) return emptyList()
         wakeState = WakeState.STREAMING
         micTimestampMs = 0L
+        suppressRun = false
         watchdogAtMs = nowMs + WATCHDOG_MS
         return listOf(
             SatelliteAction.Send(detectionEvent(name)),
@@ -261,6 +266,32 @@ class SatelliteSession(
         ttsActive = false
         dismissAtMs = nowMs + DISMISS_MS
         return listOf(SatelliteAction.Send(WyomingEvent("played")))
+    }
+
+    /**
+     * The user tapped the voice pill. RESPONSE aborts playback and hides (mic un-gates via
+     * ttsActive); THINKING hides and suppresses the rest of the in-flight run so HA's pipeline
+     * still completes; FAILED hides immediately. LISTENING/HIDDEN/TRANSCRIPT are no-ops.
+     */
+    fun onOverlayTapped(nowMs: Long): List<SatelliteAction> = when (overlay.phase) {
+        VoiceOverlayPhase.RESPONSE -> {
+            ttsActive = false
+            dismissAtMs = null
+            watchdogAtMs = null
+            listOf(SatelliteAction.PlaybackAbort, overlayAction(VoiceOverlayState()))
+        }
+        VoiceOverlayPhase.THINKING -> {
+            suppressRun = true
+            dismissAtMs = null
+            watchdogAtMs = null
+            listOf(overlayAction(VoiceOverlayState()))
+        }
+        VoiceOverlayPhase.FAILED -> {
+            dismissAtMs = null
+            watchdogAtMs = null
+            listOf(overlayAction(VoiceOverlayState()))
+        }
+        else -> emptyList()
     }
 
     fun onTimerAlertDismissed(nowMs: Long): List<SatelliteAction> {
@@ -319,6 +350,7 @@ class SatelliteSession(
         micTimestampMs = 0L
         dismissAtMs = null
         watchdogAtMs = null
+        suppressRun = false
         overlay = VoiceOverlayState()
     }
 

@@ -440,4 +440,43 @@ class SatelliteSessionTest {
         assertEquals(VoiceOverlayState(VoiceOverlayPhase.FAILED, "No response — try again"),
             (mid.last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
     }
+
+    @Test
+    fun tapDuringResponseAbortsPlaybackHidesAndUngatesMic() {
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        s.onEvent(event("transcript", """{"text":"hi"}"""), nowMs = 0)        // -> DETECTING, THINKING
+        s.onEvent(event("synthesize", """{"text":"Answer"}"""), nowMs = 0)    // RESPONSE
+        s.onEvent(event("audio-start", """{"rate":22050,"width":2,"channels":1}"""), nowMs = 0) // ttsActive
+        assertTrue(s.onMicChunk(ByteArray(960) { 1 }).isEmpty())              // mic gated during playback
+        val tap = s.onOverlayTapped(nowMs = 100)
+        assertTrue(tap.contains(SatelliteAction.PlaybackAbort))
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.HIDDEN),
+            (tap.last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
+        assertTrue(s.onMicChunk(ByteArray(960) { 1 }).isNotEmpty())           // mic un-gated after abort
+    }
+
+    @Test
+    fun tapDuringThinkingSuppressesRunButCompletesPipeline() {
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        s.onEvent(event("transcript", """{"text":"hi"}"""), nowMs = 0)        // THINKING (wakeState DETECTING)
+        val tap = s.onOverlayTapped(nowMs = 0)
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.HIDDEN),
+            (tap.last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
+        assertFalse(tap.contains(SatelliteAction.PlaybackAbort))              // nothing playing yet
+        // The run's late events are swallowed:
+        assertTrue(s.onEvent(event("synthesize", """{"text":"late"}""")).isEmpty())
+        assertTrue(s.onEvent(event("audio-start", """{"rate":22050,"width":2,"channels":1}""")).isEmpty())
+        assertTrue(s.onEvent(event("audio-chunk", null, ByteArray(8) { 1 })).isEmpty())
+        // ...but audio-stop still completes HA's pipeline:
+        assertEquals("played", sends(s.onEvent(event("audio-stop"))).single().type)
+        // Next wake clears suppression and behaves normally:
+        val wake = s.onWakeDetected("alexa", nowMs = 0)
+        assertTrue(sends(wake).map { it.type }.contains("run-pipeline"))
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.LISTENING),
+            (wake.last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
+    }
 }

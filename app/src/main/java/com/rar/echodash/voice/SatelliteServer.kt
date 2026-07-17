@@ -159,6 +159,11 @@ class SatelliteServer(
         synchronized(lock) { dispatch(active, session.onTimerAlertDismissed(System.currentTimeMillis())) }
     }
 
+    /** Tap on the voice pill: abort playback / cancel a thinking run (may run with no connection). */
+    fun onOverlayTapped() {
+        synchronized(lock) { dispatch(active, session.onOverlayTapped(System.currentTimeMillis())) }
+    }
+
     private fun handle(socket: Socket) {
         val conn = try {
             Connection(socket, socket.getOutputStream().buffered())

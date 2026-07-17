@@ -260,7 +260,10 @@ fun SolarFlowDiagram(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(nodeIcon(id), contentDescription = null, tint = Color.White,
                         modifier = Modifier.size(iconDp))
-                    Text(label, color = Color.White, fontSize = primarySp, maxLines = 1)
+                    // >=10 kW labels ("10.2 kW", 7 chars) outgrow the circle at the base size;
+                    // shrink proportionally past 6 chars so the text always stays inside the node.
+                    val fit = if (label.length > 6) 6f / label.length else 1f
+                    Text(label, color = Color.White, fontSize = primarySp * fit, maxLines = 1)
                 }
             }
         }

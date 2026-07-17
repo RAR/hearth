@@ -170,6 +170,11 @@ fun SolarFlowDiagram(
 
 Fills its incoming constraints; **all geometry scales from `min(width, height)`** so the same
 composable renders at card size (~268×230 dp) and panel size. No LocalConfiguration.
+The composable internally reserves a bottom label strip for the battery's below-node lines
+(watts + daily detail) and lays the diamond out in the remaining box — the 0.85 battery
+fraction leaves only ~2 % of height under the node, so without the strip those labels would
+clip at every scale (plan-review finding 2026-07-17; the approved mock drew them outside the
+diamond box the same way).
 
 - **Node centers** (fractions of the diagram box): SOLAR (0.50, 0.15), GRID (0.15, 0.50),
   HOME (0.85, 0.50), BATTERY (0.50, 0.85). Node radius `r = 0.13 × min(w, h)`.

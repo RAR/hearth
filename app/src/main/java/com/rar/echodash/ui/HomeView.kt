@@ -12,11 +12,13 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +46,10 @@ import androidx.compose.material.icons.outlined.ElectricMeter
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.EvStation
 import androidx.compose.material.icons.outlined.HorizontalRule
+import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Power
 import androidx.compose.material.icons.outlined.SolarPower
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -62,10 +68,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -84,6 +92,9 @@ import com.rar.echodash.ui.model.BattFlow
 import com.rar.echodash.ui.model.CalendarEvent
 import com.rar.echodash.ui.model.EvCard
 import com.rar.echodash.ui.model.NotificationItem
+import com.rar.echodash.ui.model.QuickButton
+import com.rar.echodash.ui.model.QuickButtonIcon
+import com.rar.echodash.ui.model.QuickButtonKind
 import com.rar.echodash.ui.model.RainPill
 import com.rar.echodash.ui.model.SolarCard
 import com.rar.echodash.ui.model.SolarFlowGraph
@@ -166,6 +177,8 @@ fun HomeView(
     evs: List<EvCard> = emptyList(),
     solar: SolarCard? = null,
     solarGraph: SolarFlowGraph? = null,
+    quickButtons: List<QuickButton> = emptyList(),
+    onQuickButton: (QuickButton) -> Unit = {},
     notifications: List<NotificationItem> = emptyList(),
     onDismiss: (String) -> Unit = {},
     // CONFIG presence of EV/solar cards (not current visibility): reserves the card column in the
@@ -330,7 +343,7 @@ fun HomeView(
             }
 
             AnimatedVisibility(
-                visible = evs.isNotEmpty() || solar != null,
+                visible = evs.isNotEmpty() || solar != null || quickButtons.isNotEmpty(),
                 enter = fadeIn(tween(600)),
                 exit = fadeOut(tween(600)),
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 28.dp),
@@ -343,6 +356,10 @@ fun HomeView(
                         SolarFlowCardView(solarGraph, cardWidth)
                     } else if (solar != null) {
                         SolarCardView(solar, cardWidth)
+                    }
+                    // Quick buttons sit below the EV/solar cards on every tier (opt-in via config).
+                    if (quickButtons.isNotEmpty()) {
+                        QuickButtonsCardView(quickButtons, cardWidth, onQuickButton)
                     }
                 }
             }
@@ -704,4 +721,86 @@ private fun SolarCardView(card: SolarCard, cardWidth: Dp = 248.dp) {
             }
         }
     }
+}
+
+/** Home quick-buttons card: up to four equal-width cells, each a 44dp circular chip (22dp icon)
+ *  above an 11sp single-line label. Same black-0.35 / RoundedCornerShape(20) / 16×10 chrome as the
+ *  EV and solar cards. TOGGLE chips follow live [QuickButton.isOn]; PRESS chips flash on tap.
+ *  Unavailable cells dim to 0.4 and ignore taps. */
+@Composable
+private fun QuickButtonsCardView(
+    buttons: List<QuickButton>,
+    cardWidth: Dp,
+    onTap: (QuickButton) -> Unit,
+) {
+    Row(
+        Modifier
+            .width(cardWidth)
+            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        buttons.forEach { button ->
+            QuickButtonCell(button, onTap, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun QuickButtonCell(
+    button: QuickButton,
+    onTap: (QuickButton) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // PRESS actions are stateless, so a tap gives no live feedback: flash the chip blue and let it
+    // fade back (~250ms) as the acknowledgment. TOGGLE chips instead follow isOn from the
+    // subscription — no optimistic flip.
+    var flashing by remember(button.entityId) { mutableStateOf(false) }
+    LaunchedEffect(flashing) {
+        if (flashing) { delay(250); flashing = false }
+    }
+    val targetColor = when {
+        button.kind == QuickButtonKind.PRESS -> if (flashing) QuickChipOn else QuickChipOff
+        button.isOn == true -> QuickChipOn
+        else -> QuickChipOff
+    }
+    val chipColor by animateColorAsState(targetColor, tween(250), label = "quickButtonChip")
+    Column(
+        modifier.alpha(if (button.available) 1f else 0.4f),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(chipColor)
+                .clickable(enabled = button.available) {
+                    if (button.kind == QuickButtonKind.PRESS) flashing = true
+                    onTap(button)
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                quickButtonIcon(button.icon), contentDescription = button.label,
+                tint = Color.White, modifier = Modifier.size(22.dp),
+            )
+        }
+        Text(
+            button.label, color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+// Lights-panel palette: on / PRESS-flash blue, off / PRESS-idle dark.
+private val QuickChipOn = Color(0xFF3A6EA5)
+private val QuickChipOff = Color(0xFF232733)
+
+private fun quickButtonIcon(icon: QuickButtonIcon): ImageVector = when (icon) {
+    QuickButtonIcon.LIGHT -> Icons.Outlined.Lightbulb
+    QuickButtonIcon.SWITCH -> Icons.Outlined.Power
+    QuickButtonIcon.RUN -> Icons.Outlined.PlayArrow
+    QuickButtonIcon.SCENE -> Icons.Outlined.Palette
 }

@@ -95,6 +95,15 @@ data class CalendarConfig(
     }
 }
 
+/** One home-screen quick button. [name] blank falls back to the entity's friendly_name (else the
+ *  entity-id tail, resolved in the model). [entity] is a switch/light/input_boolean (toggles) or a
+ *  button/script/scene (fires). */
+@Serializable
+data class QuickButtonConfig(
+    val name: String = "",
+    val entity: String? = null,
+)
+
 @Serializable
 data class Entities(
     val tempSensor: String? = null,
@@ -108,6 +117,7 @@ data class Entities(
     val doorbells: List<DoorbellConfig> = emptyList(),
     val evs: List<EvConfig> = emptyList(),
     val calendars: List<CalendarConfig> = emptyList(),
+    val quickButtons: List<QuickButtonConfig> = emptyList(),
 )
 
 @Serializable
@@ -249,6 +259,7 @@ data class DashConfig(
         entities.cameras.forEach { c -> c.entity?.let { add(it) } }
         entities.doorbells.forEach { d -> d.trigger?.let { add(it) } }
         entities.evs.forEach { addAll(it.ids()) }
+        entities.quickButtons.forEach { qb -> qb.entity?.let { add(it) } }
         media.companionEntity?.let { add(it) }
         notifications.nwsAlerts?.let { add(it) }
     }.distinct()
@@ -328,6 +339,11 @@ data class DashConfig(
                 doorbells = cleanedDoorbells,
                 evs = cleanedEvs,
                 calendars = cleanedCalendars,
+                // Trim both fields, drop slots with no entity (a name alone is useless), cap at 4.
+                quickButtons = entities.quickButtons
+                    .map { it.copy(name = it.name.trim(), entity = it.entity?.trim()?.ifBlank { null }) }
+                    .filter { it.entity != null }
+                    .take(4),
             ),
             home = home.copy(
                 idleReturnSeconds = home.idleReturnSeconds.coerceIn(15, 3600),

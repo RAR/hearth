@@ -672,4 +672,57 @@ class DashConfigTest {
             cfg.referencedEntityIds(),
         )
     }
+
+    @Test
+    fun quickButtonsRoundTripAndDefault() {
+        val cfg = DashConfig(
+            entities = Entities(
+                quickButtons = listOf(
+                    QuickButtonConfig(name = "Desk", entity = "light.desk"),
+                    QuickButtonConfig(entity = "script.movie_night"),
+                ),
+            ),
+        )
+        val text = ConfigJson.json.encodeToString(DashConfig.serializer(), cfg)
+        assertEquals(cfg, decodeConfig(text))
+        // old configs (no key) decode to an empty list
+        val old = decodeConfig("""{"version":1}""")
+        assertEquals(emptyList<QuickButtonConfig>(), old.entities.quickButtons)
+    }
+
+    @Test
+    fun clampedQuickButtonsTrimDropEntitylessAndCap() {
+        val cleaned = DashConfig(
+            entities = Entities(
+                quickButtons = listOf(
+                    QuickButtonConfig(name = "  Desk  ", entity = "  light.desk  "),
+                    QuickButtonConfig(name = "  ", entity = "switch.fan"),      // blank name kept, entity present
+                    QuickButtonConfig(name = "Nameless", entity = "  "),        // blank entity -> dropped
+                    QuickButtonConfig(name = "  ", entity = null),              // no entity -> dropped
+                    QuickButtonConfig(name = "Two", entity = "input_boolean.a"),
+                    QuickButtonConfig(name = "Three", entity = "button.b"),
+                    QuickButtonConfig(name = "Fifth", entity = "scene.c"),      // 5th valid -> capped out
+                ),
+            ),
+        ).clamped().entities.quickButtons
+        assertEquals(4, cleaned.size)
+        assertEquals(QuickButtonConfig("Desk", "light.desk"), cleaned[0])
+        assertEquals(QuickButtonConfig("", "switch.fan"), cleaned[1])
+        assertEquals(QuickButtonConfig("Two", "input_boolean.a"), cleaned[2])
+        assertEquals(QuickButtonConfig("Three", "button.b"), cleaned[3])
+    }
+
+    @Test
+    fun referencedEntityIdsIncludeQuickButtons() {
+        val cfg = DashConfig(
+            entities = Entities(
+                quickButtons = listOf(
+                    QuickButtonConfig(entity = "light.desk"),
+                    QuickButtonConfig(name = "name-only"),   // no entity -> contributes nothing
+                    QuickButtonConfig(entity = "scene.movie"),
+                ),
+            ),
+        )
+        assertEquals(listOf("light.desk", "scene.movie"), cfg.referencedEntityIds())
+    }
 }

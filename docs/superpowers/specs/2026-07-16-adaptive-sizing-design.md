@@ -93,7 +93,7 @@ The Show 5 row is the golden rule made concrete: those are today's shipped value
 
 - Both cards gain a `cardWidth: Dp` parameter replacing the hard `width(248.dp)`.
 - Solar stats row: when `solarStatsCompact(cardWidth)` keep today's compact 12sp text / 14dp icons / 3dp gaps; otherwise relax to the pre-stopgap 14sp / 16dp / 4dp (the "·" separator stays removed). Battery/home/grid segments identical in both variants.
-- `GaugeBar` drops its hard-coded 216: `.fillMaxWidth().size(width = 216.dp, height = 8.dp)` → `.fillMaxWidth().height(8.dp)`, and the body wraps in `BoxWithConstraints` so the shimmer sweep (`fraction × (trackW + 24) − 24`) and the limit tick (`trackW × tickPct / 100 − 1`) use the measured track width. Behavior at 216dp is bit-identical to today.
+- `GaugeBar` drops its hard-coded 216: `.fillMaxWidth().size(width = 216.dp, height = 8.dp)` → `.fillMaxWidth().height(8.dp)`, and the body wraps in `BoxWithConstraints` so the shimmer sweep (`fraction × (trackW + 24) − 24`) and the limit tick (`trackW × tickPct / 100 − 1`, **integer division** — today's tick math truncates, and keeping Int semantics is what makes 216dp bit-identical) use the measured track width. Behavior at 216dp is bit-identical to today.
 
 **`NowPlayingHome.kt`** — root `Box` becomes `BoxWithConstraints`; `val layout = takeoverLayout(maxWidth.value, maxHeight.value)`.
 
@@ -129,5 +129,5 @@ The Show 5 row is the golden rule made concrete: those are today's shipped value
 ## Open checks
 
 - Tab M9 dp canvas is an estimate until measured; the formulas are indifferent, only the expected-values column moves.
-- `SolarConfig.ids()` visibility from `DashboardShell` (used at `DashConfig.kt:232`; assumed public data-class fun).
-- Whether any existing test pins the 3-day calendar fetch window (update alongside `EntityHub`).
+- ~~`SolarConfig.ids()` visibility from `DashboardShell`~~ — RESOLVED at plan time: public (no modifier) on both `SolarConfig` (DashConfig.kt:33) and `EvConfig` (:47), already called cross-file.
+- ~~Whether any existing test pins the 3-day calendar fetch window~~ — RESOLVED at plan time: none does; the two `agendaDays` tests use the default `dayCount` and are untouched.

@@ -325,6 +325,27 @@ class SolarModelTest {
     }
 
     @Test
+    fun nonNumericStatesAreSkippedInDailyLines() {
+        // A fresh utility_meter reports "unknown" until its source first ticks — render the
+        // numeric side alone, never the literal "unknown kWh".
+        val cfg = SolarConfig(pv = "sensor.pv", pvToday = "sensor.pvday", loadToday = "sensor.loadday",
+            gridImportToday = "sensor.gi", gridExportToday = "sensor.ge",
+            arrays = listOf(SolarArrayConfig(power = "sensor.a"), SolarArrayConfig(power = "sensor.b")))
+        val g = solarFlowGraph(cfg, mapOf(
+            "sensor.pv" to st("sensor.pv", "0", "W"),
+            "sensor.pvday" to st("sensor.pvday", "5.8", "kWh"),
+            "sensor.loadday" to st("sensor.loadday", "unknown", "kWh"),
+            "sensor.gi" to st("sensor.gi", "unknown", "kWh"),
+            "sensor.ge" to st("sensor.ge", "unavailable", "kWh"),
+            "sensor.a" to st("sensor.a", "447", "watts"),
+            "sensor.b" to st("sensor.b", "unknown", "watts"),
+        ))!!
+        assertEquals("Today: 5.8 kWh produced", g.todayLine)
+        assertNull(g.gridTodayLine)
+        assertEquals("A 447 W", g.arraysLine)
+    }
+
+    @Test
     fun flowLapMsCurveAndClamps() {
         assertEquals(4000, flowLapMs(50.0))
         assertEquals(2600, flowLapMs(2025.0))

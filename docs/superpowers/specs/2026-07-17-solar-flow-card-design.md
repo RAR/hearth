@@ -150,7 +150,9 @@ today (kWh)", "Battery discharged today (kWh)" following the pvToday/loadToday p
 four array slots (name text + entity picker each), following the EV card's fixed-slot
 pattern.
 
-Line formats (each null when its sensors are absent):
+Line formats (each null when its sensors are absent; sensors with non-numeric states —
+HA "unknown"/"unavailable", e.g. a fresh utility_meter before its first tick — are skipped,
+never rendered verbatim):
 - `gridTodayLine` / `battTodayLine`: "↓ {in} {unit} · ↑ {out} {unit}" using each sensor's
   own unit (default kWh); either sensor alone renders alone. For the battery, ↓ = charged,
   ↑ = discharged.

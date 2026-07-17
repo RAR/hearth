@@ -41,8 +41,8 @@ class AdaptiveGeometryTest {
     @Test
     fun solarFlowCardTierPins() {
         assertFalse(solarFlowCard(248))  // Show 5 tier: unchanged pill by construction (golden rule)
-        assertTrue(solarFlowCard(300))   // Show 8 tier
-        assertTrue(solarFlowCard(320))   // Tab M9 tier
+        assertTrue(solarFlowCard(300))   // Show 8 / Tab M9 tier
+        assertTrue(solarFlowCard(320))   // >=1200dp-wide tier
     }
 
     // ---- homeOverlayCaps: all five golden rows ----

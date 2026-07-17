@@ -103,34 +103,39 @@ fun solarFlowGraph(cfg: SolarConfig, entities: Map<String, EntityState>): SolarF
 fun flowLapMs(watts: Double): Int =
     (4000 - ((watts - 50.0) / 3950.0) * 2800.0).roundToInt().coerceIn(1200, 4000)
 
-/** "Today: X produced · Y used"; null when neither -today sensor resolves. Each value keeps its
- *  own unit (default kWh). */
+/** Non-numeric states (HA "unknown"/"unavailable" — e.g. a fresh utility_meter that hasn't
+ *  ticked yet) must never render verbatim as "unknown kWh"; the line builders skip them. */
+private fun EntityState.numericOrNull(): EntityState? = takeIf { state.toDoubleOrNull() != null }
+
+/** "Today: X produced · Y used"; null when neither -today sensor resolves numerically. Each value
+ *  keeps its own unit (default kWh). */
 private fun todayLine(pvToday: EntityState?, loadToday: EntityState?): String? =
     buildString {
-        pvToday?.let { append("${it.state} ${it.attr("unit_of_measurement") ?: "kWh"} produced") }
-        loadToday?.let {
+        pvToday?.numericOrNull()
+            ?.let { append("${it.state} ${it.attr("unit_of_measurement") ?: "kWh"} produced") }
+        loadToday?.numericOrNull()?.let {
             if (isNotEmpty()) append(" · ")
             append("${it.state} ${it.attr("unit_of_measurement") ?: "kWh"} used")
         }
     }.takeIf { it.isNotEmpty() }?.let { "Today: $it" }
 
 /** "↓ {in} {unit} · ↑ {out} {unit}"; either sensor alone renders alone; null when neither
- *  resolves. For the battery, ↓ = charged, ↑ = discharged. */
+ *  resolves numerically. For the battery, ↓ = charged, ↑ = discharged. */
 private fun arrowLine(inSensor: EntityState?, outSensor: EntityState?): String? =
     buildString {
-        inSensor?.let { append("↓ ${it.state} ${it.attr("unit_of_measurement") ?: "kWh"}") }
-        outSensor?.let {
+        inSensor?.numericOrNull()?.let { append("↓ ${it.state} ${it.attr("unit_of_measurement") ?: "kWh"}") }
+        outSensor?.numericOrNull()?.let {
             if (isNotEmpty()) append(" · ")
             append("↑ ${it.state} ${it.attr("unit_of_measurement") ?: "kWh"}")
         }
     }.takeIf { it.isNotEmpty() }
 
-/** "{name} {watts}" for each array whose power sensor resolves, joined by " · "; blank names fall
- *  back to A..D by slot index. formatWatts handles the Tigo sensors' lowercase "watts" unit as W.
- *  Null when no array power sensor resolves. */
+/** "{name} {watts}" for each array whose power sensor resolves numerically, joined by " · ";
+ *  blank names fall back to A..D by slot index. formatWatts handles the Tigo sensors' lowercase
+ *  "watts" unit as W. Null when no array power sensor resolves. */
 private fun arraysLine(cfg: SolarConfig, entities: Map<String, EntityState>): String? =
     cfg.arrays.mapIndexedNotNull { i, a ->
-        val s = a.power?.let { entities[it] } ?: return@mapIndexedNotNull null
+        val s = a.power?.let { entities[it] }?.numericOrNull() ?: return@mapIndexedNotNull null
         val name = a.name.ifBlank { ('A' + i).toString() }
         "$name ${formatWatts(s)}"
     }.takeIf { it.isNotEmpty() }?.joinToString(" · ")

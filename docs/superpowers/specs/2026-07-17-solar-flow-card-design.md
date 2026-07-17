@@ -207,8 +207,10 @@ diamond box the same way).
     is NO ring arc anymore.
   - **Labels sit below the shapes, never on them.** White, primary size `0.05 × minDim` sp
     (the >6-char `6/len` shrink rule stays as a safety net), detail size `0.045` as shipped:
-    - SOLAR: watts below the ray tips; at panel scale `arraysLine` (detail, dim) stacks
-      beneath the watts.
+    - SOLAR: watts BESIDE the sun — to the right of the ray tips, the stack vertically
+      centered on the sun, start-aligned; at panel scale `arraysLine` (detail, dim) stacks
+      beneath the watts. (Moved from below-the-sun 2026-07-17 per user — keeps the middle
+      clear where the S→B line runs.)
     - HOME: watts below the house body.
     - GRID: watts below the pylon feet; `gridTodayLine` (panel) beneath it.
     - BATTERY: the label stack lives in the reserved bottom strip — "NN%" (primary size),

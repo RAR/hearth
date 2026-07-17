@@ -265,11 +265,15 @@ fun SolarFlowDiagram(
         val gridHalf = minDim * (34f / 220f)
 
         if (FlowNodeId.SOLAR in present) {
+            // Solar's stack sits BESIDE the sun (right of the ray tips, vertically centered on it)
+            // rather than below — keeps the busy middle clear where the S→B line runs.
+            val solarDetails = if (showDailyDetail) listOfNotNull(graph.arraysLine) else emptyList()
+            val stackHalf = minDim * (PRIMARY_SP_FRAC * 1.5f + DETAIL_SP_FRAC * 1.5f * solarDetails.size) / 2f
             NodeLabelStack(
-                x = cx(FlowNodeId.SOLAR) - labelWidth / 2, y = cy(FlowNodeId.SOLAR) + solarHalf + gap,
+                x = cx(FlowNodeId.SOLAR) + solarHalf + gap, y = cy(FlowNodeId.SOLAR) - stackHalf,
                 width = labelWidth, primary = primaryText(graph, FlowNodeId.SOLAR), primarySp = primarySp,
-                details = if (showDailyDetail) listOfNotNull(graph.arraysLine) else emptyList(),
-                detailSp = detailSp,
+                details = solarDetails,
+                detailSp = detailSp, startAligned = true,
             )
         }
         if (FlowNodeId.HOME in present) {
@@ -311,10 +315,14 @@ private fun NodeLabelStack(
     primarySp: TextUnit,
     details: List<String>,
     detailSp: TextUnit,
+    startAligned: Boolean = false, // side labels (solar) grow rightward from x instead of centering
 ) {
     if (primary == null && details.isEmpty()) return
-    Box(Modifier.offset(x = x, y = y).width(width), contentAlignment = Alignment.TopCenter) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Box(
+        Modifier.offset(x = x, y = y).width(width),
+        contentAlignment = if (startAligned) Alignment.TopStart else Alignment.TopCenter,
+    ) {
+        Column(horizontalAlignment = if (startAligned) Alignment.Start else Alignment.CenterHorizontally) {
             if (primary != null) {
                 // >=10 kW labels ("10.2 kW", 7 chars) outgrow the column at the base size; shrink
                 // proportionally past 6 chars (safety net, same rule as the in-circle labels were).

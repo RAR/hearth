@@ -25,8 +25,6 @@ import kotlinx.serialization.json.contentOrNull
 
 object PhotoConfig {
     const val SYNC_INTERVAL_MS = 6 * 60 * 60_000L
-    const val MAX_W = 960
-    const val MAX_H = 480
     /** media-source content id for a folder relative to HA's media/ root. */
     fun contentId(folder: String): String = "media-source://media_source/local/$folder"
 }

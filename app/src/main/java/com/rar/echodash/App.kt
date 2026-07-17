@@ -1,9 +1,11 @@
 package com.rar.echodash
 
 import android.content.Context
+import android.graphics.Point
 import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
+import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.tween
@@ -35,6 +37,9 @@ import com.rar.echodash.ha.EntityHub
 import com.rar.echodash.ha.HaWebSocket
 import com.rar.echodash.photos.AndroidPhotoDownloader
 import com.rar.echodash.photos.PhotoStore
+import com.rar.echodash.photos.photoCacheDirName
+import com.rar.echodash.photos.photoTarget
+import com.rar.echodash.photos.stalePhotoCacheDirs
 import com.rar.echodash.ui.DashView
 import com.rar.echodash.ui.DashboardShell
 import com.rar.echodash.ui.DoorbellPopupView
@@ -128,8 +133,22 @@ class AppDeps(context: Context) {
         baseUrl = { settings.baseUrl },
     )
 
-    private val photoCacheDir = File(appContext.cacheDir, "photos")
-    private val photoDownloader = AndroidPhotoDownloader(ws, client, { settings.baseUrl }, photoCacheDir)
+    // getRealSize is deprecated in favor of the API 30+ WindowMetrics path, but it still works
+    // fine minSdk 28..targetSdk 34 and a version branch isn't worth it just for this.
+    @Suppress("DEPRECATION")
+    private val screenTarget = run {
+        val point = Point()
+        val display = (appContext.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.defaultDisplay
+        display?.getRealSize(point)
+        photoTarget(point.x, point.y)
+    }
+    private val photoCacheDir = File(appContext.cacheDir, photoCacheDirName(screenTarget)).also { dir ->
+        // Delete any stale-size (or legacy unstamped) photo caches: frees the old-size cache;
+        // the next sync repopulates the current dir at the right size.
+        val names = appContext.cacheDir.list()?.toList() ?: emptyList()
+        stalePhotoCacheDirs(names, dir.name).forEach { File(appContext.cacheDir, it).deleteRecursively() }
+    }
+    private val photoDownloader = AndroidPhotoDownloader(ws, client, { settings.baseUrl }, photoCacheDir, screenTarget)
     val photoStore = PhotoStore(ws, photoDownloader, photoCacheDir, scope, configStore.config)
 
     val sessions = SessionManager()

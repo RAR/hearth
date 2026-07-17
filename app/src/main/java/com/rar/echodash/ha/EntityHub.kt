@@ -156,13 +156,15 @@ class EntityHub(
     /**
      * One calendar.get_events call for all configured calendars. Returns the raw
      * {"response":{"<entity>":{"events":[...]}}} element, or null on any failure (caller keeps last
-     * good list). Window is now .. now+3 days, RFC3339 with the device's local offset
+     * good list). Window is now .. now+5 days, RFC3339 with the device's local offset
      * (e.g. 2026-07-14T11:30:00-04:00). Events come from this service call, NOT state subscriptions.
      */
     suspend fun getCalendarEvents(entityIds: List<String>): JsonElement? =
         runCatching {
             val now = OffsetDateTime.now().truncatedTo(ChronoUnit.SECONDS)
-            val end = now.plusDays(3)
+            // 5-day window: the agenda can now show up to 5 day columns (AdaptiveGeometry.agendaDayCount
+            // caps at 5) and the home next-event card gets the longer horizon for free.
+            val end = now.plusDays(5)
             val fmt = DateTimeFormatter.ISO_OFFSET_DATE_TIME
             client.request("call_service", buildJsonObject {
                 put("domain", "calendar")

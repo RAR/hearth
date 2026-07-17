@@ -142,6 +142,30 @@ class CalendarModelTest {
         assertEquals(emptyList<String>(), days[2].events.map { it.title })            // end exclusive -> not Thu
     }
 
+    @Test
+    fun agendaProducesFiveLabeledDaysWhenAsked() {
+        val now = ms("2026-07-14T12:00:00-04:00") // Tuesday
+        val days = agendaDays(emptyList(), now, zone, dayCount = 5)
+        assertEquals(5, days.size)
+        assertEquals("Today", days[0].label)
+        assertEquals("Tomorrow", days[1].label)
+        assertEquals("Thursday", days[2].label) // 2026-07-16
+        assertEquals("Friday", days[3].label)   // 2026-07-17
+        assertEquals("Saturday", days[4].label) // 2026-07-18
+    }
+
+    @Test
+    fun fiveDayAgendaPlacesEventsInTheirColumns() {
+        val now = ms("2026-07-14T12:00:00-04:00")
+        val events = listOf(
+            timed("2026-07-17T09:00:00-04:00", "2026-07-17T10:00:00-04:00", "Fri"),
+            timed("2026-07-18T09:00:00-04:00", "2026-07-18T10:00:00-04:00", "Sat"),
+        )
+        val days = agendaDays(events, now, zone, dayCount = 5)
+        assertEquals(listOf("Fri"), days[3].events.map { it.title }) // day 3 = Friday
+        assertEquals(listOf("Sat"), days[4].events.map { it.title }) // day 4 = Saturday
+    }
+
     // ---- nextEventCard ----
 
     @Test

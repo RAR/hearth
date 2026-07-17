@@ -86,13 +86,13 @@ private fun parseCalMs(value: String, zone: ZoneId): Long? = runCatching {
 }.getOrNull()
 
 /**
- * Exactly 3 day columns starting at [nowMs]'s local date. An event appears in every column its
- * `[startMs, endMs)` span overlaps; already-ended events (`endMs <= nowMs`) are excluded everywhere.
- * Within a column: all-day events first, then by `startMs`, stable (ties keep input order).
+ * [dayCount] day columns (default 3) starting at [nowMs]'s local date. An event appears in every
+ * column its `[startMs, endMs)` span overlaps; already-ended events (`endMs <= nowMs`) are excluded
+ * everywhere. Within a column: all-day events first, then by `startMs`, stable (ties keep input order).
  */
-fun agendaDays(events: List<CalendarEvent>, nowMs: Long, zone: ZoneId): List<AgendaDay> {
+fun agendaDays(events: List<CalendarEvent>, nowMs: Long, zone: ZoneId, dayCount: Int = 3): List<AgendaDay> {
     val today = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
-    return (0 until 3).map { offset ->
+    return (0 until dayCount).map { offset ->
         val day = today.plusDays(offset.toLong())
         val dayStart = day.atStartOfDay(zone).toInstant().toEpochMilli()
         val dayEnd = day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()

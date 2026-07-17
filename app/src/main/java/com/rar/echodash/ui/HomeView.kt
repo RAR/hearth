@@ -70,6 +70,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -85,12 +86,14 @@ import com.rar.echodash.ui.model.EvCard
 import com.rar.echodash.ui.model.NotificationItem
 import com.rar.echodash.ui.model.RainPill
 import com.rar.echodash.ui.model.SolarCard
+import com.rar.echodash.ui.model.SolarFlowGraph
 import com.rar.echodash.ui.model.WeatherIcon
 import com.rar.echodash.ui.model.WeatherPill
 import com.rar.echodash.ui.model.eventTimeLabel
 import com.rar.echodash.ui.model.homeCardWidthDp
 import com.rar.echodash.ui.model.homeOverlayCaps
 import com.rar.echodash.ui.model.nextEventCard
+import com.rar.echodash.ui.model.solarFlowCard
 import com.rar.echodash.ui.model.solarStatsCompact
 import java.io.File
 import java.text.SimpleDateFormat
@@ -162,6 +165,7 @@ fun HomeView(
     rain: RainPill? = null,
     evs: List<EvCard> = emptyList(),
     solar: SolarCard? = null,
+    solarGraph: SolarFlowGraph? = null,
     notifications: List<NotificationItem> = emptyList(),
     onDismiss: (String) -> Unit = {},
     // CONFIG presence of EV/solar cards (not current visibility): reserves the card column in the
@@ -333,7 +337,13 @@ fun HomeView(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     evs.forEach { EvCardView(it, cardWidth) }
-                    if (solar != null) SolarCardView(solar, cardWidth)
+                    // The 300dp+ tiers (Show 8 / Tab M9) show the animated flow diagram; the Show 5
+                    // (248dp) fails solarFlowCard() and keeps the compact pill byte-for-byte.
+                    if (solarFlowCard(cardWidth.value.toInt()) && solarGraph != null) {
+                        SolarFlowCardView(solarGraph, cardWidth)
+                    } else if (solar != null) {
+                        SolarCardView(solar, cardWidth)
+                    }
                 }
             }
 
@@ -541,6 +551,31 @@ private fun GaugeBar(
                     .width(2.dp)
                     .fillMaxHeight()
                     .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(1.dp)),
+            )
+        }
+    }
+}
+
+/** Big-tier solar card: the shared flow diagram in the pill's chrome, with the "Today" line as a
+ *  centered footer. Same black-0.35 / RoundedCornerShape(20) / 16×10 chrome as the pill. */
+@Composable
+private fun SolarFlowCardView(graph: SolarFlowGraph, cardWidth: Dp) {
+    Column(
+        Modifier
+            .width(cardWidth)
+            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        SolarFlowDiagram(
+            graph,
+            modifier = Modifier.fillMaxWidth().height(cardWidth * 0.78f),
+        )
+        graph.todayLine?.let {
+            Text(
+                it, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
             )
         }
     }

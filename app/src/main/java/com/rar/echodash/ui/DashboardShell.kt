@@ -46,6 +46,7 @@ import com.rar.echodash.ui.model.notifSeverityOf
 import com.rar.echodash.ui.model.nwsNotifications
 import com.rar.echodash.ui.model.solarCard
 import com.rar.echodash.ui.model.solarFlow
+import com.rar.echodash.ui.model.solarFlowGraph
 import com.rar.echodash.ui.model.thermostats
 import com.rar.echodash.ui.model.rainPill
 import com.rar.echodash.ui.model.weatherPill
@@ -212,6 +213,9 @@ fun DashboardShell(
                     val solar = remember(entities, config.entities.solar) {
                         solarCard(config.entities.solar, entities)
                     }
+                    val solarGraph = remember(entities, config.entities.solar) {
+                        solarFlowGraph(config.entities.solar, entities)
+                    }
                     HomeView(
                         photos = if (config.home.slideshowEnabled) photos else emptyList(),
                         slideshowSeconds = config.home.slideshowSeconds,
@@ -220,6 +224,7 @@ fun DashboardShell(
                         rain = rain,
                         evs = evs,
                         solar = solar,
+                        solarGraph = solarGraph,
                         notifications = notifications,
                         onDismiss = dismissKey,
                         // CONFIG presence, not current card visibility, so the notification width

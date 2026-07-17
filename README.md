@@ -19,7 +19,7 @@ A native Android wall-dashboard for Home Assistant, plus its own HA integration.
 
 ## The web config page
 
-Long-press the Home view → **Configure** shows a URL (`http://<device-ip>:8080`) and a 6-digit PIN. From any browser on the LAN you can: run first-time HA OAuth setup, name the device, pick entities from searchable lists, enable/reorder panels, build light groups, configure cameras/doorbells/calendars/EVs, tune voice (wake word, chime, volumes with live preview), set night mode with a live lux readout, manage notifications (token + ready-to-paste `rest_command` YAML), and **export/import the whole config as a JSON file** — handy for cloning a setup onto a new device. Device identity (name, HA auth, PIN, notify token) stays per-device and is never exported.
+Long-press the Home view → **Configure** shows a URL (`http://<device-ip>:8080`) and a 6-digit PIN. From any browser on the LAN you can: run first-time HA OAuth setup, name the device, pick entities from searchable lists, enable/reorder panels, build light groups, configure cameras/doorbells/calendars/EVs, tune voice (wake word, chime, volumes with live preview), set night mode with a live lux readout, manage weather alerts, and **export/import the whole config as a JSON file** — handy for cloning a setup onto a new device. Device identity (name, HA auth, PIN, notify token) stays per-device and is never exported.
 
 Plain HTTP, LAN-only trust: PIN-gated session cookies, 5-strike lockout, no TLS — same grade as a default HA install. Keep it on a trusted network.
 

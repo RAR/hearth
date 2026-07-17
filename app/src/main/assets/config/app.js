@@ -343,7 +343,6 @@ function render() {
   renderSendspin();
   renderVoice();
   renderNws();
-  renderPush();
 }
 
 function renderDevice() {
@@ -642,43 +641,6 @@ function renderNws() {
     "alerts under the weather; swipe left to dismiss. Only alerts at or above the minimum severity " +
     "appear (Minor = show all). Auto-dismiss removes rows at or below the chosen severity after the " +
     "set time; higher severities stay until swiped away."));
-}
-
-function renderPush() {
-  const host = document.getElementById("push");
-  clear(host);
-  // Rendered only when the app build exposes a notify token (older builds -> card hidden entirely).
-  // lastStatus is populated in tryLoad() before render() runs, so the token is present on first paint.
-  const token = lastStatus && lastStatus.notifyToken;
-  document.getElementById("push-section").hidden = !token;
-  if (!token) return;
-
-  const tokenInput = el("input", "mono");
-  tokenInput.readOnly = true;
-  tokenInput.value = token;
-  tokenInput.setAttribute("aria-label", "Notify token");
-  tokenInput.addEventListener("focus", () => tokenInput.select());
-  host.appendChild(labeledRow("Token", tokenInput));
-
-  const yaml =
-    'rest_command:\n' +
-    '  echo_notify:\n' +
-    '    url: "' + location.origin + '/api/notify"\n' +
-    '    method: POST\n' +
-    '    headers:\n' +
-    '      authorization: "Bearer ' + token + '"\n' +
-    '    content_type: "application/json"\n' +
-    '    payload: >-\n' +
-    '      {"title": {{ title | tojson }}, "message": {{ message | default(\'\') | tojson }},\n' +
-    '       "severity": {{ severity | default(\'info\') | tojson }},\n' +
-    '       "id": {{ id | default(\'\') | tojson }}, "timeout": {{ timeout | default(0) }}}';
-  host.appendChild(el("pre", "yaml", yaml));
-
-  host.appendChild(el("div", "muted",
-    "Add this to configuration.yaml, then call rest_command.echo_notify from an automation " +
-    "(title required; message/severity/id/timeout optional). Reusing an id updates that row; " +
-    "timeout 0 or absent means it stays until dismissed. POST /api/notify/clear with " +
-    "{\"id\":\"…\"} or {\"all\":true} removes rows."));
 }
 
 function renderLightGroup(g, gi) {

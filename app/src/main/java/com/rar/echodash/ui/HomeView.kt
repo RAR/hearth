@@ -569,8 +569,9 @@ private fun SolarFlowCardView(graph: SolarFlowGraph, cardWidth: Dp) {
     ) {
         SolarFlowDiagram(
             graph,
-            // 0.73 (was 0.78): the battery % moved beside the cell, freeing a strip line.
-            modifier = Modifier.fillMaxWidth().height(cardWidth * 0.73f),
+            // 0.68 (was 0.78): the battery %+kW stack moved beside the cell, so the card's
+            // bottom strip collapsed entirely.
+            modifier = Modifier.fillMaxWidth().height(cardWidth * 0.68f),
         )
         graph.todayLine?.let {
             Text(

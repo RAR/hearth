@@ -213,11 +213,11 @@ diamond box the same way).
       clear where the S→B line runs.)
     - HOME: watts below the house body.
     - GRID: watts below the pylon feet; `gridTodayLine` (panel) beneath it.
-    - BATTERY: "NN%" BESIDE the cell (right of the case, vertically centered, start-aligned
-      — mirrors the sun's side label; moved 2026-07-17 per user); `battText` (detail, dim)
-      then `battTodayLine` (detail, dim, panel only) in the reserved bottom strip, which now
-      counts detail lines only. The card's diagram block shrinks to `cardWidth × 0.73`
-      (was 0.78) with the freed strip line.
+    - BATTERY: "NN%" with `battText` (detail, dim) directly under it, BESIDE the cell (right
+      of the case, stack vertically centered, start-aligned — mirrors the sun's side stack;
+      per user 2026-07-17). Only `battTodayLine` (detail, dim, panel only) remains in the
+      reserved bottom strip, so the strip collapses to zero on the card. The card's diagram
+      block shrinks to `cardWidth × 0.68` (was 0.78).
 - **Lines** (drawn beneath nodes), the six canonical connections among present nodes:
   diagonals (S→G, S→H, G→B, B→H) as quadratic Béziers bowing 25 % toward the box center;
   S→B and G→H straight center lines that cross mid-box (the HA look). Inactive: 2 dp stroke,

@@ -61,7 +61,10 @@ fun solarFlowGraph(cfg: SolarConfig, entities: Map<String, EntityState>): SolarF
     val solarToGrid = minOf(pvW - solarToBattery, exportW)
     val solarToHome = (pvW - solarToBattery - solarToGrid).coerceAtLeast(0.0)
     val batteryToHome = dischargeW
-    val gridToBattery = (chargeW - solarToBattery).coerceAtLeast(0.0)
+    // Capped by importW: the grid can't deliver more than it imports. When disagreeing sensors
+    // report a charge the import can't cover (seen live: charge 7.5 kW vs import 112 W), the
+    // uncapped difference drew a physically impossible heavy grid→battery flow.
+    val gridToBattery = minOf((chargeW - solarToBattery).coerceAtLeast(0.0), importW)
     val gridToHome = (importW - gridToBattery).coerceAtLeast(0.0)
 
     val solarP = pv != null

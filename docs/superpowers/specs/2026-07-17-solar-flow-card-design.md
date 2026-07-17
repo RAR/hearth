@@ -100,7 +100,7 @@ SOLAR→BATTERY = min(pvW, chargeW)
 SOLAR→GRID    = min(pvW - SOLAR→BATTERY, exportW)
 SOLAR→HOME    = max(0, pvW - SOLAR→BATTERY - SOLAR→GRID)
 BATTERY→HOME  = dischargeW
-GRID→BATTERY  = max(0, chargeW - SOLAR→BATTERY)
+GRID→BATTERY  = min(max(0, chargeW - SOLAR→BATTERY), importW)  // grid can't deliver more than it imports
 GRID→HOME     = max(0, importW - GRID→BATTERY)
 ```
 

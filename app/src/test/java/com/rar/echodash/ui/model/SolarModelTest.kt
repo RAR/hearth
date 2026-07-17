@@ -325,6 +325,21 @@ class SolarModelTest {
     }
 
     @Test
+    fun gridToBatteryCapsAtImport() {
+        // Disagreeing sensors: charge 5 kW but import only 100 W — the grid edge shows what the
+        // grid actually delivers, not the uncovered charge (seen live 2026-07-17).
+        val cfg = SolarConfig(pv = "sensor.pv", load = "sensor.load", grid = "sensor.grid",
+            battPower = "sensor.batt")
+        val g = solarFlowGraph(cfg, mapOf(
+            "sensor.pv" to st("sensor.pv", "0", "W"),
+            "sensor.load" to st("sensor.load", "500", "W"),
+            "sensor.grid" to st("sensor.grid", "100", "W"),
+            "sensor.batt" to st("sensor.batt", "-5000", "W"),
+        ))!!
+        assertEquals(listOf(FlowEdge(FlowNodeId.GRID, FlowNodeId.BATTERY, 100.0)), g.edges)
+    }
+
+    @Test
     fun nonNumericStatesAreSkippedInDailyLines() {
         // A fresh utility_meter reports "unknown" until its source first ticks — render the
         // numeric side alone, never the literal "unknown kWh".

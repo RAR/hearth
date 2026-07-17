@@ -189,7 +189,10 @@ composable renders at card size (~268×230 dp) and panel size. No LocalConfigura
   white 0.12 alpha. Active (edge in `graph.edges`): 2.5 dp stroke, source-node color at 0.55
   alpha.
 - **Dots**: 2 per active edge, half a lap apart, radius `max(3dp, 0.016 × min(w,h))`, filled
-  with the source node's color. One `rememberInfiniteTransition` master phase (0→1 over
+  with the source node's color. Source colors for edges/dots: solar `0xFFE0A030`, grid
+  `0xFF8892A0` (brightened from the node gray for dark-bg visibility), battery
+  `GaugeGreen 0xFF7BC67E` (its identity color — the neutral node circle would render
+  invisible dots). Approved via the animated mock 2026-07-17. One `rememberInfiniteTransition` master phase (0→1 over
   4000 ms, linear, restart) drives every edge: a dot's fraction along its path is
   `(masterPhase × 4000 / flowLapMs(edge.watts) + offset) % 1`, positioned via
   `androidx.compose.ui.graphics.PathMeasure`. Dot direction = edge direction. No new

@@ -12,8 +12,15 @@ class AndroidPcmSink : PcmSink {
     private var framesWritten: Long = 0
     private var sampleRateHz: Int = 0
 
+    // Set by abort() — which may run on a different thread than the one
+    // draining finish() when a tap interrupts an in-flight reply. finish()'s
+    // poll loop checks this each iteration so it doesn't block until the
+    // whole buffer has played out from underneath an abort.
+    @Volatile private var abortRequested = false
+
     override fun start(rateHz: Int, widthBytes: Int, channels: Int) {
         abort()
+        abortRequested = false
         this.channels = channels
         this.sampleRateHz = rateHz
         framesWritten = 0
@@ -52,19 +59,27 @@ class AndroidPcmSink : PcmSink {
                 if (sampleRateHz > 0) it.bufferSizeInFrames * 1000L / sampleRateHz else 0L
             val deadline = System.currentTimeMillis() + bufferMs + 500L
             val target = framesWritten
-            while (System.currentTimeMillis() < deadline) {
+            while (System.currentTimeMillis() < deadline && !abortRequested) {
                 // getPlaybackHeadPosition() is a 32-bit frame counter (unsigned).
-                val head = it.playbackHeadPosition.toLong() and 0xFFFFFFFFL
+                // Wrapped in runCatching: abort() can release the track out from
+                // under this poll on another thread the instant abortRequested
+                // flips, so the read itself may hit a torn-down track.
+                val head = runCatching { it.playbackHeadPosition.toLong() and 0xFFFFFFFFL }
+                    .getOrDefault(target)
                 if (head >= target) break
                 Thread.sleep(20)
             }
-            runCatching { it.stop() }
-            it.release()
+            if (!abortRequested) {
+                runCatching { it.stop() }
+                it.release()
+            }
+            // else: abort() already stopped/released this track — don't touch it again.
         }
         track = null
     }
 
     override fun abort() {
+        abortRequested = true
         track?.let {
             runCatching { it.pause(); it.flush(); it.stop() }
             it.release()

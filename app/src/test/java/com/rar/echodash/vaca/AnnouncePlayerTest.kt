@@ -119,8 +119,26 @@ class AnnouncePlayerTest {
         h.player.abort()
         h.player.shutdown()
         advanceUntilIdle()
-        assertEquals(0, h.playedCount)                       // no onPlayed on abort
-        assertEquals(listOf(true, false), h.ducks)           // ducked then un-ducked
+        assertEquals(0, h.playedCount)                       // no onPlayed on abort command
+        assertEquals(listOf(true, false), h.ducks)           // ducked then un-ducked, exactly once each
         assertEquals("abort", h.sink.calls.last())           // sink aborted (dropped buffer)
+    }
+
+    @Test
+    fun abortAbortsSinkSynchronouslyBeforeWorkerRuns() = runTest {
+        // Cross-thread interrupt: HA has usually already sent audio-stop by the time
+        // the user taps, so the worker may be blocked inside handle(Cmd.Stop)'s
+        // sink.finish() drain. abort() must not wait behind that — it aborts the
+        // sink directly on the caller thread. Pin that here: without ever pumping
+        // the worker (no advanceUntilIdle), the sink must already show "abort".
+        val h = Harness(this)
+        h.player.onAudioStart(22050, 2, 1)
+        h.player.onAudioChunk(ByteArray(10))
+        h.player.abort()
+        assertEquals(listOf("abort"), h.sink.calls) // synchronous — worker hasn't run at all yet
+        h.player.shutdown()
+        advanceUntilIdle()
+        assertEquals(0, h.playedCount)
+        assertEquals(listOf(true, false), h.ducks)
     }
 }

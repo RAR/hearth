@@ -72,6 +72,14 @@ class AnnouncePlayer(
 
     /** Stop playback immediately, dropping any buffered audio. Does not fire onPlayed. */
     fun abort() {
+        // Cross-thread interrupt: on a tap mid-reply, HA has usually already sent
+        // audio-stop, so the worker may be blocked inside handle(Cmd.Stop)'s
+        // sink.finish() drain (which waits for buffered audio to play out).
+        // Queuing Cmd.Abort alone would sit behind that drain — the tap would do
+        // nothing until playback ends. Abort the sink synchronously, on the
+        // caller's thread, for immediate silence; still enqueue Cmd.Abort so the
+        // worker's own state (streaming/ducking) gets cleaned up when it gets there.
+        runCatching { sink.abort() }
         queue.trySend(Cmd.Abort)
     }
 

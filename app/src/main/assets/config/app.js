@@ -467,6 +467,31 @@ function renderEntities() {
     "Per-array PV power (e.g. TigoMonitor sensor.solar_array_a–d) shows on the full-screen Solar panel only. " +
     "Blank name falls back to A–D. Empty slots are dropped on save."));
 
+  // quick buttons (home card; up to four toggle/action entities). Fixed four slots like the arrays.
+  host.appendChild(subhead("lights", "Quick buttons"));
+  if (!Array.isArray(e.quickButtons)) e.quickButtons = [];
+  const quickButtons = e.quickButtons;
+  while (quickButtons.length < 4) quickButtons.push({});
+  quickButtons.slice(0, 4).forEach((slot, i) => {
+    const box = el("div", "group");
+    const head = el("div", "group-head");
+    head.appendChild(el("span", "panel-name", "Button " + (i + 1)));
+    box.appendChild(head);
+    const name = el("input");
+    name.value = slot.name || "";
+    name.setAttribute("aria-label", "Button name");
+    name.addEventListener("change", () => slot.name = name.value.trim());
+    box.appendChild(labeledRow("Name", name));
+    box.appendChild(labeledRow("Entity",
+      entityPicker(["switch", "light", "input_boolean", "button", "script", "scene"],
+        slot.entity, v => slot.entity = v)));
+    host.appendChild(box);
+  });
+  host.appendChild(el("div", "muted",
+    "Up to four tappable buttons on the home screen, below the EV and solar cards. Switches, lights, " +
+    "and input booleans toggle and show live on/off; buttons, scripts, and scenes fire on tap. " +
+    "Blank name uses the entity's name. Empty slots are dropped on save."));
+
   // light groups
   host.appendChild(subhead("lights", "Light groups"));
   e.lightGroups.forEach((g, gi) => host.appendChild(renderLightGroup(g, gi)));

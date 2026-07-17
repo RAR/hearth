@@ -81,7 +81,7 @@ class SatelliteSessionTest {
         s.onEvent(event("run-satellite"))
         assertEquals(VoiceOverlayState(VoiceOverlayPhase.LISTENING),
             (s.onEvent(event("detection", """{"name":"ok_nabu"}""")).last() as SatelliteAction.Overlay).state)
-        assertEquals(VoiceOverlayState(VoiceOverlayPhase.TRANSCRIPT, "turn on the light"),
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.THINKING, "turn on the light"),
             (s.onEvent(event("transcript", """{"text":"turn on the light"}""")).last() as SatelliteAction.Overlay).state)
         assertEquals(VoiceOverlayState(VoiceOverlayPhase.RESPONSE, "Okay"),
             (s.onEvent(event("synthesize", """{"text":"Okay"}""")).last() as SatelliteAction.Overlay).state)
@@ -369,5 +369,46 @@ class SatelliteSessionTest {
     fun legacyModeInfoWakeStaysEmpty() {
         val info = sends(SatelliteSession("9.9", name = { "Test Sat" }).onEvent(event("describe"))).single()
         assertTrue(info.data["wake"]!!.jsonArray().isEmpty())
+    }
+
+    // ---- voice watchdog / thinking / failed ----
+
+    @Test
+    fun watchdogFiresFromListeningToFailedThenHides() {
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 1_000)                       // LISTENING, watchdog @ 31_000
+        assertTrue(s.onTick(nowMs = 30_999).none { it is SatelliteAction.Overlay }) // before deadline
+        val fired = s.onTick(nowMs = 31_000)
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.FAILED, "No response — try again"),
+            (fired.last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
+        assertTrue(sends(fired).map { it.type }.contains("streaming-stopped"))       // streaming stopped
+        assertTrue(fired.contains(SatelliteAction.ResetDetector))                    // detector re-armed
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.HIDDEN),                     // +3 s -> HIDDEN
+            (s.onTick(nowMs = 34_000).last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
+    }
+
+    @Test
+    fun watchdogInThinkingReArmedByTranscriptFires() {
+        val s = session()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onEvent(event("detection", """{"name":"x"}"""), nowMs = 5_000)   // LISTENING, watchdog @ 35_000
+        s.onEvent(event("transcript", """{"text":"hi"}"""), nowMs = 10_000) // THINKING, re-armed @ 40_000
+        assertTrue(s.onTick(nowMs = 35_000).none { it is SatelliteAction.Overlay }) // old deadline passed harmlessly
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.FAILED, "No response — try again"),
+            (s.onTick(nowMs = 40_000).last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
+    }
+
+    @Test
+    fun responseWithoutPlaybackHidesQuietlyAtWatchdog() {
+        val s = session()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onEvent(event("detection", """{"name":"x"}"""), nowMs = 0)
+        s.onEvent(event("transcript", """{"text":"hi"}"""), nowMs = 1_000)
+        s.onEvent(event("synthesize", """{"text":"Answer"}"""), nowMs = 2_000) // RESPONSE, watchdog @ 32_000
+        assertEquals(VoiceOverlayPhase.RESPONSE, s.overlay.phase)
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.HIDDEN),                 // quiet hide, no FAILED text
+            (s.onTick(nowMs = 32_000).last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
+        assertEquals(VoiceOverlayPhase.HIDDEN, s.overlay.phase)
     }
 }

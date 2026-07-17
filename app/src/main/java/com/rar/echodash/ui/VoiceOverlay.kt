@@ -87,7 +87,9 @@ fun VoiceOverlay(state: VoiceOverlayState, modifier: Modifier = Modifier) {
     val label = when (state.phase) {
         VoiceOverlayPhase.LISTENING -> "Listening…"
         VoiceOverlayPhase.TRANSCRIPT -> state.text.ifBlank { "…" }
+        VoiceOverlayPhase.THINKING -> state.text.ifBlank { "…" }
         VoiceOverlayPhase.RESPONSE -> state.text.ifBlank { "…" }
+        VoiceOverlayPhase.FAILED -> "No response — try again"
         VoiceOverlayPhase.HIDDEN -> ""
     }
     Box(modifier.fillMaxSize().padding(bottom = 28.dp), contentAlignment = Alignment.BottomCenter) {

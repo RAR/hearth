@@ -70,6 +70,7 @@ class SatelliteSession(
     private var ttsActive = false
     private var micTimestampMs = 0L
     private var dismissAtMs: Long? = null
+    private var watchdogAtMs: Long? = null
     var overlay: VoiceOverlayState = VoiceOverlayState()
         private set
 
@@ -127,15 +128,19 @@ class SatelliteSession(
             streaming = false
             listOf(SatelliteAction.StopMic, SatelliteAction.Send(WyomingEvent("streaming-stopped")))
         }
-        "detection" -> listOf(
+        "detection" -> {
             // Legacy/fallback: HA reports the wake word. In localWake HA never sends this.
-            SatelliteAction.Earcon(EarconKind.WAKE),
-            overlayAction(VoiceOverlayState(VoiceOverlayPhase.LISTENING)),
-        )
+            watchdogAtMs = nowMs + WATCHDOG_MS
+            listOf(
+                SatelliteAction.Earcon(EarconKind.WAKE),
+                overlayAction(VoiceOverlayState(VoiceOverlayPhase.LISTENING)),
+            )
+        }
         "transcript" -> {
+            watchdogAtMs = nowMs + WATCHDOG_MS
             val base = listOf(
                 SatelliteAction.Earcon(EarconKind.DONE),
-                overlayAction(VoiceOverlayState(VoiceOverlayPhase.TRANSCRIPT, textOf(event))),
+                overlayAction(VoiceOverlayState(VoiceOverlayPhase.THINKING, textOf(event))),
             )
             if (localWake) {
                 wakeState = WakeState.DETECTING
@@ -150,9 +155,13 @@ class SatelliteSession(
         } else {
             emptyList()
         }
-        "synthesize" -> listOf(overlayAction(VoiceOverlayState(VoiceOverlayPhase.RESPONSE, textOf(event))))
+        "synthesize" -> {
+            watchdogAtMs = nowMs + WATCHDOG_MS
+            listOf(overlayAction(VoiceOverlayState(VoiceOverlayPhase.RESPONSE, textOf(event))))
+        }
         "audio-start" -> {
             ttsActive = true
+            watchdogAtMs = null
             listOf(
                 SatelliteAction.PlaybackStart(
                     rate = event.data["rate"]?.jsonPrimitive?.int ?: 22050,
@@ -208,6 +217,7 @@ class SatelliteSession(
         if (wakeState != WakeState.DETECTING) return emptyList()
         wakeState = WakeState.STREAMING
         micTimestampMs = 0L
+        watchdogAtMs = nowMs + WATCHDOG_MS
         return listOf(
             SatelliteAction.Send(detectionEvent(name)),
             SatelliteAction.Send(runPipelineLocalEvent()),
@@ -262,7 +272,19 @@ class SatelliteSession(
 
     fun onTick(nowMs: Long): List<SatelliteAction> {
         val actions = mutableListOf<SatelliteAction>()
-        // Voice overlay auto-dismiss (~4 s after playback).
+        // Watchdog: a stalled pipeline (no transcript, or answer text but no playback) must not
+        // strand the pill. LISTENING/THINKING fail loudly; RESPONSE hides quietly.
+        watchdogAtMs?.let {
+            if (nowMs >= it) {
+                watchdogAtMs = null
+                when (overlay.phase) {
+                    VoiceOverlayPhase.LISTENING, VoiceOverlayPhase.THINKING -> actions += failActions(nowMs)
+                    VoiceOverlayPhase.RESPONSE -> actions += overlayAction(VoiceOverlayState())
+                    else -> {}
+                }
+            }
+        }
+        // Voice overlay auto-dismiss (~4 s after playback, 3 s after a FAILED flash).
         dismissAtMs?.let { if (nowMs >= it) { dismissAtMs = null; actions += overlayAction(VoiceOverlayState()) } }
         // Timer alert auto-silence after 60 s.
         var timersChanged = false
@@ -297,7 +319,25 @@ class SatelliteSession(
         ttsActive = false
         micTimestampMs = 0L
         dismissAtMs = null
+        watchdogAtMs = null
         overlay = VoiceOverlayState()
+    }
+
+    /**
+     * Fail the current run: show the "no response" pill for [FAILED_MS], then let the existing
+     * dismiss path hide it. Mirrors the error cleanup (stop streaming, re-arm the local detector)
+     * in localWake mode; a no-op cleanup otherwise. Clears the watchdog it was called from.
+     */
+    private fun failActions(nowMs: Long): List<SatelliteAction> {
+        dismissAtMs = nowMs + FAILED_MS
+        watchdogAtMs = null
+        val cleanup = if (localWake) {
+            wakeState = WakeState.DETECTING
+            listOf(SatelliteAction.Send(WyomingEvent("streaming-stopped")), SatelliteAction.ResetDetector)
+        } else {
+            emptyList()
+        }
+        return cleanup + overlayAction(VoiceOverlayState(VoiceOverlayPhase.FAILED, FAILED_TEXT))
     }
 
     private fun overlayAction(state: VoiceOverlayState): SatelliteAction.Overlay {
@@ -414,6 +454,9 @@ class SatelliteSession(
         const val AUDIO_CHANNELS = 1
         const val DISMISS_MS = 4000L
         const val ALERT_SILENCE_MS = 60000L
+        const val WATCHDOG_MS = 30_000L
+        const val FAILED_MS = 3_000L
+        const val FAILED_TEXT = "No response — try again"
 
         /** The three bundled wake-word model ids and their friendly phrases (HA display only). */
         val WAKE_MODELS = listOf(

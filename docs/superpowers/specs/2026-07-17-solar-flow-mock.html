@@ -1,0 +1,544 @@
+<title>Hearth solar flow mock</title>
+<style>
+  :root {
+    --bg: #f2efe7; --ink: #27231b; --ink-dim: #6e6754; --rule: #ddd7c8;
+    --accent: #9a6a12; --frame-edge: #c9c2b0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16140f; --ink: #e8e2d4; --ink-dim: #948b74; --rule: #2c2921;
+            --accent: #d9a13d; --frame-edge: #322e25; }
+  }
+  :root[data-theme="dark"] { --bg: #16140f; --ink: #e8e2d4; --ink-dim: #948b74;
+    --rule: #2c2921; --accent: #d9a13d; --frame-edge: #322e25; }
+  :root[data-theme="light"] { --bg: #f2efe7; --ink: #27231b; --ink-dim: #6e6754;
+    --rule: #ddd7c8; --accent: #9a6a12; --frame-edge: #c9c2b0; }
+
+  body { background: var(--bg); color: var(--ink); margin: 0;
+    font: 15px/1.55 system-ui, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; padding: 40px 20px 64px; }
+  .eyebrow { font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; }
+  h1 { font-size: 30px; line-height: 1.15; margin: 6px 0 8px; text-wrap: balance; }
+  h2 { font-size: 15px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim);
+    margin: 44px 0 14px; font-weight: 600; }
+  .lede { color: var(--ink-dim); max-width: 62ch; margin: 0 0 8px; }
+  .cards { display: flex; flex-wrap: wrap; gap: 24px; }
+  figure { margin: 0; flex: 1 1 320px; min-width: 320px; }
+  figcaption { font-size: 13px; color: var(--ink-dim); margin-top: 10px; max-width: 44ch; }
+  figcaption strong { color: var(--ink); font-weight: 600; }
+  .scene { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600;
+    color: var(--ink-dim); margin-bottom: 8px; }
+  .scene b { color: var(--accent); }
+
+  /* Device frames: deliberately dark in both themes — they reproduce the screen. */
+  .homeframe { border-radius: 14px; border: 1px solid var(--frame-edge);
+    background: linear-gradient(135deg, #2a2f45 0%, #1b1f30 45%, #33273a 100%);
+    padding: 26px 18px; display: flex; justify-content: center; }
+  .panelframe { border-radius: 14px; border: 1px solid var(--frame-edge);
+    background: #0d1017; padding: 22px; overflow-x: auto; }
+  .panelsurface { background: #171b24; border-radius: 20px; padding: 24px 24px 16px;
+    width: fit-content; margin: 0 auto; }
+  .todayline { color: rgba(255,255,255,.85); font-size: 15px; margin: 10px 0 4px; }
+
+  /* The card itself: chrome per HomeView (black 35%, r20, 16/10 padding). */
+  .flowcard { background: rgba(0,0,0,.35); border-radius: 20px; padding: 10px 16px;
+    width: 268px; }
+  .flowcard .footer { color: rgba(255,255,255,.7); font-size: 11px; text-align: center;
+    margin-top: 2px; white-space: nowrap; }
+
+  svg { display: block; }
+  svg text { font-family: system-ui, Roboto, sans-serif; fill: #fff; }
+  .watts { font-size: 11px; font-weight: 600; text-anchor: middle; }
+  .watts-lg { font-size: 15px; font-weight: 600; text-anchor: middle; }
+  .sub { fill: rgba(255,255,255,.75); font-size: 10px; text-anchor: middle; }
+  .sub-lg { fill: rgba(255,255,255,.72); font-size: 12px; text-anchor: middle; }
+  .edge { fill: none; stroke: rgba(255,255,255,.12); stroke-width: 2; }
+  .edge.on { stroke-width: 2.5; }
+  .glyph { stroke: #fff; stroke-width: 1.6; fill: none;
+    stroke-linecap: round; stroke-linejoin: round; }
+
+  .dot { display: none; }
+  @supports (offset-path: path("M0,0 L1,1")) {
+    .dot { display: block; animation: glide var(--lap) linear infinite; stroke: rgba(255,255,255,.4); }
+    .dot.d2 { animation-delay: calc(var(--lap) / -2); }
+  }
+  @keyframes glide { from { offset-distance: 0%; } to { offset-distance: 100%; } }
+  @media (prefers-reduced-motion: reduce) {
+    .dot { animation: none; offset-distance: 38%; }
+    .dot.d2 { offset-distance: 76%; }
+  }
+
+  ul.notes { padding-left: 20px; color: var(--ink-dim); font-size: 14px; max-width: 68ch; }
+  ul.notes li { margin-bottom: 6px; }
+  ul.notes b { color: var(--ink); font-weight: 600; }
+  .rule { border: 0; border-top: 1px solid var(--rule); margin: 40px 0 0; }
+</style>
+
+<main>
+  <p class="eyebrow">Hearth · design mock</p>
+  <h1>The solar flow card</h1>
+  <p class="lede">Round 2: node styling. The diamond, flows, and dots shipped and stay exactly
+    as-is — the question is what the four nodes themselves should look like. Three directions
+    below, then the original animated card mocks for reference.</p>
+
+  <h2>Round 2 — node style candidates</h2>
+
+  <figure style="min-width:0">
+    <div class="scene">Shipped today · flat circles + material icons</div>
+    <div class="panelframe"><div class="panelsurface" style="padding:16px 24px">
+      <svg width="440" height="110" viewBox="0 0 440 110" role="img" aria-label="Current flat circle nodes">
+        <g transform="translate(55,0)">
+          <circle cx="0" cy="48" r="34" fill="#E0A030"/>
+          <g class="glyph" transform="translate(0,39)"><circle r="4.2"/>
+            <path d="M0,-7.5 V-9 M0,7.5 V9 M-7.5,0 H-9 M7.5,0 H9 M-5.3,-5.3 L-6.4,-6.4 M5.3,5.3 L6.4,6.4 M-5.3,5.3 L-6.4,6.4 M5.3,-5.3 L6.4,-6.4"/></g>
+          <text class="watts" x="0" y="63">6.3 kW</text>
+        </g>
+        <g transform="translate(165,0)">
+          <circle cx="0" cy="48" r="34" fill="#3A6EA5"/>
+          <g class="glyph" transform="translate(0,39)"><path d="M-7,0.5 L0,-6 L7,0.5 M-4.8,-1 V6.5 H4.8 V-1"/></g>
+          <text class="watts" x="0" y="63">4.1 kW</text>
+        </g>
+        <g transform="translate(275,0)">
+          <circle cx="0" cy="48" r="34" fill="#6B7280"/>
+          <g class="glyph" transform="translate(0,39)"><path d="M1.5,-7 L-3.5,1 H-0.5 L-1.5,7 L3.5,-1 H0.5 Z"/></g>
+          <text class="watts" x="0" y="63">0 W</text>
+        </g>
+        <g transform="translate(385,0)">
+          <circle cx="0" cy="48" r="34" fill="#2A2F3C"/>
+          <circle cx="0" cy="48" r="38" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="5"/>
+          <circle cx="0" cy="48" r="38" fill="none" stroke="#7BC67E" stroke-width="5"
+                  stroke-linecap="round" stroke-dasharray="150.4 238.8" transform="rotate(-90 0 48)"/>
+          <g class="glyph" transform="translate(0,39)"><rect x="-6" y="-3.5" width="11" height="7" rx="1"/><path d="M5.8,-1.5 V1.5"/></g>
+          <text class="watts" x="0" y="63">63%</text>
+        </g>
+      </svg>
+    </div></div>
+    <figcaption>Baseline for comparison — what's on the wall right now.</figcaption>
+  </figure>
+
+  <figure style="min-width:0">
+    <div class="scene"><b>A</b> · illustrated badges — same circles, real artwork</div>
+    <div class="panelframe"><div class="panelsurface" style="padding:16px 24px">
+      <svg width="440" height="110" viewBox="0 0 440 110" role="img" aria-label="Illustrated badge nodes">
+        <defs>
+          <radialGradient id="gA" cx="35%" cy="30%"><stop offset="0%" stop-color="#F0BA55"/><stop offset="100%" stop-color="#D0902A"/></radialGradient>
+          <radialGradient id="gH" cx="35%" cy="30%"><stop offset="0%" stop-color="#4E82BC"/><stop offset="100%" stop-color="#305E90"/></radialGradient>
+          <radialGradient id="gG" cx="35%" cy="30%"><stop offset="0%" stop-color="#828eA0"/><stop offset="100%" stop-color="#5A626E"/></radialGradient>
+        </defs>
+        <g transform="translate(55,0)">
+          <circle cx="0" cy="48" r="34" fill="url(#gA)"/>
+          <g transform="translate(0,38) rotate(-10)">
+            <rect x="-13" y="-8" width="26" height="16" rx="1.5" fill="#26365a" stroke="#fff" stroke-width="1.2"/>
+            <path d="M-4.3,-8 V8 M4.3,-8 V8 M-13,0 H13" stroke="#fff" stroke-width="1"/>
+          </g>
+          <g stroke="#FFF3D8" stroke-width="1.4" stroke-linecap="round">
+            <circle cx="-16" cy="24" r="3.4" fill="#FFF3D8" stroke="none"/>
+            <path d="M-16,18.5 V16.5 M-10.8,20.4 L-9.6,19.2 M-21.2,20.4 L-22.4,19.2 M-10.5,24 H-8.5 M-21.5,24 H-23.5"/>
+          </g>
+          <text class="watts" x="0" y="63">6.3 kW</text>
+        </g>
+        <g transform="translate(165,0)">
+          <circle cx="0" cy="48" r="34" fill="url(#gH)"/>
+          <g stroke="#fff" stroke-width="1.5" fill="none" stroke-linejoin="round">
+            <path d="M-12,40 L0,29 L12,40"/>
+            <path d="M-9,38.5 V48 H9 V38.5"/>
+            <rect x="6" y="30.5" width="3.4" height="6" fill="#fff" stroke="none"/>
+          </g>
+          <rect x="-3.4" y="40.5" width="6.8" height="7.5" fill="#E0A030"/>
+          <text class="watts" x="0" y="63">4.1 kW</text>
+        </g>
+        <g transform="translate(275,0)">
+          <circle cx="0" cy="48" r="34" fill="url(#gG)"/>
+          <g stroke="#fff" stroke-width="1.3" fill="none" stroke-linecap="round">
+            <path d="M-5,50 L-2.2,29 M5,50 L2.2,29"/>
+            <path d="M-8,33 H8 M-5.6,40 H5.6"/>
+            <path d="M-2.2,29 H2.2"/>
+            <path d="M-5.2,40 L4.4,33 M5.2,40 L-4.4,33 M-5,50 L5.4,40 M5,50 L-5.4,40"/>
+            <path d="M-8,33 L-10,36 M8,33 L10,36" stroke-width="1"/>
+          </g>
+          <text class="watts" x="0" y="63">0 W</text>
+        </g>
+        <g transform="translate(385,0)">
+          <circle cx="0" cy="48" r="34" fill="#2A2F3C"/>
+          <circle cx="0" cy="48" r="38" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="5"/>
+          <circle cx="0" cy="48" r="38" fill="none" stroke="#7BC67E" stroke-width="5"
+                  stroke-linecap="round" stroke-dasharray="150.4 238.8" transform="rotate(-90 0 48)"/>
+          <rect x="-7" y="31" width="14" height="22" rx="2" fill="none" stroke="#fff" stroke-width="1.5"/>
+          <rect x="-3.5" y="27.5" width="7" height="3.5" rx="1" fill="#fff"/>
+          <rect x="-5" y="38.9" width="10" height="12.1" rx="1" fill="#7BC67E"/>
+          <text class="watts" x="0" y="63">63%</text>
+        </g>
+      </svg>
+    </div></div>
+    <figcaption><strong>Custom-drawn art in the shipped geometry</strong>: tilted panel with a
+      sun, a house with a warm-lit window, a proper pylon, a battery cell whose fill IS the
+      charge (ring stays). Smallest change, keeps everything readable.</figcaption>
+  </figure>
+
+  <figure style="min-width:0">
+    <div class="scene"><b>B · refined</b> — shaped silhouettes with real craft</div>
+    <div class="panelframe"><div class="panelsurface" style="padding:16px 24px">
+      <svg width="440" height="118" viewBox="0 0 440 118" role="img" aria-label="Refined silhouette nodes">
+        <defs>
+          <radialGradient id="r2sun" cx="42%" cy="38%">
+            <stop offset="0%" stop-color="#FFD98A"/><stop offset="55%" stop-color="#E8AC3E"/><stop offset="100%" stop-color="#C8862A"/>
+          </radialGradient>
+          <linearGradient id="r2roof" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3D6EA6"/><stop offset="100%" stop-color="#2A5484"/></linearGradient>
+          <linearGradient id="r2body" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4E82BC"/><stop offset="100%" stop-color="#35659B"/></linearGradient>
+          <linearGradient id="r2steel" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#9AA4B4"/><stop offset="100%" stop-color="#6E7885"/></linearGradient>
+          <linearGradient id="r2juice" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#93D797"/><stop offset="100%" stop-color="#64AE69"/></linearGradient>
+        </defs>
+
+        <!-- SUN: gapped tapered rays, alternating lengths, radial-lit disk -->
+        <g transform="translate(55,52)">
+          <g stroke="#E0A030" stroke-linecap="round">
+            <g stroke-width="3.4">
+              <path d="M0,-27 V-34 M0,27 V34 M-27,0 H-34 M27,0 H34"/>
+              <path d="M-19.1,-19.1 L-24,-24 M19.1,-19.1 L24,-24 M-19.1,19.1 L-24,24 M19.1,19.1 L24,24"/>
+            </g>
+            <g stroke-width="2.4" opacity="0.85">
+              <path d="M-10.4,-25 L-12.9,-31 M10.4,-25 L12.9,-31 M-10.4,25 L-12.9,31 M10.4,25 L12.9,31"/>
+              <path d="M-25,-10.4 L-31,-12.9 M25,-10.4 L31,-12.9 M-25,10.4 L-31,12.9 M25,10.4 L31,12.9"/>
+            </g>
+          </g>
+          <circle r="21" fill="url(#r2sun)"/>
+          <text class="watts" x="0" y="4.5">6.3 kW</text>
+        </g>
+
+        <!-- HOUSE: overhung two-tone roof, chimney cap, mullioned warm windows -->
+        <g transform="translate(165,52)">
+          <rect x="-20" y="-4" width="40" height="30" rx="2.5" fill="url(#r2body)"/>
+          <rect x="-20" y="-4" width="40" height="2.2" fill="#0A1220" opacity="0.28"/>
+          <rect x="10" y="-19" width="6.5" height="11" fill="url(#r2roof)"/>
+          <rect x="8.8" y="-21" width="8.9" height="2.8" rx="1.2" fill="#4E82BC"/>
+          <path d="M-27,-2.5 L0,-25 L27,-2.5 L22,-2.5 L0,-20.4 L-22,-2.5 Z" fill="url(#r2roof)"/>
+          <g>
+            <rect x="-14" y="1.5" width="9" height="9" rx="1.2" fill="#F5E7C4" opacity="0.95"/>
+            <path d="M-9.5,1.5 V10.5 M-14,6 H-5" stroke="#35659B" stroke-width="1.1"/>
+            <rect x="5" y="1.5" width="9" height="9" rx="1.2" fill="#F5E7C4" opacity="0.95"/>
+            <path d="M9.5,1.5 V10.5 M5,6 H14" stroke="#35659B" stroke-width="1.1"/>
+          </g>
+          <text class="watts" x="0" y="21.5">4.1 kW</text>
+        </g>
+
+        <!-- PYLON: filled tapered tower, lattice as negative space, arms w/ insulators -->
+        <g transform="translate(275,52)">
+          <path d="M-13,34 L-4,-26 H4 L13,34 L8.4,34 L2.6,-21.5 H-2.6 L-8.4,34 Z" fill="url(#r2steel)"/>
+          <path d="M-6.9,20 L6.9,20 L8.1,31 L-8.1,31 Z M-5.6,6 L5.6,6 L6.6,16 L-6.6,16 Z M-4.4,-7 L4.4,-7 L5.3,2 L-5.3,2 Z"
+                fill="none" stroke="url(#r2steel)" stroke-width="1.6"/>
+          <path d="M-8.1,31 L6.9,20 M8.1,31 L-6.9,20 M-6.6,16 L5.6,6 M6.6,16 L-5.6,6 M-5.3,2 L4.4,-7 M5.3,2 L-4.4,-7"
+                stroke="url(#r2steel)" stroke-width="1.3"/>
+          <rect x="-22" y="-15.5" width="44" height="3.2" rx="1.6" fill="url(#r2steel)"/>
+          <rect x="-15.5" y="-4.5" width="31" height="2.8" rx="1.4" fill="url(#r2steel)"/>
+          <path d="M0,-26 L0,-31" stroke="#9AA4B4" stroke-width="2" stroke-linecap="round"/>
+          <g fill="#5A626E">
+            <rect x="-20.5" y="-12.3" width="2" height="4.5" rx="1"/><rect x="18.5" y="-12.3" width="2" height="4.5" rx="1"/>
+            <rect x="-14" y="-1.7" width="2" height="4" rx="1"/><rect x="12" y="-1.7" width="2" height="4" rx="1"/>
+          </g>
+          <text class="watts" x="0" y="47">0 W</text>
+        </g>
+
+        <!-- BATTERY: liquid fill w/ meniscus + highlight, integrated terminal -->
+        <g transform="translate(385,52)">
+          <rect x="-7.5" y="-31" width="15" height="6" rx="2.5" fill="#AEB6C2"/>
+          <rect x="-16.5" y="-26" width="33" height="52" rx="7" fill="#20242E" stroke="#AEB6C2" stroke-width="2"/>
+          <g>
+            <rect x="-13" y="-5.5" width="26" height="28" rx="3.5" fill="url(#r2juice)"/>
+            <ellipse cx="0" cy="-5.5" rx="13" ry="2.6" fill="#A5E0A9"/>
+            <rect x="-10.5" y="-1.5" width="3" height="19" rx="1.5" fill="#FFFFFF" opacity="0.28"/>
+          </g>
+          <text class="watts" x="0" y="7">63%</text>
+        </g>
+      </svg>
+    </div></div>
+    <figcaption><strong>Same silhouette idea, drawn with craft</strong>: gapped tapered rays and
+      a lit disk; two-tone roof with a real overhang, chimney cap, and mullioned warm windows;
+      a filled pylon whose lattice is negative space, with insulators under the arms; a
+      battery that fills like liquid (meniscus + highlight, amber when discharging). Watts sit
+      under the pylon; flow lines trim to each shape's edge.</figcaption>
+  </figure>
+
+  <figure style="min-width:0">
+    <div class="scene"><b>B · refined, labels outside</b> — same shapes, numbers on a shared baseline below</div>
+    <div class="panelframe"><div class="panelsurface" style="padding:16px 24px">
+      <svg width="440" height="122" viewBox="0 0 440 122" role="img" aria-label="Refined silhouettes with labels below">
+        <g transform="translate(55,46)">
+          <g stroke="#E0A030" stroke-linecap="round">
+            <g stroke-width="3.4">
+              <path d="M0,-27 V-34 M0,27 V34 M-27,0 H-34 M27,0 H34"/>
+              <path d="M-19.1,-19.1 L-24,-24 M19.1,-19.1 L24,-24 M-19.1,19.1 L-24,24 M19.1,19.1 L24,24"/>
+            </g>
+            <g stroke-width="2.4" opacity="0.85">
+              <path d="M-10.4,-25 L-12.9,-31 M10.4,-25 L12.9,-31 M-10.4,25 L-12.9,31 M10.4,25 L12.9,31"/>
+              <path d="M-25,-10.4 L-31,-12.9 M25,-10.4 L31,-12.9 M-25,10.4 L-31,12.9 M25,10.4 L31,12.9"/>
+            </g>
+          </g>
+          <circle r="21" fill="url(#r2sun)"/>
+        </g>
+        <g transform="translate(165,46)">
+          <rect x="-20" y="-4" width="40" height="30" rx="2.5" fill="url(#r2body)"/>
+          <rect x="-20" y="-4" width="40" height="2.2" fill="#0A1220" opacity="0.28"/>
+          <rect x="10" y="-19" width="6.5" height="11" fill="url(#r2roof)"/>
+          <rect x="8.8" y="-21" width="8.9" height="2.8" rx="1.2" fill="#4E82BC"/>
+          <path d="M-27,-2.5 L0,-25 L27,-2.5 L22,-2.5 L0,-20.4 L-22,-2.5 Z" fill="url(#r2roof)"/>
+          <g>
+            <rect x="-15" y="1.5" width="9" height="9" rx="1.2" fill="#F5E7C4" opacity="0.95"/>
+            <path d="M-10.5,1.5 V10.5 M-15,6 H-6" stroke="#35659B" stroke-width="1.1"/>
+            <rect x="6" y="1.5" width="9" height="9" rx="1.2" fill="#F5E7C4" opacity="0.95"/>
+            <path d="M10.5,1.5 V10.5 M6,6 H15" stroke="#35659B" stroke-width="1.1"/>
+          </g>
+          <path d="M-4.5,26 V12.5 A4.5,4 0 0 1 4.5,12.5 V26 Z" fill="#24486F"/>
+          <circle cx="2.4" cy="19.5" r="0.9" fill="#F5E7C4" opacity="0.8"/>
+        </g>
+        <g transform="translate(275,46)">
+          <path d="M-13,34 L-4,-26 H4 L13,34 L8.4,34 L2.6,-21.5 H-2.6 L-8.4,34 Z" fill="url(#r2steel)"/>
+          <path d="M-6.9,20 L6.9,20 L8.1,31 L-8.1,31 Z M-5.6,6 L5.6,6 L6.6,16 L-6.6,16 Z M-4.4,-7 L4.4,-7 L5.3,2 L-5.3,2 Z"
+                fill="none" stroke="url(#r2steel)" stroke-width="1.6"/>
+          <path d="M-8.1,31 L6.9,20 M8.1,31 L-6.9,20 M-6.6,16 L5.6,6 M6.6,16 L-5.6,6 M-5.3,2 L4.4,-7 M5.3,2 L-4.4,-7"
+                stroke="url(#r2steel)" stroke-width="1.3"/>
+          <rect x="-22" y="-15.5" width="44" height="3.2" rx="1.6" fill="url(#r2steel)"/>
+          <rect x="-15.5" y="-4.5" width="31" height="2.8" rx="1.4" fill="url(#r2steel)"/>
+          <path d="M0,-26 L0,-31" stroke="#9AA4B4" stroke-width="2" stroke-linecap="round"/>
+          <g fill="#5A626E">
+            <rect x="-20.5" y="-12.3" width="2" height="4.5" rx="1"/><rect x="18.5" y="-12.3" width="2" height="4.5" rx="1"/>
+            <rect x="-14" y="-1.7" width="2" height="4" rx="1"/><rect x="12" y="-1.7" width="2" height="4" rx="1"/>
+          </g>
+        </g>
+        <g transform="translate(385,46)">
+          <rect x="-7.5" y="-31" width="15" height="6" rx="2.5" fill="#AEB6C2"/>
+          <rect x="-16.5" y="-26" width="33" height="52" rx="7" fill="#20242E" stroke="#AEB6C2" stroke-width="2"/>
+          <g>
+            <rect x="-13" y="-5.5" width="26" height="28" rx="3.5" fill="url(#r2juice)"/>
+            <ellipse cx="0" cy="-5.5" rx="13" ry="2.6" fill="#A5E0A9"/>
+            <rect x="-10.5" y="-1.5" width="3" height="19" rx="1.5" fill="#FFFFFF" opacity="0.28"/>
+          </g>
+        </g>
+        <text class="watts" x="55" y="108">6.3 kW</text>
+        <text class="watts" x="165" y="108">4.1 kW</text>
+        <text class="watts" x="275" y="108">0 W</text>
+        <text class="watts" x="385" y="108">63%</text>
+      </svg>
+    </div></div>
+    <figcaption><strong>Numbers off the artwork</strong>: every shape stays clean (the house
+      even gets its door back), and all four labels share one baseline — tidier as a set.
+      Trade-off: labels claim a line of height under each node, and on the busy panel the
+      solar label stacks above the per-array line.</figcaption>
+  </figure>
+
+  <p class="lede" style="font-size:13px">In every direction the lines, dots, speeds, and daily
+    labels stay exactly as shipped. A and B are both hand-drawn vector paths in Compose — no
+    new dependencies either way. (Also shipped since your note: node labels now shrink past
+    six characters, so ≥10 kW stays inside its circle.)</p>
+
+  <h2>Home card — 300 dp tier (Show 8 / Tab M9)</h2>
+  <div class="cards">
+
+    <figure>
+      <div class="scene"><b>Evening</b> · battery carrying the house</div>
+      <div class="homeframe">
+        <div class="flowcard">
+          <svg width="268" height="230" viewBox="0 0 268 230" role="img"
+               aria-label="Flow diagram: solar, battery and grid feeding home">
+            <!-- inactive structure -->
+            <path class="edge" d="M134,34.5 Q98.8,84.8 40.2,115"/>
+            <path class="edge" d="M134,34.5 L134,195.5"/>
+            <path class="edge" d="M40.2,115 Q98.8,145.2 134,195.5"/>
+            <!-- active edges -->
+            <path class="edge on" style="stroke: rgba(224,160,48,.55)" d="M134,34.5 Q169.2,84.8 227.8,115"/>
+            <path class="edge on" style="stroke: rgba(123,198,126,.55)" d="M134,195.5 Q169.2,145.2 227.8,115"/>
+            <path class="edge on" style="stroke: rgba(136,146,160,.55)" d="M40.2,115 L227.8,115"/>
+            <!-- dots: speed = flowLapMs(watts) -->
+            <circle class="dot" r="3.7" fill="#E0A030" style="--lap:2.78s; offset-path: path('M134,34.5 Q169.2,84.8 227.8,115')"/>
+            <circle class="dot d2" r="3.7" fill="#E0A030" style="--lap:2.78s; offset-path: path('M134,34.5 Q169.2,84.8 227.8,115')"/>
+            <circle class="dot" r="3.7" fill="#7BC67E" style="--lap:2.01s; offset-path: path('M134,195.5 Q169.2,145.2 227.8,115')"/>
+            <circle class="dot d2" r="3.7" fill="#7BC67E" style="--lap:2.01s; offset-path: path('M134,195.5 Q169.2,145.2 227.8,115')"/>
+            <circle class="dot" r="3.7" fill="#8892a0" style="--lap:3.79s; offset-path: path('M40.2,115 L227.8,115')"/>
+            <circle class="dot d2" r="3.7" fill="#8892a0" style="--lap:3.79s; offset-path: path('M40.2,115 L227.8,115')"/>
+            <!-- nodes -->
+            <g><!-- solar -->
+              <circle cx="134" cy="34.5" r="30" fill="#E0A030"/>
+              <g class="glyph" transform="translate(134,26.5)">
+                <circle r="4.2"/>
+                <path d="M0,-7.5 V-9 M0,7.5 V9 M-7.5,0 H-9 M7.5,0 H9 M-5.3,-5.3 L-6.4,-6.4 M5.3,5.3 L6.4,6.4 M-5.3,5.3 L-6.4,6.4 M5.3,-5.3 L6.4,-6.4"/>
+              </g>
+              <text class="watts" x="134" y="49">1.8 kW</text>
+            </g>
+            <g><!-- grid -->
+              <circle cx="40.2" cy="115" r="30" fill="#6B7280"/>
+              <g class="glyph" transform="translate(40.2,107)">
+                <path d="M1.5,-7 L-3.5,1 H-0.5 L-1.5,7 L3.5,-1 H0.5 Z"/>
+              </g>
+              <text class="watts" x="40.2" y="129.5">350 W</text>
+            </g>
+            <g><!-- home -->
+              <circle cx="227.8" cy="115" r="30" fill="#3A6EA5"/>
+              <g class="glyph" transform="translate(227.8,107)">
+                <path d="M-7,0.5 L0,-6 L7,0.5 M-4.8,-1 V6.5 H4.8 V-1"/>
+              </g>
+              <text class="watts" x="227.8" y="129.5">4.3 kW</text>
+            </g>
+            <g><!-- battery + SOC ring (amber = discharging) -->
+              <circle cx="134" cy="195.5" r="30" fill="#2A2F3C"/>
+              <circle cx="134" cy="195.5" r="34" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="4.6"/>
+              <circle cx="134" cy="195.5" r="34" fill="none" stroke="#E0A030" stroke-width="4.6"
+                      stroke-linecap="round" stroke-dasharray="136.7 213.6"
+                      transform="rotate(-90 134 195.5)"/>
+              <g class="glyph" transform="translate(134,187.5)">
+                <rect x="-6" y="-3.5" width="11" height="7" rx="1"/>
+                <path d="M5.8,-1.5 V1.5"/>
+              </g>
+              <text class="watts" x="134" y="210">64%</text>
+            </g>
+            <text class="sub" x="134" y="229">2.9 kW</text>
+          </svg>
+          <div class="footer">Today: 27.4 kWh produced · 31.2 kWh used</div>
+        </div>
+      </div>
+      <figcaption><strong>Three flows at once:</strong> solar and the battery both feed the
+        house, a trickle of grid import behind them. The battery's ring wears the gauge's
+        amber while discharging; faster dots = more watts.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="scene"><b>Midday</b> · sunny surplus</div>
+      <div class="homeframe">
+        <div class="flowcard">
+          <svg width="268" height="230" viewBox="0 0 268 230" role="img"
+               aria-label="Flow diagram: solar feeding home, battery and grid">
+            <path class="edge" d="M40.2,115 L227.8,115"/>
+            <path class="edge" d="M134,195.5 Q169.2,145.2 227.8,115"/>
+            <path class="edge" d="M40.2,115 Q98.8,145.2 134,195.5"/>
+            <path class="edge on" style="stroke: rgba(224,160,48,.55)" d="M134,34.5 Q169.2,84.8 227.8,115"/>
+            <path class="edge on" style="stroke: rgba(224,160,48,.55)" d="M134,34.5 L134,195.5"/>
+            <path class="edge on" style="stroke: rgba(224,160,48,.55)" d="M134,34.5 Q98.8,84.8 40.2,115"/>
+            <circle class="dot" r="3.7" fill="#E0A030" style="--lap:2.69s; offset-path: path('M134,34.5 Q169.2,84.8 227.8,115')"/>
+            <circle class="dot d2" r="3.7" fill="#E0A030" style="--lap:2.69s; offset-path: path('M134,34.5 Q169.2,84.8 227.8,115')"/>
+            <circle class="dot" r="3.7" fill="#E0A030" style="--lap:2.05s; offset-path: path('M134,34.5 L134,195.5')"/>
+            <circle class="dot d2" r="3.7" fill="#E0A030" style="--lap:2.05s; offset-path: path('M134,34.5 L134,195.5')"/>
+            <circle class="dot" r="3.7" fill="#E0A030" style="--lap:3.68s; offset-path: path('M134,34.5 Q98.8,84.8 40.2,115')"/>
+            <circle class="dot d2" r="3.7" fill="#E0A030" style="--lap:3.68s; offset-path: path('M134,34.5 Q98.8,84.8 40.2,115')"/>
+            <g>
+              <circle cx="134" cy="34.5" r="30" fill="#E0A030"/>
+              <g class="glyph" transform="translate(134,26.5)">
+                <circle r="4.2"/>
+                <path d="M0,-7.5 V-9 M0,7.5 V9 M-7.5,0 H-9 M7.5,0 H9 M-5.3,-5.3 L-6.4,-6.4 M5.3,5.3 L6.4,6.4 M-5.3,5.3 L-6.4,6.4 M5.3,-5.3 L6.4,-6.4"/>
+              </g>
+              <text class="watts" x="134" y="49">5.2 kW</text>
+            </g>
+            <g>
+              <circle cx="40.2" cy="115" r="30" fill="#6B7280"/>
+              <g class="glyph" transform="translate(40.2,107)">
+                <path d="M1.5,-7 L-3.5,1 H-0.5 L-1.5,7 L3.5,-1 H0.5 Z"/>
+              </g>
+              <text class="watts" x="40.2" y="129.5">500 W</text>
+            </g>
+            <g>
+              <circle cx="227.8" cy="115" r="30" fill="#3A6EA5"/>
+              <g class="glyph" transform="translate(227.8,107)">
+                <path d="M-7,0.5 L0,-6 L7,0.5 M-4.8,-1 V6.5 H4.8 V-1"/>
+              </g>
+              <text class="watts" x="227.8" y="129.5">1.9 kW</text>
+            </g>
+            <g>
+              <circle cx="134" cy="195.5" r="30" fill="#2A2F3C"/>
+              <circle cx="134" cy="195.5" r="34" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="4.6"/>
+              <circle cx="134" cy="195.5" r="34" fill="none" stroke="#7BC67E" stroke-width="4.6"
+                      stroke-linecap="round" stroke-dasharray="166.6 213.6"
+                      transform="rotate(-90 134 195.5)"/>
+              <g class="glyph" transform="translate(134,187.5)">
+                <rect x="-6" y="-3.5" width="11" height="7" rx="1"/>
+                <path d="M5.8,-1.5 V1.5"/>
+              </g>
+              <text class="watts" x="134" y="210">78%</text>
+            </g>
+            <text class="sub" x="134" y="229">2.8 kW</text>
+          </svg>
+          <div class="footer">Today: 12.4 kWh produced · 6.1 kWh used</div>
+        </div>
+      </div>
+      <figcaption><strong>Every dot is solar-colored</strong> — the source node colors its
+        dots, so a glance says where power is coming from. Export line runs slow (500 W),
+        battery charge runs fast; ring goes gauge-green while charging.</figcaption>
+    </figure>
+  </div>
+
+  <h2>SOLAR panel — same renderer, panel scale</h2>
+  <figure style="min-width:0">
+    <div class="panelframe">
+      <div class="panelsurface">
+        <svg width="640" height="434" viewBox="0 0 640 434" role="img"
+             aria-label="Large flow diagram with daily totals and per-array detail">
+          <path class="edge" d="M320,60 Q236,147.5 96,200"/>
+          <path class="edge" d="M320,60 L320,340"/>
+          <path class="edge" d="M96,200 Q236,252.5 320,340"/>
+          <path class="edge on" style="stroke: rgba(224,160,48,.55)" d="M320,60 Q404,147.5 544,200"/>
+          <path class="edge on" style="stroke: rgba(123,198,126,.55)" d="M320,340 Q404,252.5 544,200"/>
+          <path class="edge on" style="stroke: rgba(136,146,160,.55)" d="M96,200 L544,200"/>
+          <circle class="dot" r="6.4" fill="#E0A030" style="--lap:2.78s; offset-path: path('M320,60 Q404,147.5 544,200')"/>
+          <circle class="dot d2" r="6.4" fill="#E0A030" style="--lap:2.78s; offset-path: path('M320,60 Q404,147.5 544,200')"/>
+          <circle class="dot" r="6.4" fill="#7BC67E" style="--lap:2.01s; offset-path: path('M320,340 Q404,252.5 544,200')"/>
+          <circle class="dot d2" r="6.4" fill="#7BC67E" style="--lap:2.01s; offset-path: path('M320,340 Q404,252.5 544,200')"/>
+          <circle class="dot" r="6.4" fill="#8892a0" style="--lap:3.79s; offset-path: path('M96,200 L544,200')"/>
+          <circle class="dot d2" r="6.4" fill="#8892a0" style="--lap:3.79s; offset-path: path('M96,200 L544,200')"/>
+          <g>
+            <circle cx="320" cy="60" r="52" fill="#E0A030"/>
+            <g class="glyph" transform="translate(320,46) scale(1.7)">
+              <circle r="4.2"/>
+              <path d="M0,-7.5 V-9 M0,7.5 V9 M-7.5,0 H-9 M7.5,0 H9 M-5.3,-5.3 L-6.4,-6.4 M5.3,5.3 L6.4,6.4 M-5.3,5.3 L-6.4,6.4 M5.3,-5.3 L6.4,-6.4"/>
+            </g>
+            <text class="watts-lg" x="320" y="86">1.8 kW</text>
+            <text class="sub-lg" x="320" y="132">A 447 W · B 768 W · C 395 W · D 276 W</text>
+          </g>
+          <g>
+            <circle cx="96" cy="200" r="52" fill="#6B7280"/>
+            <g class="glyph" transform="translate(96,186) scale(1.7)">
+              <path d="M1.5,-7 L-3.5,1 H-0.5 L-1.5,7 L3.5,-1 H0.5 Z"/>
+            </g>
+            <text class="watts-lg" x="96" y="226">350 W</text>
+            <text class="sub-lg" x="96" y="272">↓ 6.2 kWh · ↑ 1.1 kWh</text>
+          </g>
+          <g>
+            <circle cx="544" cy="200" r="52" fill="#3A6EA5"/>
+            <g class="glyph" transform="translate(544,186) scale(1.7)">
+              <path d="M-7,0.5 L0,-6 L7,0.5 M-4.8,-1 V6.5 H4.8 V-1"/>
+            </g>
+            <text class="watts-lg" x="544" y="226">4.3 kW</text>
+          </g>
+          <g>
+            <circle cx="320" cy="340" r="52" fill="#2A2F3C"/>
+            <circle cx="320" cy="340" r="59" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="8"/>
+            <circle cx="320" cy="340" r="59" fill="none" stroke="#E0A030" stroke-width="8"
+                    stroke-linecap="round" stroke-dasharray="237.3 370.7"
+                    transform="rotate(-90 320 340)"/>
+            <g class="glyph" transform="translate(320,326) scale(1.7)">
+              <rect x="-6" y="-3.5" width="11" height="7" rx="1"/>
+              <path d="M5.8,-1.5 V1.5"/>
+            </g>
+            <text class="watts-lg" x="320" y="366">64%</text>
+            <text class="sub-lg" x="320" y="412">2.9 kW</text>
+            <text class="sub-lg" x="320" y="430">↓ 5.1 kWh · ↑ 4.2 kWh</text>
+          </g>
+        </svg>
+        <div class="todayline">Today: 27.4 kWh produced · 31.2 kWh used</div>
+      </div>
+    </div>
+    <figcaption><strong>Panel-only garnish:</strong> per-array watts from the Tigo sensors
+      under the solar node, grid import/export and battery charged/discharged dailies (the
+      new utility-meter helpers) under theirs. The card never shows these lines.</figcaption>
+  </figure>
+
+  <hr class="rule">
+  <h2>What's pinned by the spec</h2>
+  <ul class="notes">
+    <li><b>Dot speed is data:</b> a lap takes 4 s at 50 W, scaling linearly down to 1.2 s at
+      4 kW+. Two dots per line, half a lap apart.</li>
+    <li><b>Dim lines are structure:</b> inactive connections stay drawn at 12% white so the
+      diamond never changes shape — flows under 50 W simply don't animate.</li>
+    <li><b>Dot color = source</b> (solar amber, grid gray, battery green), so direction and
+      origin read together.</li>
+    <li><b>The ring keeps the gauge's language:</b> green charging, amber discharging,
+      holding its last color while idle. Sweep = state of charge.</li>
+    <li><b>One renderer, two sizes:</b> everything scales from the box, so card and panel
+      cannot drift apart. The Show 5 keeps its compact pill and never sees any of this.</li>
+  </ul>
+</main>

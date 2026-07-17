@@ -29,6 +29,7 @@ class SatelliteServerTest {
         override fun onPlaybackStart(rate: Int, width: Int, channels: Int) { calls.put("pb-start") }
         override fun onPlaybackChunk(pcm: ByteArray) { calls.put("pb-chunk") }
         override fun onPlaybackStop() { calls.put("pb-stop") }
+        override fun onPlaybackAbort() { calls.put("pb-abort") }
         override fun onOverlay(state: VoiceOverlayState) { calls.put(state) }
         override fun onTimers(state: TimersUiState) { calls.put(state) }
         override fun onEarcon(kind: EarconKind) { calls.put(kind) }

@@ -415,6 +415,7 @@ class AppDeps(context: Context) {
                 voicePlayer.onAudioStart(rate, width, channels)
             override fun onPlaybackChunk(pcm: ByteArray) = voicePlayer.onAudioChunk(pcm)
             override fun onPlaybackStop() = voicePlayer.onAudioStop()
+            override fun onPlaybackAbort() = voicePlayer.abort()
             override fun onOverlay(state: VoiceOverlayState) { voiceOverlay.value = state }
             override fun onTimers(state: TimersUiState) { timersUi.value = state }
             override fun onEarcon(kind: EarconKind) = earconPlayer.play(

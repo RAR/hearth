@@ -27,6 +27,7 @@ sealed interface SatelliteAction {
         override fun hashCode() = pcm.contentHashCode()
     }
     data object PlaybackStop : SatelliteAction
+    data object PlaybackAbort : SatelliteAction
     data class Overlay(val state: VoiceOverlayState) : SatelliteAction
     data class Timers(val state: TimersUiState) : SatelliteAction
     data class Earcon(val kind: EarconKind) : SatelliteAction

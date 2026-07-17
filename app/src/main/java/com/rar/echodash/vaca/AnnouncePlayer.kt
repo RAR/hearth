@@ -70,6 +70,11 @@ class AnnouncePlayer(
         queue.trySend(Cmd.Abort)
     }
 
+    /** Stop playback immediately, dropping any buffered audio. Does not fire onPlayed. */
+    fun abort() {
+        queue.trySend(Cmd.Abort)
+    }
+
     /** Closes the queue so the worker exits after draining. Tests only. */
     fun shutdown() {
         queue.close()

@@ -66,7 +66,7 @@ class AndroidPcmSink : PcmSink {
 
     override fun abort() {
         track?.let {
-            runCatching { it.pause(); it.flush() }
+            runCatching { it.pause(); it.flush(); it.stop() }
             it.release()
         }
         track = null

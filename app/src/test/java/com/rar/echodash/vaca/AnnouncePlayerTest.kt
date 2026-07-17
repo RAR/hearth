@@ -110,4 +110,17 @@ class AnnouncePlayerTest {
         assertEquals(listOf("start:22050/2/1", "abort", "start:22050/2/1", "finish"), h.sink.calls)
         assertEquals(1, h.playedCount)
     }
+
+    @Test
+    fun abortStopsPlaybackWithoutPlayed() = runTest {
+        val h = Harness(this)
+        h.player.onAudioStart(22050, 2, 1)
+        h.player.onAudioChunk(ByteArray(10))
+        h.player.abort()
+        h.player.shutdown()
+        advanceUntilIdle()
+        assertEquals(0, h.playedCount)                       // no onPlayed on abort
+        assertEquals(listOf(true, false), h.ducks)           // ducked then un-ducked
+        assertEquals("abort", h.sink.calls.last())           // sink aborted (dropped buffer)
+    }
 }

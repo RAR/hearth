@@ -333,12 +333,14 @@ private fun NodeLabelStack(
                 // >=10 kW labels ("10.2 kW", 7 chars) outgrow the column at the base size; shrink
                 // proportionally past 6 chars (safety net, same rule as the in-circle labels were).
                 val fit = if (primary.length > 6) 6f / primary.length else 1f
+                // Explicit tight lineHeight: the theme's default (~24sp) padded each text box far
+                // beyond these small fonts, visually separating stacked lines.
                 Text(primary, color = Color.White, fontSize = primarySp * fit, maxLines = 1,
-                    textAlign = TextAlign.Center)
+                    lineHeight = primarySp * 1.15f, textAlign = TextAlign.Center)
             }
             details.forEach {
                 Text(it, color = Color.White.copy(alpha = 0.6f), fontSize = detailSp,
-                    maxLines = 1, textAlign = TextAlign.Center)
+                    maxLines = 1, lineHeight = detailSp * 1.15f, textAlign = TextAlign.Center)
             }
         }
     }

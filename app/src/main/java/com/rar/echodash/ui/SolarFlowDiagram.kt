@@ -191,14 +191,12 @@ fun SolarFlowDiagram(
         val h = maxHeight
         // The diamond gets the box minus a bottom strip reserved for the battery's below-node label
         // stack: the 0.85 battery fraction leaves only ~2% of height under the node — nowhere near a
-        // text line — so the strip is carved out up front. It now holds up to three lines: the "NN%"
-        // primary plus battText and (panel-only) battTodayLine detail lines.
-        val battPrimaryLines = if (graph.socPct != null) 1 else 0
+        // text line — so the strip is carved out up front. The "NN%" sits BESIDE the cell (like the
+        // sun's watts), so the strip only holds battText and the (panel-only) battTodayLine.
         val battDetailLines = (if (graph.battText != null) 1 else 0) +
             (if (showDailyDetail && graph.battTodayLine != null) 1 else 0)
         val hRef = if (w < h) w else h // avoids the diagramH ⇄ minDim circular dependency
-        val stripDp = hRef * (PRIMARY_SP_FRAC * 1.5f) * battPrimaryLines +
-            hRef * (DETAIL_SP_FRAC * 1.5f) * battDetailLines
+        val stripDp = hRef * (DETAIL_SP_FRAC * 1.5f) * battDetailLines
         val diagramH = h - stripDp
         val minDim = if (w < diagramH) w else diagramH
         fun cx(id: FlowNodeId): Dp = w * nodeFrac(id).first
@@ -292,10 +290,18 @@ fun SolarFlowDiagram(
             )
         }
         if (FlowNodeId.BATTERY in present) {
-            // Battery label stack lives in the reserved bottom strip so it never clips.
+            // "NN%" sits beside the cell (right of the case, vertically centered on it), matching
+            // the sun's side label; the kW + daily lines stack in the reserved bottom strip.
+            val battHalfW = minDim * (16.5f / 220f)
+            NodeLabelStack(
+                x = cx(FlowNodeId.BATTERY) + battHalfW + gap,
+                y = cy(FlowNodeId.BATTERY) - minDim * (PRIMARY_SP_FRAC * 1.5f) / 2f,
+                width = labelWidth, primary = primaryText(graph, FlowNodeId.BATTERY), primarySp = primarySp,
+                details = emptyList(), detailSp = detailSp, startAligned = true,
+            )
             NodeLabelStack(
                 x = cx(FlowNodeId.BATTERY) - labelWidth / 2, y = diagramH,
-                width = labelWidth, primary = primaryText(graph, FlowNodeId.BATTERY), primarySp = primarySp,
+                width = labelWidth, primary = null, primarySp = primarySp,
                 details = buildList {
                     graph.battText?.let { add(it) }
                     if (showDailyDetail) graph.battTodayLine?.let { add(it) }

@@ -14,9 +14,34 @@ User decisions (2026-07-17 brainstorm):
   bar (the Show 5 pill keeps its bar unchanged).
 - **"Today" footer** on the card (existing pvToday/loadToday line, currently panel-only).
 - **Panel shares the renderer** — SOLAR panel finally gains the battery node and animation.
-- Sensor expansion invited ("we have a ton of other sensors") → two new optional sensors:
-  **grid import today** and **grid export today**, shown at panel scale. Deeper detail is a
-  non-goal for now (see Non-goals).
+- Sensor expansion invited ("we have a ton of other sensors") → new optional sensors:
+  **grid import/export today**, **battery charged/discharged today**, and up to four
+  **per-array PV power** slots (the user's TigoMonitor publishes `sensor.solar_array_a`–`d`),
+  all shown at panel scale only. Deeper detail is a non-goal (see Non-goals).
+
+### Real-sensor findings (2026-07-17, via HA MCP)
+
+The user's stack: Solar Assistant → MQTT (`sensor.luxpower_lxp_x_2_*`, what the dashboard
+uses today), Monitor My Solar dongles (`sensor.eg4_gridboss_*`), TigoMonitor
+(`sensor.solar_array_a`–`d`, unit string "watts"), plus an evcc layer.
+
+**Bug found:** every `luxpower_*_energy` sensor is a `total_increasing` *lifetime* counter
+(history: no midnight reset, 63.5 kWh already on the meter at 9 AM July 15) — so the
+already-shipped pvToday/loadToday assignments have been rendering cumulative totals in the
+"Today:" line. Fix is HA-side: six daily `utility_meter` helpers were created 2026-07-17 via
+the HA config-flow API over the lifetime counters:
+
+| Helper entity | Source |
+|---|---|
+| `sensor.luxpower_lxp_x_2_pv_energy_today` | `…_pv_energy` |
+| `sensor.luxpower_lxp_x_2_load_energy_today` | `…_load_energy` |
+| `sensor.luxpower_lxp_x_2_grid_import_today` | `…_grid_energy_in` |
+| `sensor.luxpower_lxp_x_2_grid_export_today` | `…_grid_energy_out` |
+| `sensor.luxpower_lxp_x_2_battery_charged_today` | `…_battery_energy_in` |
+| `sensor.luxpower_lxp_x_2_battery_discharged_today` | `…_battery_energy_out` |
+
+These are what the config page's -today pickers (existing and new) should be assigned to.
+No app-side change follows from this — the app renders whatever sensor is assigned.
 
 ## 1. Data model — `ui/model/SolarModel.kt`
 
@@ -43,6 +68,8 @@ data class SolarFlowGraph(
     val edges: List<FlowEdge>,
     val todayLine: String?,      // existing "Today: X kWh produced · Y kWh used"
     val gridTodayLine: String?,  // "↓ 3.2 kWh · ↑ 2.2 kWh" — panel-scale only
+    val battTodayLine: String?,  // "↓ 5.1 kWh · ↑ 4.2 kWh" (charged/discharged) — panel-scale
+    val arraysLine: String?,     // "A 447 W · B 768 W · C 395 W · D 276 W" — panel-scale
 )
 
 fun solarFlowGraph(cfg: SolarConfig, entities: Map<String, EntityState>): SolarFlowGraph?
@@ -100,18 +127,35 @@ Pure and unit-tested (midpoint: 2025 W → 2600 ms).
 
 ## 2. Config — `config/DashConfig.kt` + web config page
 
-`SolarConfig` gains two optional fields (defaults null → old configs deserialize fine;
-export/import carries them automatically):
+`SolarConfig` gains optional fields (defaults → old configs deserialize fine; export/import
+carries them automatically):
 
 ```kotlin
 val gridImportToday: String? = null, // kWh energy sensor, grid → house today
 val gridExportToday: String? = null, // kWh energy sensor, house → grid today
+val battInToday: String? = null,     // kWh energy sensor, charged into battery today
+val battOutToday: String? = null,    // kWh energy sensor, discharged from battery today
+val arrays: List<SolarArrayConfig> = emptyList(), // up to 4 per-array PV power sensors
+
+@Serializable
+data class SolarArrayConfig(
+    val name: String = "",        // shown label; blank falls back to "A".."D" by slot index
+    val power: String? = null,    // W/kW power sensor for this array/string
+)
 ```
 
-`ids()` includes both. The config page's Solar card gains two entity pickers, "Grid import
-today (kWh)" and "Grid export today (kWh)", following the pvToday/loadToday pattern exactly.
-`gridTodayLine` formats "↓ {import} {unit} · ↑ {export} {unit}" using each sensor's own
-unit (default kWh); either sensor alone renders alone; both absent → null.
+`ids()` includes all of them (arrays contribute their power ids). The config page's Solar
+card gains pickers "Grid import today (kWh)", "Grid export today (kWh)", "Battery charged
+today (kWh)", "Battery discharged today (kWh)" following the pvToday/loadToday pattern, and
+four array slots (name text + entity picker each), following the EV card's fixed-slot
+pattern.
+
+Line formats (each null when its sensors are absent):
+- `gridTodayLine` / `battTodayLine`: "↓ {in} {unit} · ↑ {out} {unit}" using each sensor's
+  own unit (default kWh); either sensor alone renders alone. For the battery, ↓ = charged,
+  ↑ = discharged.
+- `arraysLine`: entries with a resolving power sensor as "{name} {watts}" joined by " · ",
+  formatted via `formatWatts()` (handles the Tigo sensors' lowercase "watts" unit as W).
 
 ## 3. Renderer — new `ui/SolarFlowDiagram.kt`
 
@@ -150,8 +194,10 @@ composable renders at card size (~268×230 dp) and panel size. No LocalConfigura
   `(masterPhase × 4000 / flowLapMs(edge.watts) + offset) % 1`, positioned via
   `androidx.compose.ui.graphics.PathMeasure`. Dot direction = edge direction. No new
   dependencies; animation only runs while the diagram is composed.
-- `showDailyDetail = true` additionally draws `gridTodayLine` in small dim text under the
-  grid node.
+- `showDailyDetail = true` additionally draws, in small dim text: `gridTodayLine` under the
+  grid node, `battTodayLine` under the battery node (below `battText`), and `arraysLine`
+  under the solar node's watts label. All three are panel-scale only — the card never shows
+  them.
 
 ## 4. Wiring
 
@@ -199,7 +245,8 @@ composable renders at card size (~268×230 dp) and panel size. No LocalConfigura
 6. No grid sensor: no grid node/edges; S→H = pv remainder.
 7. kW-unit sensors (evcc style) scale ×1000 in edge watts.
 8. Negative pv clamps to 0.
-9. `gridTodayLine`: both sensors, import-only, export-only, neither.
+9. `gridTodayLine`/`battTodayLine`: both sensors, in-only, out-only, neither.
+9b. `arraysLine`: 4 arrays, blank names fall back A–D, "watts" unit formats as W, none → null.
 10. `flowLapMs`: 50 → 4000, 2025 → 2600, 4000 → 1200, 10 → 4000 (clamp), 9000 → 1200 (clamp).
 11. Null graph when nothing resolves; graph non-null with pv alone.
 
@@ -211,8 +258,9 @@ panel eyeball, Show 5 must show the unchanged pill.
 
 ## 6. Non-goals
 
-- Battery daily totals, per-string/inverter PV detail, tariffs/earnings, and history
-  sparklines (needs a new HA history API surface) — all future asks.
+- Per-PANEL Tigo detail (per-array is in; individual optimizer sensors are not),
+  inverter internals (voltages/frequencies/temps), tariffs/earnings, solar forecast, and
+  history sparklines (needs a new HA history API surface) — all future asks.
 - BATTERY→GRID edge (rare topology).
 - Forcing the diagram's flows to balance against node totals.
 - Any change to the Show 5 (248 dp tier) card, `solarCard()`, or the EV cards.
@@ -223,5 +271,8 @@ panel eyeball, Show 5 must show the unchanged pill.
 - Flash Show 8 + M9: home card shows the diamond with dots flowing (screencap both), SOLAR
   panel shows the large diagram + Today line (screencap). Show 5: pill unchanged (eyeball —
   its screencap is unreliable).
-- Config page: assign grid import/export today sensors, confirm `↓ · ↑` line appears at
-  panel scale and survives export/import.
+- Config page: assign the six `*_today` utility-meter helpers (table above — including
+  REPLACING the pvToday/loadToday lifetime-counter assignments) and the four
+  `sensor.solar_array_a`–`d` slots; confirm the `↓ · ↑` and array lines appear at panel
+  scale and survive export/import. Helper values are partial until their first midnight
+  rollover — verify magnitudes the day after assignment.

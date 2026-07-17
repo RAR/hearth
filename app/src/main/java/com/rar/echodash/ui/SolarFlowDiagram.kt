@@ -46,8 +46,8 @@ import com.rar.echodash.ui.model.flowLapMs
 
 // Geometry, all as fractions of min(width, height) so one composable serves card and panel scale.
 private const val DOT_RADIUS_FRAC = 0.016f
-private const val PRIMARY_SP_FRAC = 0.05f
-private const val DETAIL_SP_FRAC = 0.045f
+private const val PRIMARY_SP_FRAC = 0.058f
+private const val DETAIL_SP_FRAC = 0.052f
 // Diagonal Béziers bow 25% from their midpoint toward the box center (the HA-distribution look).
 private const val BEZIER_BOW = 0.25f
 // Master phase period; every edge derives its own lap from flowLapMs(watts).
@@ -339,7 +339,10 @@ private fun NodeLabelStack(
                     lineHeight = primarySp * 1.15f, textAlign = TextAlign.Center)
             }
             details.forEach {
-                Text(it, color = Color.White.copy(alpha = 0.6f), fontSize = detailSp,
+                // The 4-array breakdown can outgrow the sun's side stack; shrink long lines the
+                // same way as primary (threshold 25 keeps the daily kWh lines full-size).
+                val dFit = if (it.length > 25) 25f / it.length else 1f
+                Text(it, color = Color.White.copy(alpha = 0.6f), fontSize = detailSp * dFit,
                     maxLines = 1, lineHeight = detailSp * 1.15f, textAlign = TextAlign.Center)
             }
         }

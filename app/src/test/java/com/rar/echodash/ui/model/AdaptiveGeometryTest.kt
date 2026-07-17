@@ -36,6 +36,15 @@ class AdaptiveGeometryTest {
         assertFalse(solarStatsCompact(300))  // 300dp+ relaxes to 14sp
     }
 
+    // ---- solarFlowCard ----
+
+    @Test
+    fun solarFlowCardTierPins() {
+        assertFalse(solarFlowCard(248))  // Show 5 tier: unchanged pill by construction (golden rule)
+        assertTrue(solarFlowCard(300))   // Show 8 tier
+        assertTrue(solarFlowCard(320))   // Tab M9 tier
+    }
+
     // ---- homeOverlayCaps: all five golden rows ----
 
     @Test

@@ -73,6 +73,11 @@ fun homeCardWidthDp(screenWidthDp: Float): Int = when {
  *  300dp+ the row relaxes to 14sp/16dp/4dp. */
 fun solarStatsCompact(cardWidthDp: Int): Boolean = cardWidthDp < 300
 
+/** True at the 300dp+ card tiers: the home solar card shows the animated flow diagram instead of
+ *  the compact pill. False at the Show 5's 248dp tier by construction — the golden rule (the pill
+ *  is untouched there). Discrete like homeCardWidthDp: cards are fixed-size, not scaled. */
+fun solarFlowCard(cardWidthDp: Int): Boolean = cardWidthDp >= 300
+
 /**
  * Home overlay caps for a [screenWidthDp]×[screenHeightDp] canvas. When [reserveCardColumn] the
  * notification width subtracts the EV/solar card column so a row never slides under the cards; pass

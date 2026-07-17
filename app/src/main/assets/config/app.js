@@ -299,18 +299,24 @@ function reorderButtons(canUp, canDown, onUp, onDown) {
 // ---------- render ----------
 function render() {
   renderDevice();
+  renderBackup();
   renderPanels();
-  renderEntities();
-  renderMedia();
-  renderNotifications();
   renderHome();
-  renderOptions();
-  renderVoice();
-  renderSendspin();
   renderNight();
+  renderSensors();
+  renderThermostats();
+  renderLightGroups();
+  renderQuickButtons();
+  renderCameras();
+  renderDoorbells();
+  renderSolar();
   renderEv();
   renderCalendars();
-  renderBackup();
+  renderMedia();
+  renderSendspin();
+  renderVoice();
+  renderNws();
+  renderPush();
 }
 
 function renderDevice() {
@@ -390,6 +396,7 @@ function renderPanels() {
     ));
     host.appendChild(row);
   });
+  host.appendChild(el("div", "muted", "The panel bar auto-hides; swipe in from the right edge to bring it back for 8 s."));
 }
 
 function swapOrder(ordered, i, j) {
@@ -397,12 +404,12 @@ function swapOrder(ordered, i, j) {
   const t = a.order; a.order = b.order; b.order = t;
 }
 
-function renderEntities() {
-  const host = document.getElementById("entities");
+function renderSensors() {
+  const host = document.getElementById("sensors");
   clear(host);
   const e = config.entities;
+  const o = config.panelOptions;
 
-  host.appendChild(subhead("climate", "Sensors"));
   host.appendChild(labeledRow("Temperature sensor",
     entityPicker(["sensor"], e.tempSensor, v => e.tempSensor = v)));
   host.appendChild(labeledRow("Weather",
@@ -414,61 +421,51 @@ function renderEntities() {
   host.appendChild(el("div", "muted",
     "Event-rain total (resets to 0 when the rain event ends). While above 0, a rain pill shows the running total on the home screen."));
 
-  // climate list
-  host.appendChild(subhead("climate", "Thermostats"));
+  host.appendChild(labeledRow("Forecast days", numberInput(o.forecastDays, v => o.forecastDays = Math.round(v))));
+  host.appendChild(labeledRow("Sensor decimal places", numberInput(o.sensorDecimals, v => o.sensorDecimals = Math.round(v))));
+  host.appendChild(el("div", "muted", "Forecast 1–5 (clamped on save)."));
+}
+
+function renderThermostats() {
+  const host = document.getElementById("thermostats");
+  clear(host);
+  const e = config.entities;
+  const o = config.panelOptions;
+
   e.climate.forEach((id, i) => {
     const row = el("div", "row");
-    row.appendChild(entityPicker(["climate"], id, v => { if (v) e.climate[i] = v; else e.climate.splice(i, 1); renderEntities(); }));
+    row.appendChild(entityPicker(["climate"], id, v => { if (v) e.climate[i] = v; else e.climate.splice(i, 1); renderThermostats(); }));
     const del = el("button", "ghost small danger", "Remove");
     del.type = "button";
     del.setAttribute("aria-label", "Remove thermostat");
-    del.addEventListener("click", () => { e.climate.splice(i, 1); renderEntities(); });
+    del.addEventListener("click", () => { e.climate.splice(i, 1); renderThermostats(); });
     row.appendChild(del);
     host.appendChild(row);
   });
   const addClimate = el("button", "add", "Add thermostat");
   addClimate.type = "button";
-  addClimate.addEventListener("click", () => { e.climate.push(""); renderEntities(); });
+  addClimate.addEventListener("click", () => { e.climate.push(""); renderThermostats(); });
   host.appendChild(addClimate);
 
-  // solar slots
-  host.appendChild(subhead("solar", "Solar"));
-  const solarSlots = [["pv", "PV power"], ["load", "Home load"], ["grid", "Grid power"],
-    ["pvToday", "PV today"], ["loadToday", "Load today"],
-    ["gridImportToday", "Grid import today (kWh)"], ["gridExportToday", "Grid export today (kWh)"],
-    ["battInToday", "Battery charged today (kWh)"], ["battOutToday", "Battery discharged today (kWh)"],
-    ["battSoc", "Battery %"], ["battPower", "Battery power"]];
-  solarSlots.forEach(([k, lbl]) => {
-    host.appendChild(labeledRow(lbl, entityPicker(["sensor"], e.solar[k], v => e.solar[k] = v)));
-  });
-  host.appendChild(el("div", "muted",
-    "Battery % and battery power add a solar card to the home screen (gauge shimmers green while charging, amber in reverse while discharging). " +
-    "Battery power: negative = charging (evcc convention). Grid power: positive = importing."));
+  host.appendChild(labeledRow("Thermostat step", numberInput(o.thermostatStep, v => o.thermostatStep = v)));
+  host.appendChild(el("div", "muted", "Step 0.1–5.0 (clamped on save)."));
+}
 
-  // solar array slots (per-string PV power; panel-scale detail only). Fixed four slots like EVs.
-  if (!Array.isArray(e.solar.arrays)) e.solar.arrays = [];
-  const solarArrays = e.solar.arrays;
-  while (solarArrays.length < 4) solarArrays.push({});
-  solarArrays.slice(0, 4).forEach((slot, i) => {
-    const box = el("div", "group");
-    const head = el("div", "group-head");
-    head.appendChild(el("span", "panel-name", "Array " + String.fromCharCode(65 + i)));
-    box.appendChild(head);
-    const name = el("input");
-    name.value = slot.name || "";
-    name.setAttribute("aria-label", "Array name");
-    name.addEventListener("change", () => slot.name = name.value.trim());
-    box.appendChild(labeledRow("Name", name));
-    box.appendChild(labeledRow("PV power",
-      entityPicker(["sensor"], slot.power, v => slot.power = v)));
-    host.appendChild(box);
-  });
-  host.appendChild(el("div", "muted",
-    "Per-array PV power (e.g. TigoMonitor sensor.solar_array_a–d) shows on the full-screen Solar panel only. " +
-    "Blank name falls back to A–D. Empty slots are dropped on save."));
+function renderLightGroups() {
+  const host = document.getElementById("lightgroups");
+  clear(host);
+  const e = config.entities;
+  e.lightGroups.forEach((g, gi) => host.appendChild(renderLightGroup(g, gi)));
+  const addGroup = el("button", "add", "Add group");
+  addGroup.type = "button";
+  addGroup.addEventListener("click", () => { e.lightGroups.push({ name: "New group", entities: [] }); renderLightGroups(); });
+  host.appendChild(addGroup);
+}
 
-  // quick buttons (home card; up to four toggle/action entities). Fixed four slots like the arrays.
-  host.appendChild(subhead("lights", "Quick buttons"));
+function renderQuickButtons() {
+  const host = document.getElementById("quickbuttons");
+  clear(host);
+  const e = config.entities;
   if (!Array.isArray(e.quickButtons)) e.quickButtons = [];
   const quickButtons = e.quickButtons;
   while (quickButtons.length < 4) quickButtons.push({});
@@ -491,32 +488,74 @@ function renderEntities() {
     "Up to four tappable buttons on the home screen, below the EV and solar cards. Switches, lights, " +
     "and input booleans toggle and show live on/off; buttons, scripts, and scenes fire on tap. " +
     "Blank name uses the entity's name. Empty slots are dropped on save."));
+}
 
-  // light groups
-  host.appendChild(subhead("lights", "Light groups"));
-  e.lightGroups.forEach((g, gi) => host.appendChild(renderLightGroup(g, gi)));
-  const addGroup = el("button", "add", "Add group");
-  addGroup.type = "button";
-  addGroup.addEventListener("click", () => { e.lightGroups.push({ name: "New group", entities: [] }); renderEntities(); });
-  host.appendChild(addGroup);
-
-  // cameras
-  host.appendChild(subhead("cameras", "Cameras"));
+function renderCameras() {
+  const host = document.getElementById("cameras");
+  clear(host);
+  const e = config.entities;
   e.cameras.forEach((c, ci) => host.appendChild(renderCamera(c, ci)));
   const addCam = el("button", "add", "Add camera");
   addCam.type = "button";
-  addCam.addEventListener("click", () => { e.cameras.push({ name: "New camera", entity: null, rtspUrl: null }); renderEntities(); });
+  addCam.addEventListener("click", () => { e.cameras.push({ name: "New camera", entity: null, rtspUrl: null }); renderCameras(); renderDoorbells(); });
   host.appendChild(addCam);
   host.appendChild(el("div", "muted",
     "RTSP plays direct from Frigate/go2rtc (rtsp://host:8554/name) for sub-second latency; leave blank to stream through Home Assistant (HLS, ~5–10 s behind). Tip: prefer sub/fluent streams — the screen is 960×480."));
+}
 
-  // doorbells
-  host.appendChild(subhead("cameras", "Doorbells"));
+function renderDoorbells() {
+  const host = document.getElementById("doorbells");
+  clear(host);
+  const e = config.entities;
+  const o = config.panelOptions;
   e.doorbells.forEach((d, di) => host.appendChild(renderDoorbell(d, di)));
   const addDb = el("button", "add", "Add doorbell");
   addDb.type = "button";
-  addDb.addEventListener("click", () => { e.doorbells.push({ trigger: null, camera: "" }); renderEntities(); });
+  addDb.addEventListener("click", () => { e.doorbells.push({ trigger: null, camera: "" }); renderDoorbells(); });
   host.appendChild(addDb);
+  host.appendChild(labeledRow("Doorbell popup (s)", numberInput(o.doorbellPopupSeconds, v => o.doorbellPopupSeconds = Math.round(v))));
+  host.appendChild(el("div", "muted", "Doorbell popup 5–120 (clamped on save)."));
+}
+
+function renderSolar() {
+  const host = document.getElementById("solar");
+  clear(host);
+  const e = config.entities;
+
+  host.appendChild(subhead("solar", "Sensors"));
+  const solarSlots = [["pv", "PV power"], ["load", "Home load"], ["grid", "Grid power"],
+    ["pvToday", "PV today"], ["loadToday", "Load today"],
+    ["gridImportToday", "Grid import today (kWh)"], ["gridExportToday", "Grid export today (kWh)"],
+    ["battInToday", "Battery charged today (kWh)"], ["battOutToday", "Battery discharged today (kWh)"],
+    ["battSoc", "Battery %"], ["battPower", "Battery power"]];
+  solarSlots.forEach(([k, lbl]) => {
+    host.appendChild(labeledRow(lbl, entityPicker(["sensor"], e.solar[k], v => e.solar[k] = v)));
+  });
+  host.appendChild(el("div", "muted",
+    "Battery % and battery power add a solar card to the home screen (gauge shimmers green while charging, amber in reverse while discharging). " +
+    "Battery power: negative = charging (evcc convention). Grid power: positive = importing."));
+
+  host.appendChild(subhead("solar", "Arrays"));
+  if (!Array.isArray(e.solar.arrays)) e.solar.arrays = [];
+  const solarArrays = e.solar.arrays;
+  while (solarArrays.length < 4) solarArrays.push({});
+  solarArrays.slice(0, 4).forEach((slot, i) => {
+    const box = el("div", "group");
+    const head = el("div", "group-head");
+    head.appendChild(el("span", "panel-name", "Array " + String.fromCharCode(65 + i)));
+    box.appendChild(head);
+    const name = el("input");
+    name.value = slot.name || "";
+    name.setAttribute("aria-label", "Array name");
+    name.addEventListener("change", () => slot.name = name.value.trim());
+    box.appendChild(labeledRow("Name", name));
+    box.appendChild(labeledRow("PV power",
+      entityPicker(["sensor"], slot.power, v => slot.power = v)));
+    host.appendChild(box);
+  });
+  host.appendChild(el("div", "muted",
+    "Per-array PV power (e.g. TigoMonitor sensor.solar_array_a–d) shows on the full-screen Solar panel only. " +
+    "Blank name falls back to A–D. Empty slots are dropped on save."));
 }
 
 function renderMedia() {
@@ -534,8 +573,8 @@ function renderMedia() {
     "The HA media player entity that mirrors this device (pick your Music Assistant player for the Echo) — enables album art, track info, and next/previous."));
 }
 
-function renderNotifications() {
-  const host = document.getElementById("notifications");
+function renderNws() {
+  const host = document.getElementById("nws");
   clear(host);
   // Defensive defaults for configs saved before notifications existed (same pattern as Media/Night).
   if (!config.notifications) config.notifications = { nwsAlerts: null, nwsMinSeverity: "minor" };
@@ -576,41 +615,43 @@ function renderNotifications() {
     "alerts under the weather; swipe left to dismiss. Only alerts at or above the minimum severity " +
     "appear (Minor = show all). Auto-dismiss removes rows at or below the chosen severity after the " +
     "set time; higher severities stay until swiped away."));
+}
 
-  // ---- Push from Home Assistant ----
-  // Rendered only when the app build exposes a notify token (older builds -> block absent).
+function renderPush() {
+  const host = document.getElementById("push");
+  clear(host);
+  // Rendered only when the app build exposes a notify token (older builds -> card hidden entirely).
   // lastStatus is populated in tryLoad() before render() runs, so the token is present on first paint.
   const token = lastStatus && lastStatus.notifyToken;
-  if (token) {
-    host.appendChild(el("h3", "subhead", "Push from Home Assistant"));
+  document.getElementById("push-section").hidden = !token;
+  if (!token) return;
 
-    const tokenInput = el("input", "mono");
-    tokenInput.readOnly = true;
-    tokenInput.value = token;
-    tokenInput.setAttribute("aria-label", "Notify token");
-    tokenInput.addEventListener("focus", () => tokenInput.select());
-    host.appendChild(labeledRow("Token", tokenInput));
+  const tokenInput = el("input", "mono");
+  tokenInput.readOnly = true;
+  tokenInput.value = token;
+  tokenInput.setAttribute("aria-label", "Notify token");
+  tokenInput.addEventListener("focus", () => tokenInput.select());
+  host.appendChild(labeledRow("Token", tokenInput));
 
-    const yaml =
-      'rest_command:\n' +
-      '  echo_notify:\n' +
-      '    url: "' + location.origin + '/api/notify"\n' +
-      '    method: POST\n' +
-      '    headers:\n' +
-      '      authorization: "Bearer ' + token + '"\n' +
-      '    content_type: "application/json"\n' +
-      '    payload: >-\n' +
-      '      {"title": {{ title | tojson }}, "message": {{ message | default(\'\') | tojson }},\n' +
-      '       "severity": {{ severity | default(\'info\') | tojson }},\n' +
-      '       "id": {{ id | default(\'\') | tojson }}, "timeout": {{ timeout | default(0) }}}';
-    host.appendChild(el("pre", "yaml", yaml));
+  const yaml =
+    'rest_command:\n' +
+    '  echo_notify:\n' +
+    '    url: "' + location.origin + '/api/notify"\n' +
+    '    method: POST\n' +
+    '    headers:\n' +
+    '      authorization: "Bearer ' + token + '"\n' +
+    '    content_type: "application/json"\n' +
+    '    payload: >-\n' +
+    '      {"title": {{ title | tojson }}, "message": {{ message | default(\'\') | tojson }},\n' +
+    '       "severity": {{ severity | default(\'info\') | tojson }},\n' +
+    '       "id": {{ id | default(\'\') | tojson }}, "timeout": {{ timeout | default(0) }}}';
+  host.appendChild(el("pre", "yaml", yaml));
 
-    host.appendChild(el("div", "muted",
-      "Add this to configuration.yaml, then call rest_command.echo_notify from an automation " +
-      "(title required; message/severity/id/timeout optional). Reusing an id updates that row; " +
-      "timeout 0 or absent means it stays until dismissed. POST /api/notify/clear with " +
-      "{\"id\":\"…\"} or {\"all\":true} removes rows."));
-  }
+  host.appendChild(el("div", "muted",
+    "Add this to configuration.yaml, then call rest_command.echo_notify from an automation " +
+    "(title required; message/severity/id/timeout optional). Reusing an id updates that row; " +
+    "timeout 0 or absent means it stays until dismissed. POST /api/notify/clear with " +
+    "{\"id\":\"…\"} or {\"all\":true} removes rows."));
 }
 
 function renderLightGroup(g, gi) {
@@ -622,34 +663,34 @@ function renderLightGroup(g, gi) {
   head.appendChild(name);
   head.appendChild(reorderButtons(
     gi !== 0, gi !== groups.length - 1,
-    () => { const t = groups[gi]; groups[gi] = groups[gi - 1]; groups[gi - 1] = t; renderEntities(); },
-    () => { const t = groups[gi]; groups[gi] = groups[gi + 1]; groups[gi + 1] = t; renderEntities(); },
+    () => { const t = groups[gi]; groups[gi] = groups[gi - 1]; groups[gi - 1] = t; renderLightGroups(); },
+    () => { const t = groups[gi]; groups[gi] = groups[gi + 1]; groups[gi + 1] = t; renderLightGroups(); },
   ));
   const del = el("button", "ghost small danger", "Delete");
   del.type = "button";
   del.setAttribute("aria-label", "Delete group");
-  del.addEventListener("click", () => { groups.splice(gi, 1); renderEntities(); });
+  del.addEventListener("click", () => { groups.splice(gi, 1); renderLightGroups(); });
   head.appendChild(del);
   box.appendChild(head);
 
   g.entities.forEach((id, ei) => {
     const row = el("div", "row");
-    row.appendChild(entityPicker(["light", "switch", "fan"], id, v => { if (v) g.entities[ei] = v; else g.entities.splice(ei, 1); renderEntities(); }));
+    row.appendChild(entityPicker(["light", "switch", "fan"], id, v => { if (v) g.entities[ei] = v; else g.entities.splice(ei, 1); renderLightGroups(); }));
     row.appendChild(reorderButtons(
       ei !== 0, ei !== g.entities.length - 1,
-      () => { const t = g.entities[ei]; g.entities[ei] = g.entities[ei - 1]; g.entities[ei - 1] = t; renderEntities(); },
-      () => { const t = g.entities[ei]; g.entities[ei] = g.entities[ei + 1]; g.entities[ei + 1] = t; renderEntities(); },
+      () => { const t = g.entities[ei]; g.entities[ei] = g.entities[ei - 1]; g.entities[ei - 1] = t; renderLightGroups(); },
+      () => { const t = g.entities[ei]; g.entities[ei] = g.entities[ei + 1]; g.entities[ei + 1] = t; renderLightGroups(); },
     ));
     const erm = el("button", "ghost small danger", "Remove");
     erm.type = "button";
     erm.setAttribute("aria-label", "Remove entity");
-    erm.addEventListener("click", () => { g.entities.splice(ei, 1); renderEntities(); });
+    erm.addEventListener("click", () => { g.entities.splice(ei, 1); renderLightGroups(); });
     row.appendChild(erm);
     box.appendChild(row);
   });
   const addEnt = el("button", "add", "Add entity");
   addEnt.type = "button";
-  addEnt.addEventListener("click", () => { g.entities.push(""); renderEntities(); });
+  addEnt.addEventListener("click", () => { g.entities.push(""); renderLightGroups(); });
   box.appendChild(addEnt);
   return box;
 }
@@ -663,13 +704,13 @@ function renderCamera(c, ci) {
   head.appendChild(name);
   head.appendChild(reorderButtons(
     ci !== 0, ci !== cams.length - 1,
-    () => { const t = cams[ci]; cams[ci] = cams[ci - 1]; cams[ci - 1] = t; renderEntities(); },
-    () => { const t = cams[ci]; cams[ci] = cams[ci + 1]; cams[ci + 1] = t; renderEntities(); },
+    () => { const t = cams[ci]; cams[ci] = cams[ci - 1]; cams[ci - 1] = t; renderCameras(); renderDoorbells(); },
+    () => { const t = cams[ci]; cams[ci] = cams[ci + 1]; cams[ci + 1] = t; renderCameras(); renderDoorbells(); },
   ));
   const del = el("button", "ghost small danger", "Delete");
   del.type = "button";
   del.setAttribute("aria-label", "Delete camera");
-  del.addEventListener("click", () => { cams.splice(ci, 1); renderEntities(); });
+  del.addEventListener("click", () => { cams.splice(ci, 1); renderCameras(); renderDoorbells(); });
   head.appendChild(del);
   box.appendChild(head);
 
@@ -697,7 +738,7 @@ function renderDoorbell(d, di) {
   const del = el("button", "ghost small danger", "Remove");
   del.type = "button";
   del.setAttribute("aria-label", "Remove doorbell");
-  del.addEventListener("click", () => { dbs.splice(di, 1); renderEntities(); });
+  del.addEventListener("click", () => { dbs.splice(di, 1); renderDoorbells(); });
   row.appendChild(del);
   return row;
 }
@@ -726,18 +767,6 @@ function renderHome() {
   host.appendChild(labeledRow("Photo folder", folder));
   host.appendChild(labeledRow("Photo cache cap", numberInput(h.photoCacheCap, v => h.photoCacheCap = Math.round(v))));
   host.appendChild(el("div", "muted", "Idle 15–3600 s, interval 10–3600 s, cap 5–500 (clamped on save)."));
-}
-
-function renderOptions() {
-  const host = document.getElementById("options");
-  clear(host);
-  const o = config.panelOptions;
-  host.appendChild(labeledRow("Thermostat step", numberInput(o.thermostatStep, v => o.thermostatStep = v)));
-  host.appendChild(labeledRow("Forecast days", numberInput(o.forecastDays, v => o.forecastDays = Math.round(v))));
-  host.appendChild(labeledRow("Sensor decimal places", numberInput(o.sensorDecimals, v => o.sensorDecimals = Math.round(v))));
-  host.appendChild(labeledRow("Doorbell popup (s)", numberInput(o.doorbellPopupSeconds, v => o.doorbellPopupSeconds = Math.round(v))));
-  host.appendChild(el("div", "muted", "Step 0.1–5.0, forecast 1–5, doorbell popup 5–120 (clamped on save). " +
-    "The panel bar auto-hides; swipe in from the right edge to bring it back for 8 s."));
 }
 
 function renderVoice() {

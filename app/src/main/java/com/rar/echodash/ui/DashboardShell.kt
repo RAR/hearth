@@ -222,6 +222,9 @@ fun DashboardShell(
                         solar = solar,
                         notifications = notifications,
                         onDismiss = dismissKey,
+                        // CONFIG presence, not current card visibility, so the notification width
+                        // never jumps when a card fades in/out. ids() is public on both configs.
+                        reserveCardColumn = config.entities.evs.isNotEmpty() || config.entities.solar.ids().isNotEmpty(),
                         calendarEvents = calendarEvents,
                         onOpenCalendar = { onSelect(DashView.CALENDAR) },
                         clockFormat = config.home.clockFormat,

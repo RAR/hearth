@@ -88,6 +88,8 @@ import com.rar.echodash.ui.model.SolarCard
 import com.rar.echodash.ui.model.WeatherIcon
 import com.rar.echodash.ui.model.WeatherPill
 import com.rar.echodash.ui.model.eventTimeLabel
+import com.rar.echodash.ui.model.homeCardWidthDp
+import com.rar.echodash.ui.model.homeOverlayCaps
 import com.rar.echodash.ui.model.nextEventCard
 import com.rar.echodash.ui.model.solarStatsCompact
 import java.io.File
@@ -162,6 +164,9 @@ fun HomeView(
     solar: SolarCard? = null,
     notifications: List<NotificationItem> = emptyList(),
     onDismiss: (String) -> Unit = {},
+    // CONFIG presence of EV/solar cards (not current visibility): reserves the card column in the
+    // notification width cap so a card fading in never makes the notification stack jump width.
+    reserveCardColumn: Boolean = false,
     clockFormat: ClockFormat,
     connState: ConnState,
     configUrl: String,
@@ -195,7 +200,7 @@ fun HomeView(
         }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier
             .fillMaxSize()
             .pointerInput(Unit) { detectTapGestures(onLongPress = { menuOpen = true }) }
@@ -211,6 +216,11 @@ fun HomeView(
                 ) { _, dragAmount -> dx += dragAmount }
             }
     ) {
+        // Per-screen sizing from the measured canvas (787×394 on the Show 5). Cheap; recomputed only
+        // when the constraints or card-config presence change.
+        val cardWidth = homeCardWidthDp(maxWidth.value).dp
+        val caps = homeOverlayCaps(maxWidth.value, maxHeight.value, reserveCardColumn)
+
         Crossfade(targetState = takeoverVisible, animationSpec = tween(1000), label = "home-backdrop") { active ->
             if (active) {
                 NowPlayingHome(
@@ -322,14 +332,15 @@ fun HomeView(
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 28.dp),
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    evs.forEach { EvCardView(it) }
-                    if (solar != null) SolarCardView(solar)
+                    evs.forEach { EvCardView(it, cardWidth) }
+                    if (solar != null) SolarCardView(solar, cardWidth)
                 }
             }
 
-            // Notification area: just below the weather/AQI pill row (top = 70dp), width-capped so
-            // it never collides with the EV/solar stack, height-capped + clipped so the bottom-left
-            // clock is never covered.
+            // Notification area: just below the weather/AQI pill row (top = 70dp). Its width and
+            // height caps come from AdaptiveGeometry.homeOverlayCaps: width so a row never slides
+            // under the EV/solar card column, height (+ clipToBounds) so the bottom-left clock is
+            // never covered. Both grow with the screen (see the design spec's golden table).
             AnimatedVisibility(
                 visible = notifications.isNotEmpty(),
                 enter = fadeIn(tween(600)),
@@ -341,23 +352,18 @@ fun HomeView(
                 NotificationArea(
                     notifications = notifications,
                     onDismiss = onDismiss,
-                    // The Echo panel is 960x480 px at 195 dpi = ~787x394dp. The EV/solar column's
-                    // left edge is at ~787 - 28 (end pad) - 248 (card) = ~511dp, so a start of 28dp
-                    // leaves ~471dp before a row would slide under the cards; 460 keeps a gap.
-                    // Height: the bottom-left clock's top edge is at ~394 - 20 (pad) - 90 (clock +
-                    // date) = ~284dp; starting at 70dp, a 200dp cap keeps the scrolling stack clear.
                     modifier = Modifier
-                        .widthIn(max = 460.dp)
-                        .heightIn(max = 200.dp)
+                        .widthIn(max = caps.notifMaxWidthDp.dp)
+                        .heightIn(max = caps.notifMaxHeightDp.dp)
                         .clipToBounds(),
                 )
             }
 
-            // Next-event card: bottom-right, diagonal from the clock, width-capped so it never
-            // approaches the bottom-left clock block (worst-case date line ends ~230dp from the
-            // left; a 420dp cap puts the card's left edge at 787-28-420 = ~339dp, >100dp clear).
-            // Re-derives on the minute tick so "Tomorrow" flips to a time and "Now" appears
-            // without waiting for the next 15-minute fetch.
+            // Next-event card: bottom-right, diagonal from the clock. Width-capped by
+            // AdaptiveGeometry.homeOverlayCaps.nextEventMaxWidthDp so it never approaches the
+            // bottom-left clock block (the cap reserves the worst-case date-line width + clearance);
+            // the cap widens on larger screens. Re-derives on the minute tick so "Tomorrow" flips
+            // to a time and "Now" appears without waiting for the next 15-minute fetch.
             val nextEvent = remember(calendarEvents, now) { nextEventCard(calendarEvents, now) }
             AnimatedVisibility(
                 visible = nextEvent != null,
@@ -370,7 +376,7 @@ fun HomeView(
                     val is24 = clockIs24(clockFormat, DateFormat.is24HourFormat(context))
                     Row(
                         Modifier
-                            .widthIn(max = 420.dp)
+                            .widthIn(max = caps.nextEventMaxWidthDp.dp)
                             .clip(RoundedCornerShape(20.dp))
                             .background(Color.Black.copy(alpha = 0.35f))
                             // Tap opens the agenda panel.

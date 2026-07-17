@@ -180,21 +180,45 @@ diamond box the same way).
 
 - **Node centers** (fractions of the diagram box): SOLAR (0.50, 0.15), GRID (0.15, 0.50),
   HOME (0.85, 0.50), BATTERY (0.50, 0.85). Node radius `r = 0.13 × min(w, h)`.
-- **Nodes**: filled circles — Solar `0xFFE0A030`, Home `0xFF3A6EA5`, Grid `0xFF6B7280` (the
-  panel's existing palette), Battery neutral `0xFF2A2F3C` so its ring reads. White outlined
-  icon (SolarPower / Home / Bolt / BatteryStd) + primary text inside the circle: watts for
-  solar/home/grid, "NN%" for battery. Battery watts (`battText`) in small dim text just below
-  its circle. Absent nodes are not drawn.
-- **Battery ring**: arc stroke `max(3dp, 0.02 × min(w,h))`, sweep = socPct% of 360°, starting
-  at 12 o'clock; track = same stroke at white 0.15 alpha. Ring color keeps the gauge's
-  language: `GaugeGreen 0xFF7BC67E` while charging, `GaugeAmber 0xFFE0A030` while
-  discharging, and the last non-idle direction while idle (same remember/LaunchedEffect
-  pattern the pill's gauge uses; green until first activity).
+- **Nodes are shaped silhouettes** (round-2 restyle, user-picked from the mock 2026-07-17 —
+  replaces the original flat circles + material icons; no `Icon` composables remain). All
+  sizes are fractions of `min(w, diagramH)` (= `minDim`); centers unchanged. Absent nodes are
+  not drawn.
+  - **SOLAR — sun**: amber `0xFFE0A030` disk radius `0.10`, plus 8 isosceles-triangle rays at
+    45° steps (base `0.045`, tips reaching `0.155` from center), same amber. Watts text
+    centered in the disk.
+  - **HOME — house**: HomeBlue `0xFF3A6EA5` silhouette — roof triangle from apex
+    `(cx, cy − 0.13)` to eaves `(cx ± 0.13, cy − 0.02)`; body rounded rect width `0.20`,
+    from `cy − 0.02` down to `cy + 0.13`, corner `0.02`; chimney rect (width `0.03`, top at
+    `cy − 0.115`) on the right roof slope; warm window square `0.045` at `0xE6F2E4C0`
+    left-of-center in the body. Watts text centered in the body.
+  - **GRID — pylon**: stroke-drawn lattice tower in `0xFF8892A0` (no fill), stroke
+    `max(1.5dp, 0.012 × minDim)`: legs from `(cx ± 0.055, cy + 0.15)` converging to
+    `(cx ± 0.0175, cy − 0.11)`, joined at the top; two crossarms (half-widths `0.07` at
+    `cy − 0.06` and `0.05` at `cy + 0.01`) with short angled tips; X-braces between the
+    legs in the two bays below the crossarms. Watts text centered BELOW the pylon (the
+    lattice can't hold text), baseline region starting `cy + 0.15 + one detail line`;
+    `gridTodayLine` (panel) moves below that.
+  - **BATTERY — cell**: rounded rect width `0.15`, height `0.24`, centered at
+    `(cx, cy + 0.01)`, corner `0.03`, outline white 0.4 alpha stroke `max(1.5dp, 0.01 ×
+    minDim)`, terminal cap `0.06 × 0.025` centered above the top edge. **The interior fill
+    replaces the SOC ring**: inset `0.015`, filled from the bottom to `socPct%` of the inner
+    height, fill color keeping the gauge's language — `GaugeGreen 0xFF7BC67E` while charging,
+    `GaugeAmber 0xFFE0A030` while discharging, last non-idle direction while idle (same
+    remember/LaunchedEffect pattern; green until first activity). "NN%" text centered on the
+    cell. There is NO ring arc anymore. `battText` + `battTodayLine` stay in the reserved
+    bottom strip.
+  - **Node text**: white, base size `0.05 × minDim` sp, shrinking by `6/len` past 6
+    characters (the ≥10 kW rule).
 - **Lines** (drawn beneath nodes), the six canonical connections among present nodes:
   diagonals (S→G, S→H, G→B, B→H) as quadratic Béziers bowing 25 % toward the box center;
   S→B and G→H straight center lines that cross mid-box (the HA look). Inactive: 2 dp stroke,
   white 0.12 alpha. Active (edge in `graph.edges`): 2.5 dp stroke, source-node color at 0.55
-  alpha.
+  alpha. **Endpoint trimming** (round-2): silhouettes don't reliably cover line ends the way
+  circles did, so each path endpoint is pulled toward the opposite center along their straight
+  chord by a per-node landing radius — `0.13 × minDim` for SOLAR/HOME/BATTERY, `0.16` for
+  GRID (clears the open lattice). The Bézier control point is still computed from the
+  untrimmed centers; dots ride the trimmed path, appearing and vanishing at the shape edges.
 - **Dots**: 2 per active edge, half a lap apart, radius `max(3dp, 0.016 × min(w,h))`, filled
   with the source node's color. Source colors for edges/dots: solar `0xFFE0A030`, grid
   `0xFF8892A0` (brightened from the node gray for dark-bg visibility), battery

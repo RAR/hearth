@@ -21,11 +21,13 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -69,6 +71,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rar.echodash.config.ClockFormat
@@ -86,6 +89,7 @@ import com.rar.echodash.ui.model.WeatherIcon
 import com.rar.echodash.ui.model.WeatherPill
 import com.rar.echodash.ui.model.eventTimeLabel
 import com.rar.echodash.ui.model.nextEventCard
+import com.rar.echodash.ui.model.solarStatsCompact
 import java.io.File
 import java.text.SimpleDateFormat
 import java.time.ZoneId
@@ -419,12 +423,13 @@ fun HomeView(
     }
 }
 
-/** One EV charging pill: EV-station icon + name, a power/energy line, then a battery gauge + SOC/eta. */
+/** One EV charging pill: EV-station icon + name, a power/energy line, then a battery gauge + SOC/eta.
+ *  [cardWidth] defaults to today's 248dp; HomeView passes the per-screen width. */
 @Composable
-private fun EvCardView(card: EvCard) {
+private fun EvCardView(card: EvCard, cardWidth: Dp = 248.dp) {
     Column(
         Modifier
-            .width(248.dp)
+            .width(cardWidth)
             .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -461,7 +466,9 @@ private fun EvCardView(card: EvCard) {
 private val GaugeGreen = Color(0xFF7BC67E)
 private val GaugeAmber = Color(0xFFE0A030) // matches the connection-status dot
 
-/** 216dp gauge track: colored fill, optional directional shimmer, optional limit tick. */
+/** Gauge track filling the card's content width: colored fill, optional directional shimmer,
+ *  optional limit tick. BoxWithConstraints so the shimmer sweep and tick math use the MEASURED
+ *  track width instead of a hard 216 — at a 248dp card (216dp track) behaviour is bit-identical. */
 @Composable
 private fun GaugeBar(
     fillPct: Int,
@@ -470,12 +477,13 @@ private fun GaugeBar(
     fill: Color = GaugeGreen,
     reverse: Boolean = false,
 ) {
-    Box(
+    BoxWithConstraints(
         Modifier
             .fillMaxWidth()
-            .size(width = 216.dp, height = 8.dp)
+            .height(8.dp)
             .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(4.dp)),
     ) {
+        val trackW = maxWidth.value // measured track width in dp
         Box(
             Modifier
                 .fillMaxWidth(fillPct / 100f)
@@ -499,9 +507,9 @@ private fun GaugeBar(
                 )
                 Box(
                     Modifier
-                        // Sweep a 24dp band left-to-right across the full 216dp track
-                        // width; the fill's clip keeps it inside the filled region.
-                        .offset(x = ((if (reverse) 1f - fraction else fraction) * (216 + 24)).dp - 24.dp)
+                        // Sweep a 24dp band left-to-right across the full track width;
+                        // the fill's clip keeps it inside the filled region.
+                        .offset(x = ((if (reverse) 1f - fraction else fraction) * (trackW + 24)).dp - 24.dp)
                         .width(24.dp)
                         .fillMaxHeight()
                         .background(
@@ -517,10 +525,13 @@ private fun GaugeBar(
             }
         }
         if (tickPct != null) {
+            // Integer track width preserves the old integer-division tick math (216*tickPct/100
+            // truncates); a Float would shift the tick a sub-dp fraction off today's position.
+            val trackWi = maxWidth.value.toInt()
             Box(
                 Modifier
                     // 2dp tick at the vehicle's charge limit; -1dp centers it on the fraction.
-                    .offset(x = (216 * tickPct / 100 - 1).dp)
+                    .offset(x = (trackWi * tickPct / 100 - 1).dp)
                     .width(2.dp)
                     .fillMaxHeight()
                     .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(1.dp)),
@@ -529,12 +540,13 @@ private fun GaugeBar(
     }
 }
 
-/** Home solar pill: sun icon + PV output, battery gauge, home/grid line. */
+/** Home solar pill: sun icon + PV output, battery gauge, home/grid line. [cardWidth] defaults to
+ *  today's 248dp; HomeView passes the per-screen width. */
 @Composable
-private fun SolarCardView(card: SolarCard) {
+private fun SolarCardView(card: SolarCard, cardWidth: Dp = 248.dp) {
     Column(
         Modifier
-            .width(248.dp)
+            .width(cardWidth)
             .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -572,18 +584,23 @@ private fun SolarCardView(card: SolarCard) {
         }
         if (card.battText != null || card.homeText != null || card.gridText != null) {
             val statsWhite = Color.White.copy(alpha = 0.9f)
-            // Compact sizing so battery + home + grid all fit one line in the fixed-width card.
-            // Stopgap until per-screen adaptive sizing (see [[echo-dashboard-future-features]]).
+            // Battery + home + grid on one line. Below a 300dp card the row keeps the compact
+            // 12sp/14dp/3dp squeeze (all three segments won't otherwise fit the fixed 248dp card);
+            // at 300dp+ it relaxes to 14sp/16dp/4dp. AdaptiveGeometry.solarStatsCompact decides.
+            val compact = solarStatsCompact(cardWidth.value.toInt())
+            val statsFont = if (compact) 12.sp else 14.sp
+            val statsIcon = if (compact) 14.dp else 16.dp
+            val statsGap = if (compact) 3.dp else 4.dp
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(statsGap),
             ) {
                 if (card.battText != null) {
                     Icon(
                         Icons.Outlined.BatteryStd, contentDescription = "Battery",
-                        tint = statsWhite, modifier = Modifier.size(14.dp),
+                        tint = statsWhite, modifier = Modifier.size(statsIcon),
                     )
-                    Text(card.battText, color = statsWhite, fontSize = 12.sp, maxLines = 1)
+                    Text(card.battText, color = statsWhite, fontSize = statsFont, maxLines = 1)
                     // Direction arrow mirrors the grid: into the battery = points at it (charging),
                     // away from it = out of it (discharging), dash = idle.
                     Icon(
@@ -597,15 +614,15 @@ private fun SolarCardView(card: SolarCard) {
                             BattFlow.DISCHARGING -> "Discharging"
                             BattFlow.IDLE -> "Idle"
                         },
-                        tint = statsWhite, modifier = Modifier.size(14.dp),
+                        tint = statsWhite, modifier = Modifier.size(statsIcon),
                     )
                 }
                 if (card.homeText != null) {
                     Icon(
                         Icons.Outlined.Home, contentDescription = "Home",
-                        tint = statsWhite, modifier = Modifier.size(14.dp),
+                        tint = statsWhite, modifier = Modifier.size(statsIcon),
                     )
-                    Text(card.homeText, color = statsWhite, fontSize = 12.sp, maxLines = 1)
+                    Text(card.homeText, color = statsWhite, fontSize = statsFont, maxLines = 1)
                 }
                 if (card.gridText != null) {
                     Icon(
@@ -619,13 +636,13 @@ private fun SolarCardView(card: SolarCard) {
                             false -> "Export"
                             null -> "Balanced"
                         },
-                        tint = statsWhite, modifier = Modifier.size(14.dp),
+                        tint = statsWhite, modifier = Modifier.size(statsIcon),
                     )
                     Icon(
                         Icons.Outlined.ElectricMeter, contentDescription = "Grid",
-                        tint = statsWhite, modifier = Modifier.size(14.dp),
+                        tint = statsWhite, modifier = Modifier.size(statsIcon),
                     )
-                    Text(card.gridText, color = statsWhite, fontSize = 12.sp, maxLines = 1)
+                    Text(card.gridText, color = statsWhite, fontSize = statsFont, maxLines = 1)
                 }
             }
         }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rar.echodash.media.ArtBitmaps
 import com.rar.echodash.media.NowPlayingState
+import com.rar.echodash.ui.model.takeoverLayout
 
 /**
  * Home-screen now-playing backdrop: blurred art (or dusk gradient) full-screen under a dark scrim,
@@ -63,7 +65,9 @@ fun NowPlayingHome(
     onVolume: (Int) -> Unit,
     onBrowse: () -> Unit = {},
 ) {
-    Box(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        // Two growable regions dividing the width — the one true proportional split in the design.
+        val layout = takeoverLayout(maxWidth.value, maxHeight.value)
         if (art != null) {
             Image(art.blurred, contentDescription = null, modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop)
@@ -86,7 +90,7 @@ fun NowPlayingHome(
             Modifier
                 .align(Alignment.CenterEnd)
                 .padding(end = 48.dp)
-                .size(360.dp)
+                .size(layout.artSizeDp.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF11151F)),
             contentAlignment = Alignment.Center,
@@ -104,8 +108,10 @@ fun NowPlayingHome(
         Column(
             Modifier
                 .align(Alignment.CenterStart)
-                .padding(start = 48.dp, end = 440.dp)
-                .widthIn(max = 460.dp),
+                // No end pad: metaMaxWidthDp already reserves the art width + 32dp clearance, so the
+                // column can't reach the art card at any screen size (Show 5: 787 − 360 − 128 = 299).
+                .padding(start = 48.dp)
+                .widthIn(max = layout.metaMaxWidthDp.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(

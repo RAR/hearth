@@ -50,7 +50,11 @@ fun quickButtons(cfg: List<QuickButtonConfig>, entities: Map<String, EntityState
             },
             kind = kind,
             isOn = if (kind == QuickButtonKind.TOGGLE) state?.state == "on" else null,
-            available = state != null && state.state != "unavailable" && state.state != "unknown",
+            // "unavailable" (integration offline) disables either kind. "unknown" only disables a
+            // TOGGLE — a scene/script/button rests at "unknown" (or a timestamp) until first fired,
+            // and must stay tappable so you can fire it.
+            available = state != null && state.state != "unavailable" &&
+                !(kind == QuickButtonKind.TOGGLE && state.state == "unknown"),
         )
     }
 

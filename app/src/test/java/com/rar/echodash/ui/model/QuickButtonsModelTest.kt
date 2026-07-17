@@ -101,20 +101,39 @@ class QuickButtonsModelTest {
     }
 
     @Test
-    fun availabilityFalseForMissingAndUnavailableOrUnknown() {
+    fun availabilityFalseForMissingAndUnavailable() {
         val cfg = listOf(
             QuickButtonConfig(entity = "switch.here"),
             QuickButtonConfig(entity = "switch.gone"),    // absent from map
             QuickButtonConfig(entity = "switch.unavail"),
-            QuickButtonConfig(entity = "switch.unknown"),
         )
         val entities = mapOf(
             "switch.here" to st("switch.here", "off"),
             "switch.unavail" to st("switch.unavail", "unavailable"),
-            "switch.unknown" to st("switch.unknown", "unknown"),
         )
         assertEquals(
-            listOf(true, false, false, false),
+            listOf(true, false, false),
+            quickButtons(cfg, entities).map { it.available },
+        )
+    }
+
+    @Test
+    fun unknownDisablesToggleButNotPress() {
+        // A scene/script that has never fired rests at "unknown" (or a timestamp) — that is normal,
+        // not offline, so PRESS buttons stay tappable. For a TOGGLE, "unknown" means we don't know
+        // on/off, so it dims. "unavailable" (integration offline) disables either kind.
+        val cfg = listOf(
+            QuickButtonConfig(entity = "switch.unknown"),   // TOGGLE + unknown -> unavailable
+            QuickButtonConfig(entity = "scene.unknown"),    // PRESS + unknown -> available
+            QuickButtonConfig(entity = "scene.unavail"),    // PRESS + unavailable -> unavailable
+        )
+        val entities = mapOf(
+            "switch.unknown" to st("switch.unknown", "unknown"),
+            "scene.unknown" to st("scene.unknown", "unknown"),
+            "scene.unavail" to st("scene.unavail", "unavailable"),
+        )
+        assertEquals(
+            listOf(false, true, false),
             quickButtons(cfg, entities).map { it.available },
         )
     }

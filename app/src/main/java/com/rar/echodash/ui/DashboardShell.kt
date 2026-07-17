@@ -45,7 +45,6 @@ import com.rar.echodash.ui.model.mergeNotifications
 import com.rar.echodash.ui.model.notifSeverityOf
 import com.rar.echodash.ui.model.nwsNotifications
 import com.rar.echodash.ui.model.solarCard
-import com.rar.echodash.ui.model.solarFlow
 import com.rar.echodash.ui.model.solarFlowGraph
 import com.rar.echodash.ui.model.thermostats
 import com.rar.echodash.ui.model.rainPill
@@ -278,8 +277,8 @@ fun DashboardShell(
                     fetchForecast = fetchForecast,
                 )
                 DashView.SOLAR -> {
-                    val flow = remember(entities, config.entities.solar) { solarFlow(config.entities.solar, entities) }
-                    SolarPanel(flow)
+                    val graph = remember(entities, config.entities.solar) { solarFlowGraph(config.entities.solar, entities) }
+                    SolarPanel(graph)
                 }
                 DashView.CAMERAS -> CamerasPanel(config.entities.cameras, streamResolver)
             }

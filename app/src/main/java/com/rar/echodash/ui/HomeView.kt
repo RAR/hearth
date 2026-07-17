@@ -567,12 +567,26 @@ private fun SolarFlowCardView(graph: SolarFlowGraph, cardWidth: Dp) {
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        SolarFlowDiagram(
-            graph,
-            // 0.68 (was 0.78): the battery %+kW stack moved beside the cell, so the card's
-            // bottom strip collapsed entirely.
-            modifier = Modifier.fillMaxWidth().height(cardWidth * 0.68f),
-        )
+        // Title floats over the diagram's empty top-left corner (beside the sun) so the card
+        // stays the same height as the untitled version.
+        Box(Modifier.fillMaxWidth().height(cardWidth * 0.68f)) {
+            SolarFlowDiagram(
+                graph,
+                // 0.68 (was 0.78): the battery %+kW stack moved beside the cell, so the card's
+                // bottom strip collapsed entirely.
+                modifier = Modifier.fillMaxSize(),
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    Icons.Outlined.SolarPower, contentDescription = null,
+                    tint = Color.White, modifier = Modifier.size(18.dp),
+                )
+                Text("Solar", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            }
+        }
         graph.todayLine?.let {
             Text(
                 it, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp,

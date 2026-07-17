@@ -44,6 +44,8 @@ import com.rar.echodash.ui.model.lightSections
 import com.rar.echodash.ui.model.mergeNotifications
 import com.rar.echodash.ui.model.notifSeverityOf
 import com.rar.echodash.ui.model.nwsNotifications
+import com.rar.echodash.ui.model.QuickButton
+import com.rar.echodash.ui.model.quickButtons
 import com.rar.echodash.ui.model.solarCard
 import com.rar.echodash.ui.model.solarFlowGraph
 import com.rar.echodash.ui.model.thermostats
@@ -80,6 +82,7 @@ fun DashboardShell(
     art: ArtBitmaps?,
     takeoverVisible: Boolean,
     onToggle: (String) -> Unit,
+    onQuickButton: (QuickButton) -> Unit = {},
     onSetTemperature: (String, Double) -> Unit,
     onSetHvacMode: (String, String) -> Unit,
     onMediaPlay: () -> Unit,
@@ -215,6 +218,9 @@ fun DashboardShell(
                     val solarGraph = remember(entities, config.entities.solar) {
                         solarFlowGraph(config.entities.solar, entities)
                     }
+                    val quickBtns = remember(entities, config.entities.quickButtons) {
+                        quickButtons(config.entities.quickButtons, entities)
+                    }
                     HomeView(
                         photos = if (config.home.slideshowEnabled) photos else emptyList(),
                         slideshowSeconds = config.home.slideshowSeconds,
@@ -224,6 +230,8 @@ fun DashboardShell(
                         evs = evs,
                         solar = solar,
                         solarGraph = solarGraph,
+                        quickButtons = quickBtns,
+                        onQuickButton = onQuickButton,
                         notifications = notifications,
                         onDismiss = dismissKey,
                         // CONFIG presence, not current card visibility, so the notification width

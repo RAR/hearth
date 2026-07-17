@@ -51,6 +51,7 @@ import com.rar.echodash.ui.WakeGlow
 import com.rar.echodash.ui.model.CalendarEvent
 import com.rar.echodash.ui.model.parseCalendarEvents
 import com.rar.echodash.ui.model.pushedNotificationItems
+import com.rar.echodash.ui.model.quickButtonService
 import com.rar.echodash.ui.theme.EchoTheme
 import com.rar.echodash.vaca.AndroidKioskDevice
 import com.rar.echodash.vaca.AnnouncePlayer
@@ -807,6 +808,10 @@ fun EchoDashApp(deps: AppDeps) {
                         art = art,
                         takeoverVisible = takeoverVisible,
                         onToggle = { id -> deps.entityHub.callService("homeassistant", "toggle", entityId = id) },
+                        onQuickButton = { qb ->
+                            val (domain, service) = quickButtonService(qb.entityId)
+                            deps.entityHub.callService(domain, service, entityId = qb.entityId)
+                        },
                         onSetTemperature = { id, temp ->
                             deps.entityHub.callService(
                                 "climate", "set_temperature",

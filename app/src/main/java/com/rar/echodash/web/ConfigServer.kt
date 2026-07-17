@@ -34,6 +34,8 @@ class ConfigServer(
     private val setup: SetupCoordinator,
     private val configured: () -> Boolean,
     private val connState: () -> String,
+    private val haUrl: () -> String? = { null },
+    private val disconnect: () -> Unit = {},
     private val lux: () -> Int? = { null },
     private val sendspinStatus: () -> String = { "disconnected" },
     // MA sign-in bridge: exchanges credentials for a token device-side and persists it before
@@ -70,6 +72,7 @@ class ConfigServer(
                 uri == "/api/config" && method == Method.PUT -> handlePutConfig(session)
                 uri == "/api/entities" && method == Method.GET -> ok(entitiesJson())
                 uri == "/api/status" && method == Method.GET -> handleStatus()
+                uri == "/api/disconnect" && method == Method.POST -> handleDisconnect()
                 uri == "/api/name" && method == Method.PUT -> handlePutName(session)
                 uri == "/api/setup/begin" && method == Method.POST -> handleSetupBegin(session)
                 uri == "/api/setup/complete" && method == Method.POST -> handleSetupComplete(session)
@@ -116,11 +119,18 @@ class ConfigServer(
         ok(buildJsonObject {
             put("configured", configured())
             put("connState", connState())
+            put("haUrl", haUrl())        // stored HA base URL, or JSON null when unset
             put("lux", lux())            // int, or JSON null when no sensor reading yet
             put("notifyToken", notifyToken())
             put("deviceName", deviceName())
             put("sendspin", sendspinStatus())
         }.toString())
+
+    /** Session-gated (see route()). Clears auth device-side and returns the device to setup. */
+    private fun handleDisconnect(): Response {
+        disconnect()
+        return ok("""{"ok":true}""")
+    }
 
     private fun handlePutName(session: IHTTPSession): Response {
         val obj = runCatching { ConfigJson.json.parseToJsonElement(readBody(session)) as JsonObject }

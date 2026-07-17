@@ -153,6 +153,7 @@ class AppDeps(context: Context) {
 
     val sessions = SessionManager()
     val setupEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val logoutEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val setup = SetupCoordinator(auth, onConfigured = { setupEvents.tryEmit(Unit) })
     private val ensuredPin: String by lazy {
         settings.configPin ?: generatePin().also { settings.configPin = it }
@@ -173,6 +174,10 @@ class AppDeps(context: Context) {
         setup = setup,
         configured = { settings.refreshToken != null },
         connState = { ws.connectionState.value.name },
+        haUrl = { settings.baseUrl },
+        // clearAuth() on the server (worker) thread so the web's next /api/status poll
+        // already reports configured:false; ws.stop() happens in the main-thread collector.
+        disconnect = { settings.clearAuth(); logoutEvents.tryEmit(Unit) },
         lux = { lastLux },
         sendspinStatus = { sendspin.status.value.name },
         // MA sign-in: exchange credentials for a token on the device, persist token + display
@@ -624,6 +629,10 @@ fun EchoDashApp(deps: AppDeps) {
 
     LaunchedEffect(Unit) {
         deps.setupEvents.collect { screen = Screen.Dashboard }
+    }
+
+    LaunchedEffect(Unit) {
+        deps.logoutEvents.collect { deps.ws.stop(); screen = Screen.Setup }
     }
 
     // Startup brand splash: cover the app with the logo + "Hearth" wordmark until HA connects

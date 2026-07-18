@@ -122,6 +122,26 @@ class WeatherModelTest {
     }
 
     @Test
+    fun weatherPillTextJoinsConditionTemperatureAndRain() {
+        val pill = WeatherPill(WeatherIcon.RAIN, "Rainy", "68.7 °F", stale = false)
+        val rain = RainPill("0.74 in")
+        assertEquals("Rainy · 68.7 °F · 0.74 in", weatherPillText(pill, rain))
+    }
+
+    @Test
+    fun weatherPillTextOmitsTrailingSeparatorWhenRainIsNull() {
+        val pill = WeatherPill(WeatherIcon.SUNNY, "Sunny", "72.0 °F", stale = false)
+        assertEquals("Sunny · 72.0 °F", weatherPillText(pill, null))
+    }
+
+    @Test
+    fun weatherPillTextOmitsLeadingSeparatorWhenConditionIsNull() {
+        val pill = WeatherPill(WeatherIcon.UNKNOWN, null, "68.7 °F", stale = false)
+        val rain = RainPill("0.74 in")
+        assertEquals("68.7 °F · 0.74 in", weatherPillText(pill, rain))
+    }
+
+    @Test
     fun conditionLabelsMatchHaTranslations() {
         assertEquals("Partly cloudy", conditionLabel("partlycloudy"))
         assertEquals("Clear, night", conditionLabel("clear-night"))

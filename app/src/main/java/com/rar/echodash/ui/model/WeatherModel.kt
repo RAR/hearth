@@ -125,6 +125,10 @@ fun rainPill(rainSensorId: String?, entities: Map<String, EntityState>): RainPil
     return RainPill(text = if (unit != null) "$amount $unit" else amount)
 }
 
+/** Weather-pill display text: condition · temperature · rain amount, skipping absent parts. */
+fun weatherPillText(pill: WeatherPill, rain: RainPill?): String =
+    listOfNotNull(pill.conditionText, pill.temperature, rain?.text).joinToString(" · ")
+
 data class DailyForecast(val dayOfWeek: String, val icon: WeatherIcon, val high: Double?, val low: Double?)
 
 /** Parse a weather.get_forecasts result into up to 5 daily columns for [entityId]. */

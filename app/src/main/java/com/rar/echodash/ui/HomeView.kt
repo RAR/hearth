@@ -106,6 +106,7 @@ import com.rar.echodash.ui.model.homeOverlayCaps
 import com.rar.echodash.ui.model.nextEventCard
 import com.rar.echodash.ui.model.solarFlowCard
 import com.rar.echodash.ui.model.solarStatsCompact
+import com.rar.echodash.ui.model.weatherPillText
 import java.io.File
 import java.text.SimpleDateFormat
 import java.time.ZoneId
@@ -302,7 +303,7 @@ fun HomeView(
                                 tint = Color.White.copy(alpha = dim),
                                 modifier = Modifier.size(22.dp),
                             )
-                            val text = listOfNotNull(pill.conditionText, pill.temperature).joinToString(" · ")
+                            val text = weatherPillText(pill, rain)
                             Text(text, color = Color.White.copy(alpha = dim), fontSize = 18.sp)
                         }
                     }
@@ -322,7 +323,9 @@ fun HomeView(
                             )
                         }
                     }
-                    if (rain != null) {
+                    // Rain rides in the weather pill; standalone is the fallback when there is no
+                    // weather pill at all.
+                    if (pill == null && rain != null) {
                         Row(
                             Modifier
                                 .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))

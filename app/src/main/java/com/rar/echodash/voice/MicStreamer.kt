@@ -35,7 +35,10 @@ class MicStreamer(
             }
             val record = try {
                 AudioRecord(
-                    MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                    // MIC, not VOICE_RECOGNITION: the Echo HAL routes VOICE_RECOGNITION through
+                    // its AEC/NS/AGC preprocessing, whose gate intermittently swallows speech
+                    // (delivered level flaps between ambient and full attempt-to-attempt).
+                    MediaRecorder.AudioSource.MIC,
                     RATE,
                     AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT,

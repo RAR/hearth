@@ -164,6 +164,55 @@ class NotificationModelTest {
         assertEquals("Special Weather Statement", run("1", attr).single().title)
     }
 
+    // ---- timestampMs from Onset ----
+
+    @Test
+    fun onsetEpochCarriesIntoTimestampMs() {
+        val attr = alertsAttr(mapOf(
+            "Event" to "E", "ID" to "1", "Severity" to "Severe",
+            "Onset" to "2026-07-14T09:30:00+00:00",
+        ))
+        val expected = java.time.Instant.parse("2026-07-14T09:30:00Z").toEpochMilli()
+        assertEquals(expected, run("1", attr).single().timestampMs)
+    }
+
+    @Test
+    fun missingOrUnparseableOnsetYieldsNullTimestamp() {
+        val noOnset = alertsAttr(mapOf("Event" to "E", "ID" to "1", "Severity" to "Severe"))
+        assertNull(run("1", noOnset).single().timestampMs)
+        val badOnset = alertsAttr(mapOf(
+            "Event" to "E", "ID" to "1", "Severity" to "Severe", "Onset" to "not-a-date",
+        ))
+        assertNull(run("1", badOnset).single().timestampMs)
+    }
+
+    // ---- notifTimestampLabel ----
+
+    @Test
+    fun notifTimestampLabelNullInputYieldsNull() {
+        assertNull(notifTimestampLabel(null, nowMs))
+    }
+
+    @Test
+    fun notifTimestampLabelSameDayOmitsWeekday() {
+        val ts = java.time.Instant.parse("2026-07-14T18:12:00Z").toEpochMilli() // same UTC day as nowMs
+        val zone = java.time.ZoneId.systemDefault()
+        val expected = java.time.Instant.ofEpochMilli(ts).atZone(zone)
+            .format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.ENGLISH))
+        assertEquals(expected, notifTimestampLabel(ts, nowMs))
+        assertTrue(expected.first().isDigit()) // no weekday prefix
+    }
+
+    @Test
+    fun notifTimestampLabelDifferentDayPrependsWeekday() {
+        val ts = java.time.Instant.parse("2026-07-16T18:12:00Z").toEpochMilli() // Thursday, different day
+        val zone = java.time.ZoneId.systemDefault()
+        val expected = java.time.Instant.ofEpochMilli(ts).atZone(zone)
+            .format(java.time.format.DateTimeFormatter.ofPattern("EEE h:mm a", java.util.Locale.ENGLISH))
+        assertEquals(expected, notifTimestampLabel(ts, nowMs))
+        assertTrue(expected.startsWith("Thu"))
+    }
+
     // ---- detail assembly ----
 
     @Test
@@ -245,8 +294,8 @@ class NotificationModelTest {
     @Test
     fun pushedItemsMapKeyAndDetail() {
         val items = listOf(
-            PushedNotification("a", NotifSeverity.WARNING, "Title A", "Msg A", null),
-            PushedNotification("b", NotifSeverity.INFO, "Title B", null, 123L),
+            PushedNotification("a", NotifSeverity.WARNING, "Title A", "Msg A", 500L, null),
+            PushedNotification("b", NotifSeverity.INFO, "Title B", null, 700L, 123L),
         )
         val rows = pushedNotificationItems(items)
         assertEquals(listOf("push:a", "push:b"), rows.map { it.key })
@@ -254,17 +303,19 @@ class NotificationModelTest {
         assertNull(rows[1].detail)
         assertEquals("Title A", rows[0].title)
         assertEquals(NotifSeverity.WARNING, rows[0].severity)
+        assertEquals(500L, rows[0].timestampMs)
+        assertEquals(700L, rows[1].timestampMs)
     }
 
     @Test
     fun mergeSortsBySeverityPushedFirstWithinBandStable() {
         val pushed = listOf(
-            NotificationItem("push:p1", NotifSeverity.INFO, "P1", null),
-            NotificationItem("push:p2", NotifSeverity.CRITICAL, "P2", null),
+            NotificationItem("push:p1", NotifSeverity.INFO, "P1", null, null),
+            NotificationItem("push:p2", NotifSeverity.CRITICAL, "P2", null, null),
         )
         val nws = listOf(
-            NotificationItem("n1", NotifSeverity.CRITICAL, "N1", null),
-            NotificationItem("n2", NotifSeverity.INFO, "N2", null),
+            NotificationItem("n1", NotifSeverity.CRITICAL, "N1", null, null),
+            NotificationItem("n2", NotifSeverity.INFO, "N2", null, null),
         )
         val merged = mergeNotifications(pushed, nws)
         // CRITICAL band first (pushed p2 before nws n1), then INFO band (pushed p1 before nws n2).
@@ -291,10 +342,10 @@ class NotificationModelTest {
     @Test
     fun autoDismissKeysRespectsCutoffAndDwell() {
         val items = listOf(
-            NotificationItem("old-info", NotifSeverity.INFO, "A", null),
-            NotificationItem("new-info", NotifSeverity.INFO, "B", null),
-            NotificationItem("old-crit", NotifSeverity.CRITICAL, "C", null),
-            NotificationItem("unseen", NotifSeverity.INFO, "D", null),
+            NotificationItem("old-info", NotifSeverity.INFO, "A", null, null),
+            NotificationItem("new-info", NotifSeverity.INFO, "B", null, null),
+            NotificationItem("old-crit", NotifSeverity.CRITICAL, "C", null, null),
+            NotificationItem("unseen", NotifSeverity.INFO, "D", null, null),
         )
         val firstSeen = mapOf("old-info" to 0L, "new-info" to 9_000L, "old-crit" to 0L)
         // cutoff WARNING: INFO rows past the 10s dwell go; CRITICAL never; unseen treated as new.

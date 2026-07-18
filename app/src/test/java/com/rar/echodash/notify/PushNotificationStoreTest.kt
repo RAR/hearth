@@ -32,6 +32,15 @@ class PushNotificationStoreTest {
     }
 
     @Test
+    fun postStampsReceivedAtMsAndRepostRestamps() {
+        val store = PushNotificationStore()
+        store.post("a", "A", null, null, null, 1_000L)
+        assertEquals(1_000L, store.items.value.single().receivedAtMs)
+        store.post("a", "A2", null, null, null, 2_000L) // re-post = update, restamps
+        assertEquals(2_000L, store.items.value.single().receivedAtMs)
+    }
+
+    @Test
     fun capEvictsOldest() {
         val store = PushNotificationStore()
         for (i in 1..25) store.post("id$i", "T$i", null, null, null, 0L)

@@ -378,6 +378,7 @@ fun HomeView(
             ) {
                 NotificationArea(
                     notifications = notifications,
+                    nowMs = now,
                     onDismiss = onDismiss,
                     modifier = Modifier
                         .widthIn(max = caps.notifMaxWidthDp.dp)

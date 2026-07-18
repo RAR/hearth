@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rar.echodash.ui.model.NotifSeverity
 import com.rar.echodash.ui.model.NotificationItem
+import com.rar.echodash.ui.model.notifTimestampLabel
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
@@ -62,6 +63,7 @@ private fun accentColor(severity: NotifSeverity): Color = when (severity) {
 @Composable
 fun NotificationArea(
     notifications: List<NotificationItem>,
+    nowMs: Long,
     onDismiss: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -75,6 +77,7 @@ fun NotificationArea(
             key(item.key) {
                 NotificationRow(
                     item = item,
+                    nowMs = nowMs,
                     expanded = expandedKey == item.key,
                     onToggle = { expandedKey = if (expandedKey == item.key) null else item.key },
                     onDismiss = { onDismiss(item.key) },
@@ -87,6 +90,7 @@ fun NotificationArea(
 @Composable
 private fun NotificationRow(
     item: NotificationItem,
+    nowMs: Long,
     expanded: Boolean,
     onToggle: () -> Unit,
     onDismiss: () -> Unit,
@@ -145,14 +149,26 @@ private fun NotificationRow(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(
-                    item.title,
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        item.title,
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    notifTimestampLabel(item.timestampMs, nowMs)?.let { label ->
+                        Text(
+                            label,
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
                 if (expanded && item.detail != null) {
                     Text(
                         item.detail,

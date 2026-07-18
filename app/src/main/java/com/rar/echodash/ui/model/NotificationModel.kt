@@ -24,6 +24,7 @@ data class NotificationItem(
     val severity: NotifSeverity,
     val title: String,
     val detail: String?,
+    val timestampMs: Long?,
 )
 
 /** Map a config min-severity string to the enum. Unknown/blank -> INFO (show everything). */
@@ -49,6 +50,16 @@ private val TIME_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a", 
 /** Parse an ISO-8601-with-offset string; null on absent/blank/unparseable. */
 private fun parseOffset(raw: String?): OffsetDateTime? =
     raw?.takeIf { it.isNotBlank() }?.let { runCatching { OffsetDateTime.parse(it) }.getOrNull() }
+
+/** Compact absolute label for a notification timestamp: same local day as [nowMs] -> "6:12 PM",
+ *  otherwise "Wed 6:12 PM". Null in -> null out. */
+fun notifTimestampLabel(timestampMs: Long?, nowMs: Long): String? {
+    if (timestampMs == null) return null
+    val zone = ZoneId.systemDefault()
+    val local = Instant.ofEpochMilli(timestampMs).atZone(zone)
+    val nowDate = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+    return local.format(if (local.toLocalDate() == nowDate) TIME_FMT else DAY_TIME_FMT)
+}
 
 /** "until <time>" suffix from Ends (fallback Expires); null when neither parses. Weekday dropped
  *  when the end lands on the same local day as [nowMs]. */
@@ -94,10 +105,17 @@ fun nwsNotifications(
             .mapNotNull { it?.takeIf { s -> s.isNotBlank() } }
             .joinToString("\n\n")
             .ifBlank { null }
+        val onset = parseOffset(field("Onset"))?.toInstant()
 
         Row(
-            item = NotificationItem(key = id, severity = severity, title = title, detail = detail),
-            onset = parseOffset(field("Onset"))?.toInstant(),
+            item = NotificationItem(
+                key = id,
+                severity = severity,
+                title = title,
+                detail = detail,
+                timestampMs = onset?.toEpochMilli(),
+            ),
+            onset = onset,
         )
     }
 
@@ -122,6 +140,7 @@ fun pushedNotificationItems(items: List<PushedNotification>): List<NotificationI
             severity = it.severity,
             title = it.title,
             detail = it.message,
+            timestampMs = it.receivedAtMs,
         )
     }
 

@@ -11,6 +11,7 @@ data class PushedNotification(
     val severity: NotifSeverity,
     val title: String,
     val message: String?,
+    val receivedAtMs: Long,
     val expiresAtMs: Long?,
 )
 
@@ -49,7 +50,7 @@ class PushNotificationStore {
             ?.takeIf { it > 0 }
             ?.coerceIn(TIMEOUT_MIN, TIMEOUT_MAX)
             ?.let { nowMs + it * 1000L }
-        val item = PushedNotification(effectiveId, severityOf(severity), cleanTitle, cleanMessage, expiresAtMs)
+        val item = PushedNotification(effectiveId, severityOf(severity), cleanTitle, cleanMessage, nowMs, expiresAtMs)
 
         list.removeAll { it.id == effectiveId }      // re-posting an id replaces the old row...
         list.add(0, item)                            // ...and moves it to the front (newest-first).

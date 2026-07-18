@@ -3,6 +3,7 @@ package com.rar.echodash.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -10,15 +11,20 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -82,7 +88,7 @@ fun WakeGlow(visible: Boolean, modifier: Modifier = Modifier) {
  * screen and passes touches through the surrounding area. Renders nothing when hidden.
  */
 @Composable
-fun VoiceOverlay(state: VoiceOverlayState, modifier: Modifier = Modifier) {
+fun VoiceOverlay(state: VoiceOverlayState, onTap: () -> Unit, modifier: Modifier = Modifier) {
     if (state.phase == VoiceOverlayPhase.HIDDEN) return
     val label = when (state.phase) {
         VoiceOverlayPhase.LISTENING -> "Listening…"
@@ -92,14 +98,46 @@ fun VoiceOverlay(state: VoiceOverlayState, modifier: Modifier = Modifier) {
         VoiceOverlayPhase.FAILED -> "No response — try again"
         VoiceOverlayPhase.HIDDEN -> ""
     }
+    val textColor = if (state.phase == VoiceOverlayPhase.FAILED) Color(0xFFB0B4BE) else Color.White
     Box(modifier.fillMaxSize().padding(bottom = 28.dp), contentAlignment = Alignment.BottomCenter) {
-        Surface(shape = RoundedCornerShape(22.dp), color = Color(0xE6101218)) {
-            Text(
-                label,
-                color = Color.White,
-                fontSize = 18.sp,
-                textAlign = TextAlign.Center,
+        Surface(
+            shape = RoundedCornerShape(22.dp),
+            color = Color(0xE6101218),
+            modifier = Modifier.clickable { onTap() },
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
+            ) {
+                Text(label, color = textColor, fontSize = 18.sp, textAlign = TextAlign.Center)
+                if (state.phase == VoiceOverlayPhase.THINKING) {
+                    ThinkingDots(Modifier.padding(top = 8.dp))
+                }
+            }
+        }
+    }
+}
+
+/** Three voice-blue dots with a staggered alpha pulse (~900 ms cycle, 150 ms per-dot stagger). */
+@Composable
+private fun ThinkingDots(modifier: Modifier = Modifier) {
+    val pulse = rememberInfiniteTransition(label = "thinkingDots")
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        repeat(3) { i ->
+            val alpha by pulse.animateFloat(
+                initialValue = 0.3f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(450, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse,
+                    initialStartOffset = StartOffset(i * 150),
+                ),
+                label = "thinkingDot$i",
+            )
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .background(Color(0xFF4FC3F7).copy(alpha = alpha), CircleShape),
             )
         }
     }

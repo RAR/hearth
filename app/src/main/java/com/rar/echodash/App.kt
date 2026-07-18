@@ -960,7 +960,7 @@ fun EchoDashApp(deps: AppDeps) {
                     DisposableEffect(Unit) { onDispose { deps.timerChime.stop() } }
                     TimerChips(timersState)
                     WakeGlow(voiceOverlayState.phase == VoiceOverlayPhase.LISTENING)
-                    VoiceOverlay(voiceOverlayState)
+                    VoiceOverlay(voiceOverlayState, onTap = { deps.satellite.onOverlayTapped() })
                     timersState.alert?.let { alert ->
                         key(alert) {
                             TimerFinishedOverlay(alert, onDismiss = { deps.satellite.dismissTimerAlert() })

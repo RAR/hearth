@@ -51,9 +51,11 @@ import com.rar.echodash.ui.SplashScreen
 import com.rar.echodash.ui.splashDone
 import com.rar.echodash.ui.TimerChips
 import com.rar.echodash.ui.TimerFinishedOverlay
+import com.rar.echodash.ui.TimersTakeoverView
 import com.rar.echodash.ui.VoiceOverlay
 import com.rar.echodash.ui.WakeGlow
 import com.rar.echodash.ui.model.CalendarEvent
+import com.rar.echodash.ui.model.TimerTakeoverModel
 import com.rar.echodash.ui.model.parseCalendarEvents
 import com.rar.echodash.ui.model.pushedNotificationItems
 import com.rar.echodash.ui.model.quickButtonService
@@ -924,21 +926,37 @@ fun EchoDashApp(deps: AppDeps) {
 
                     val voiceOverlayState by deps.voiceOverlay.collectAsStateWithLifecycle()
                     val timersState by deps.timersUi.collectAsStateWithLifecycle()
+                    // Kitchen timer takeover: the model maps live chips to render rows and owns
+                    // dismiss/re-show + rename. Recompute on every timers emission (and on rev bumps
+                    // from dismiss/rename); model.visible is read right after update().
+                    val timerTakeover = remember { TimerTakeoverModel() }
+                    var timerTakeoverRev by remember { mutableStateOf(0) }
+                    val takeoverTimers = remember(timersState, timerTakeoverRev) {
+                        timerTakeover.update(timersState.chips)
+                    }
+                    val timerTakeoverVisible = timerTakeover.visible
                     // Overrides suppress night mode at normal brightness: music takeover, doorbell
                     // popup, voice interaction, or any active/alerting timer.
-                    LaunchedEffect(takeoverVisible, doorbellPopup, voiceOverlayState, timersState) {
+                    LaunchedEffect(takeoverVisible, doorbellPopup, voiceOverlayState, timersState, timerTakeoverVisible) {
                         deps.nightMode.onOverride(
                             takeoverVisible ||
                                 doorbellPopup != null ||
                                 voiceOverlayState.phase != VoiceOverlayPhase.HIDDEN ||
                                 timersState.chips.any { it.active } ||
-                                timersState.alert != null,
+                                timersState.alert != null ||
+                                timerTakeoverVisible,
                             SystemClock.elapsedRealtime(),
                         )
                     }
                     LaunchedEffect(voiceOverlayState.phase) {
                         if (voiceOverlayState.phase != VoiceOverlayPhase.HIDDEN) {
                             deps.kiosk.onUserInteraction()   // wakes screen + counts as activity
+                            idleTimer.onInteraction()
+                        }
+                    }
+                    LaunchedEffect(timerTakeoverVisible) {
+                        if (timerTakeoverVisible) {
+                            deps.kiosk.onUserInteraction()   // wake the screen when a timer takes over
                             idleTimer.onInteraction()
                         }
                     }
@@ -960,7 +978,15 @@ fun EchoDashApp(deps: AppDeps) {
                         }
                     }
                     DisposableEffect(Unit) { onDispose { deps.timerChime.stop() } }
-                    TimerChips(timersState)
+                    if (timerTakeoverVisible) {
+                        TimersTakeoverView(
+                            timers = takeoverTimers,
+                            onDismiss = { timerTakeover.dismiss(); timerTakeoverRev++ },
+                            onRename = { id, label -> timerTakeover.rename(id, label); timerTakeoverRev++ },
+                        )
+                    } else {
+                        TimerChips(timersState)
+                    }
                     WakeGlow(voiceOverlayState.phase == VoiceOverlayPhase.LISTENING)
                     VoiceOverlay(voiceOverlayState, onTap = { deps.satellite.onOverlayTapped() })
                     timersState.alert?.let { alert ->

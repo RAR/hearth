@@ -394,7 +394,7 @@ class AppDeps(context: Context) {
     // --- Voice satellite (Wyoming) ---
     val voiceOverlay = MutableStateFlow(VoiceOverlayState())
     val timersUi = MutableStateFlow(TimersUiState())
-    val timerChime = TimerChime()
+    val timerChime = TimerChime(assetFd = { runCatching { appContext.assets.openFd(it) }.getOrNull() })
     val earconPlayer = EarconPlayer()
     private val voiceSink = AndroidPcmSink()
     private val voicePlayer = AnnouncePlayer(

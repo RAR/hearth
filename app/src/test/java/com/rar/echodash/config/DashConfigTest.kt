@@ -240,11 +240,11 @@ class DashConfigTest {
     @Test
     fun voiceTimerDefaults() {
         val v = DashConfig().voice
-        assertEquals("twotone", v.timerTone)
+        assertEquals("argon", v.timerTone)
         assertEquals(80, v.timerVolume)
         // absent from JSON -> defaults, unknown-key tolerant
         val cfg = decodeConfig("""{"version":1,"voice":{"enabled":true}}""")
-        assertEquals("twotone", cfg.voice.timerTone)
+        assertEquals("argon", cfg.voice.timerTone)
         assertEquals(80, cfg.voice.timerVolume)
     }
 
@@ -258,14 +258,18 @@ class DashConfigTest {
     }
 
     @Test
-    fun clampedNormalizesUnknownToneToTwotone() {
-        assertEquals("twotone",
+    fun clampedNormalizesUnknownToneToArgon() {
+        assertEquals("argon",
             DashConfig(voice = VoiceSettings(timerTone = "wobble")).clamped().voice.timerTone)
-        assertEquals("twotone",
+        assertEquals("argon",
             DashConfig(voice = VoiceSettings(timerTone = "   ")).clamped().voice.timerTone)
-        // a known tone survives (trimmed)
+        // a synthesized tone survives (trimmed)
         assertEquals("trill",
             DashConfig(voice = VoiceSettings(timerTone = "  trill  ")).clamped().voice.timerTone)
+        // the bundled system-alarm keys are all accepted
+        for (t in listOf("argon", "oxygen", "krypton", "timer", "beep", "helium", "cyan")) {
+            assertEquals(t, DashConfig(voice = VoiceSettings(timerTone = t)).clamped().voice.timerTone)
+        }
     }
 
     @Test

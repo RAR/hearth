@@ -236,7 +236,7 @@ class ConfigServerTest {
                 assertEquals(200, r.code)
                 assertTrue(r.body!!.string().contains("\"ok\":true"))
             }
-        assertEquals(listOf("twotone" to 100), previewCalls) // unknown->twotone, 250->100
+        assertEquals(listOf("argon" to 100), previewCalls) // unknown->argon, 250->100
     }
 
     @Test
@@ -245,8 +245,8 @@ class ConfigServerTest {
         http.newCall(Request.Builder().url("$base/api/voice/preview-chime").header("Cookie", cookie)
             .post("{}".toRequestBody(json)).build())
             .execute().use { r -> assertEquals(200, r.code) }
-        // saved config is default VoiceSettings: twotone @ 80
-        assertEquals(listOf("twotone" to 80), previewCalls)
+        // saved config is default VoiceSettings: argon @ 80
+        assertEquals(listOf("argon" to 80), previewCalls)
     }
 
     @Test

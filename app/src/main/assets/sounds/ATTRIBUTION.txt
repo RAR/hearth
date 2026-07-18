@@ -1,0 +1,19 @@
+Timer alarm sounds
+==================
+
+These seven .ogg files are alarm/timer sounds from the Android Open Source
+Project (AOSP) and LineageOS, pulled from the Amazon Echo Show's
+/product/media/audio/alarms/ (identical files ship on the Echo Show 5 and 8).
+
+Licensed under the Apache License, Version 2.0.
+See https://www.apache.org/licenses/LICENSE-2.0
+
+  asset file          source file        tone key
+  -----------------   -----------------  --------
+  alarm_argon.ogg     Argon.ogg          argon
+  alarm_oxygen.ogg    Oxygen.ogg         oxygen
+  alarm_krypton.ogg   Krypton.ogg        krypton
+  alarm_timer.ogg     Timer.ogg          timer
+  alarm_beep.ogg      Alarm_Beep_03.ogg  beep
+  alarm_helium.ogg    Helium.ogg         helium
+  alarm_cyan.ogg      CyanAlarm.ogg      cyan

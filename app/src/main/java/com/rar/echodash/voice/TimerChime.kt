@@ -1,26 +1,78 @@
 package com.rar.echodash.voice
 
+import android.content.res.AssetFileDescriptor
+import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.media.MediaPlayer
 import android.util.Log
 import kotlin.concurrent.thread
 
 /**
- * Plays the "timer done" alarm through AudioTrack on the alarm stream. The waveform is synthesized
- * by [ToneGenerator] as one cycle (sound + trailing gap); [start] loops that single buffer until
- * [stop]. Both are idempotent. [playOnce] auditions a single cycle for the config-page preview.
- * No bundled audio asset.
+ * Plays the "timer done" alarm. Bundled system alarms (see [TimerSounds]) play through MediaPlayer
+ * on the alarm stream; the four synthesized tones play through AudioTrack, whose waveform is
+ * rendered by [ToneGenerator] as one cycle (sound + trailing gap) that [start] loops until [stop].
+ * Both are idempotent. Any failure on the asset path falls back to the synthesized "twotone" loop --
+ * an alarm must never fail silent. [playOnce] auditions a single file/cycle for the config preview.
+ *
+ * [assetFd] opens a bundled asset (App.kt passes assets.openFd; tests pass { null }).
  */
-class TimerChime {
+class TimerChime(private val assetFd: (String) -> AssetFileDescriptor? = { null }) {
     @Volatile private var playing = false
     private var worker: Thread? = null
+    private var player: MediaPlayer? = null
 
-    /** Loop [tone] at [volume] until [stop]. Idempotent: a second call while playing is a no-op. */
+    /**
+     * Loop [tone] at [volume] until [stop]. Idempotent: a second call while playing is a no-op.
+     * System-alarm tones loop via MediaPlayer; on any asset failure we fall back to the synthesized
+     * "twotone" loop at the same volume. Synthesized tones take the AudioTrack path directly.
+     */
     @Synchronized
     fun start(tone: String, volume: Int) {
         if (playing) return
         playing = true
+        val asset = TimerSounds.assetPath(tone)
+        if (asset != null) {
+            if (volume <= 0) return                 // muted alarm -> nothing to play
+            if (startAsset(asset, volume)) return   // MediaPlayer loop running
+            startSynthLoop("twotone", volume)       // asset failed -> synthesized fallback
+        } else {
+            startSynthLoop(tone, volume)            // synthesized tone
+        }
+    }
+
+    /** Start bundled [asset] looping via MediaPlayer at [volume]. Returns true on success; on any
+     *  failure releases the player/fd and returns false so [start] can fall back to synthesis. */
+    private fun startAsset(asset: String, volume: Int): Boolean {
+        val fd = assetFd(asset) ?: return false
+        val mp = MediaPlayer()
+        return try {
+            mp.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build(),
+            )
+            mp.setDataSource(fd.fileDescriptor, fd.startOffset, fd.length)
+            fd.close()
+            mp.isLooping = true
+            mp.setVolume(volume / 100f, volume / 100f)
+            mp.prepare()                            // synchronous; the bundled files are small
+            mp.start()
+            player = mp
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "alarm asset '$asset' failed; falling back to synth", e)
+            runCatching { fd.close() }
+            runCatching { mp.release() }
+            false
+        }
+    }
+
+    /** Synthesized AudioTrack loop -- the prime-before-play HAL recipe. Unchanged from the
+     *  no-asset implementation; used for synthesized tones and as the asset-failure fallback. */
+    private fun startSynthLoop(tone: String, volume: Int) {
         worker = thread(name = "TimerChime", isDaemon = true) {
             val rate = 22050
             val cycle = ToneGenerator.render(tone, volume, rate)
@@ -60,20 +112,59 @@ class TimerChime {
         }
     }
 
-    /** Stop any running loop. Idempotent. */
+    /** Stop any running loop and release the MediaPlayer if active. Idempotent: a second call
+     *  finds player == null and does nothing, so an active MediaPlayer is released exactly once. */
     @Synchronized
     fun stop() {
         playing = false
         worker = null
+        player?.let { mp ->
+            runCatching { mp.stop() }
+            runCatching { mp.release() }
+        }
+        player = null
     }
 
     /**
-     * Play exactly ONE cycle of [tone] at [volume], then stop and release. Best-effort: swallows
-     * all failures and never throws. Runs on its own daemon thread with its own AudioTrack and does
-     * NOT touch [playing]/[worker], so it is safe to call while a [start] loop is running (the OS
-     * mixes both on STREAM_ALARM) and can never leave a loop running. Used by the config preview.
+     * Play exactly ONE file/cycle of [tone] at [volume], then stop and release. Best-effort: swallows
+     * all failures and never throws. System-alarm tones play the whole file once through MediaPlayer
+     * (released on completion); synthesized tones render one AudioTrack cycle on a daemon thread.
+     * Does NOT touch [playing]/[worker]/[player], so it is safe to call while a [start] loop runs
+     * (the OS mixes both on the alarm output) and can never leave a loop running. Used by the preview.
      */
     fun playOnce(tone: String, volume: Int) {
+        val asset = TimerSounds.assetPath(tone)
+        if (asset == null) { playSynthOnce(tone, volume); return }   // synthesized preview
+        if (volume <= 0) return
+        val fd = assetFd(asset)
+        if (fd == null) { playSynthOnce("twotone", volume); return } // missing asset -> synth fallback
+        val mp = MediaPlayer()
+        try {
+            mp.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build(),
+            )
+            mp.setDataSource(fd.fileDescriptor, fd.startOffset, fd.length)
+            fd.close()
+            mp.isLooping = false
+            mp.setVolume(volume / 100f, volume / 100f)
+            // MediaPlayer binds its completion callback to the creating thread's Looper, falling back
+            // to the main Looper when the caller (a web-server worker) has none -- so this fires.
+            mp.setOnCompletionListener { it.release() }
+            mp.prepare()                            // synchronous; the bundled files are small
+            mp.start()
+        } catch (e: Exception) {
+            Log.w(TAG, "alarm preview '$asset' failed; falling back to synth", e)
+            runCatching { fd.close() }
+            runCatching { mp.release() }
+            playSynthOnce("twotone", volume)
+        }
+    }
+
+    /** One synthesized AudioTrack cycle on a daemon thread. Unchanged from the no-asset playOnce. */
+    private fun playSynthOnce(tone: String, volume: Int) {
         thread(name = "TimerChimePreview", isDaemon = true) {
             val rate = 22050
             val cycle = ToneGenerator.render(tone, volume, rate)
@@ -102,7 +193,7 @@ class TimerChime {
                 track.play()
                 // MODE_STREAM: write() returns as soon as data is queued, not once it has
                 // rendered, so we must wait for the hardware playback head to reach the frames
-                // we wrote before releasing — otherwise the native track is destroyed with the
+                // we wrote before releasing -- otherwise the native track is destroyed with the
                 // whole cycle still unplayed and nothing is heard. Same fix as
                 // AndroidPcmSink.finish().
                 val target = cycle.size.toLong()

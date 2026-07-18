@@ -141,18 +141,18 @@ data class PanelOptions(
 @Serializable
 data class VoiceSettings(
     val enabled: Boolean = false,
-    val timerTone: String = "twotone",
+    val timerTone: String = "argon",
     val timerVolume: Int = 80,
     val wakeSoundVolume: Int = 80,
     val wakeWord: String = "okay_nabu",
     val wakeThreshold: Int = 50,
 ) {
-    /** Normalize the timer-alarm fields: trim + unknown/blank tone falls to "twotone",
+    /** Normalize the timer-alarm fields: trim + unknown/blank tone falls to "argon",
      *  volumes coerced into 0..100. Wake word clamps to the bundled set (unknown -> okay_nabu);
      *  wake threshold (score * 100) coerced into 10..95. Shared by DashConfig.clamped and the
      *  preview endpoint. */
     fun clamped(): VoiceSettings = copy(
-        timerTone = timerTone.trim().let { if (it in TONES) it else "twotone" },
+        timerTone = timerTone.trim().let { if (it in TONES) it else "argon" },
         timerVolume = timerVolume.coerceIn(0, 100),
         wakeSoundVolume = wakeSoundVolume.coerceIn(0, 100),
         wakeWord = wakeWord.trim().let { if (it in WAKE_WORDS) it else "okay_nabu" },
@@ -160,8 +160,11 @@ data class VoiceSettings(
     )
 
     companion object {
-        /** The four recognized preset ids. */
-        val TONES: Set<String> = setOf("twotone", "beeps", "chime", "trill")
+        /** The eleven recognized timer-alarm tone ids: 7 bundled system alarms + 4 synthesized. */
+        val TONES: Set<String> = setOf(
+            "argon", "oxygen", "krypton", "timer", "beep", "helium", "cyan",
+            "twotone", "beeps", "chime", "trill",
+        )
 
         /** The three bundled on-device wake-word model ids. */
         val WAKE_WORDS: Set<String> = setOf("okay_nabu", "hey_jarvis", "alexa")

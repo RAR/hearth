@@ -353,16 +353,17 @@ class SatelliteSessionTest {
     }
 
     @Test
-    fun localWakeInfoAdvertisesThreeWakeModels() {
+    fun localWakeInfoAdvertisesBundledWakeModels() {
         val info = sends(wakeSession().onEvent(event("describe"))).single()
         val wake = info.data["wake"]!!.jsonArray()
         assertEquals(1, wake.size)
         val models = wake.first().jsonObject["models"]!!.jsonArray()
-        assertEquals(3, models.size)
+        assertEquals(4, models.size)
         val phrases = models.map { it.jsonObject["phrase"]!!.jsonPrimitive.content }
         assertTrue(phrases.contains("Okay Nabu"))
         assertTrue(phrases.contains("Hey Jarvis"))
         assertTrue(phrases.contains("Alexa"))
+        assertTrue(phrases.contains("Ok Ember"))
     }
 
     @Test

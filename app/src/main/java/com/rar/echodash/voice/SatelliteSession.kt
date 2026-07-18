@@ -489,11 +489,13 @@ class SatelliteSession(
         const val FAILED_MS = 3_000L
         const val FAILED_TEXT = "No response — try again"
 
-        /** The three bundled wake-word model ids and their friendly phrases (HA display only). */
+        /** The bundled wake-word model ids and their friendly phrases (HA display only).
+         *  Must track DashConfig.VoiceSettings.WAKE_WORDS. */
         val WAKE_MODELS = listOf(
             "okay_nabu" to "Okay Nabu",
             "hey_jarvis" to "Hey Jarvis",
             "alexa" to "Alexa",
+            "ok_ember" to "Ok Ember",
         )
     }
 }

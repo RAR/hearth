@@ -77,6 +77,7 @@ class SatelliteServer(
     @Volatile private var detector: WakeDetector? = null
     @Volatile private var wakeWord: String = "okay_nabu"
     private val detectorQueue = LinkedBlockingDeque<Any>()
+    private val droppedChunks = java.util.concurrent.atomic.AtomicInteger(0)
     @Volatile private var detectorThread: Thread? = null
 
     fun start(localWake: Boolean = false, detector: WakeDetector? = null, wakeWord: String = "okay_nabu") {
@@ -243,7 +244,10 @@ class SatelliteServer(
 
     private fun enqueueDetector(pcm: ByteArray) {
         // Drop oldest so the mic path never blocks on slow inference.
-        while (detectorQueue.size >= DETECTOR_QUEUE_MAX) detectorQueue.pollFirst()
+        while (detectorQueue.size >= DETECTOR_QUEUE_MAX) {
+            detectorQueue.pollFirst()
+            droppedChunks.incrementAndGet()
+        }
         detectorQueue.offer(pcm)
     }
 
@@ -253,6 +257,8 @@ class SatelliteServer(
         detectorThread = thread(name = "WakeDetector", isDaemon = true) {
             var windowMax = 0f
             var windowStart = System.currentTimeMillis()
+            var windowMaxRms = 0L
+            var windowChunks = 0
             try {
                 while (true) {
                     val item = detectorQueue.take()
@@ -261,13 +267,26 @@ class SatelliteServer(
                         continue
                     }
                     if (item !is ByteArray) continue
+                    var sumSq = 0L
+                    var i = 0
+                    while (i + 1 < item.size) {
+                        val s = ((item[i + 1].toInt() shl 8) or (item[i].toInt() and 0xFF)).toShort().toInt()
+                        sumSq += s.toLong() * s
+                        i += 2
+                    }
+                    val rms = Math.sqrt(sumSq.toDouble() / (item.size / 2).coerceAtLeast(1)).toLong()
+                    if (rms > windowMaxRms) windowMaxRms = rms
+                    windowChunks++
                     val fired = det.process(item)
                     val score = det.lastScore
                     if (score > windowMax) windowMax = score
                     val nowW = System.currentTimeMillis()
                     if (nowW - windowStart >= 5_000L) {
-                        Log.d(TAG, "wake max score=%.2f (5s)".format(windowMax))
+                        Log.d(TAG, "wake max score=%.2f rms=%d chunks=%d dropped=%d (5s)"
+                            .format(windowMax, windowMaxRms, windowChunks, droppedChunks.getAndSet(0)))
                         windowMax = 0f
+                        windowMaxRms = 0L
+                        windowChunks = 0
                         windowStart = nowW
                     }
                     if (fired) {

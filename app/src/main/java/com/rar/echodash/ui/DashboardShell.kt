@@ -119,12 +119,15 @@ fun DashboardShell(
 
     // Notification derivation lives at shell scope (not the HOME branch) so the auto-dismiss clock
     // keeps running while another panel is up or the takeover hides the area.
-    val nwsItems = remember(entities, config.notifications) {
+    // Keyed on a minute tick (not just entities/config) so alerts drop off once their displayed
+    // end time passes even in a quiet house with no HA state churn to trigger recomposition.
+    val minuteTick by rememberMinuteTicker()
+    val nwsItems = remember(entities, config.notifications, minuteTick) {
         nwsNotifications(
             config.notifications.nwsAlerts,
             notifSeverityOf(config.notifications.nwsMinSeverity),
             entities,
-            System.currentTimeMillis(),
+            minuteTick,
         )
     }
     val allNotifications = remember(pushed, nwsItems) { mergeNotifications(pushed, nwsItems) }

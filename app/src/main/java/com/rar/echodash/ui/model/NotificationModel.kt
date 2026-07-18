@@ -61,12 +61,16 @@ fun notifTimestampLabel(timestampMs: Long?, nowMs: Long): String? {
     return local.format(if (local.toLocalDate() == nowDate) TIME_FMT else DAY_TIME_FMT)
 }
 
-/** "until <time>" suffix from Ends (fallback Expires); null when neither parses. Weekday dropped
- *  when the end lands on the same local day as [nowMs]. */
-private fun untilSuffix(endsRaw: String?, expiresRaw: String?, nowMs: Long): String? {
-    val odt = parseOffset(endsRaw) ?: parseOffset(expiresRaw) ?: return null
+/** Effective end instant for an alert: Ends, falling back to Expires; null when neither parses.
+ *  Shared by the expiry check and the title's "until" suffix so both agree on one value. */
+private fun resolveEnd(endsRaw: String?, expiresRaw: String?): OffsetDateTime? =
+    parseOffset(endsRaw) ?: parseOffset(expiresRaw)
+
+/** "until <time>" suffix for an already-resolved [end]. Weekday dropped when the end lands on the
+ *  same local day as [nowMs]. */
+private fun untilSuffix(end: OffsetDateTime, nowMs: Long): String {
     val zone = ZoneId.systemDefault()
-    val local = odt.atZoneSameInstant(zone)
+    val local = end.atZoneSameInstant(zone)
     val nowDate = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
     val fmt = if (local.toLocalDate() == nowDate) TIME_FMT else DAY_TIME_FMT
     return "until " + local.format(fmt)
@@ -75,7 +79,9 @@ private fun untilSuffix(endsRaw: String?, expiresRaw: String?, nowMs: Long): Str
 /**
  * Derive notification rows from the NWS alerts sensor. Returns an empty list when [sensorId] is
  * null, the entity is missing, the state is non-numeric (unavailable/unknown), or the `Alerts`
- * attribute is absent/not an array. Never throws: malformed entries are skipped.
+ * attribute is absent/not an array. Never throws: malformed entries are skipped. Alerts whose
+ * effective end (Ends, fallback Expires) is at or before [nowMs] are dropped; an unparseable or
+ * absent end is treated as not-expired and kept.
  */
 fun nwsNotifications(
     sensorId: String?,
@@ -97,9 +103,12 @@ fun nwsNotifications(
         val severity = severityOfAlert(field("Severity"))
         if (severity.ordinal < minSeverity.ordinal) return@mapNotNull null
 
+        val end = resolveEnd(field("Ends"), field("Expires"))
+        if (end != null && end.toInstant().toEpochMilli() <= nowMs) return@mapNotNull null
+
         val title = buildString {
             append(event)
-            untilSuffix(field("Ends"), field("Expires"), nowMs)?.let { append(" · ").append(it) }
+            end?.let { append(" · ").append(untilSuffix(it, nowMs)) }
         }
         val detail = listOf(field("Headline"), field("Description"), field("Instruction"))
             .mapNotNull { it?.takeIf { s -> s.isNotBlank() } }

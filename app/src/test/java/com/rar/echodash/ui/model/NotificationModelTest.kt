@@ -164,6 +164,52 @@ class NotificationModelTest {
         assertEquals("Special Weather Statement", run("1", attr).single().title)
     }
 
+    // ---- expiry: rows past their displayed end time are dropped ----
+
+    @Test
+    fun expiredEndIsExcluded() {
+        val attr = alertsAttr(mapOf(
+            "Event" to "Winter Storm Warning", "ID" to "1", "Severity" to "Severe",
+            "Ends" to "2026-07-14T11:00:00+00:00", // before nowMs (noon)
+        ))
+        assertTrue(run("1", attr).isEmpty())
+    }
+
+    @Test
+    fun futureEndIsIncluded() {
+        val attr = alertsAttr(mapOf(
+            "Event" to "Winter Storm Warning", "ID" to "1", "Severity" to "Severe",
+            "Ends" to "2026-07-14T13:00:00+00:00", // after nowMs (noon)
+        ))
+        assertEquals(1, run("1", attr).size)
+    }
+
+    @Test
+    fun expiredExpiresFallbackIsExcludedWhenEndsAbsent() {
+        val attr = alertsAttr(mapOf(
+            "Event" to "Flood Watch", "ID" to "1", "Severity" to "Moderate",
+            "Ends" to null, "Expires" to "2026-07-14T11:00:00+00:00", // before nowMs
+        ))
+        assertTrue(run("1", attr).isEmpty())
+    }
+
+    @Test
+    fun neitherEndsNorExpiresIsIncluded() {
+        val attr = alertsAttr(mapOf(
+            "Event" to "Special Weather Statement", "ID" to "1", "Severity" to "Minor",
+        ))
+        assertEquals(1, run("1", attr).size)
+    }
+
+    @Test
+    fun unparseableEndsAndExpiresIsIncluded() {
+        val attr = alertsAttr(mapOf(
+            "Event" to "Special Weather Statement", "ID" to "1", "Severity" to "Minor",
+            "Ends" to "junk", "Expires" to "also-junk",
+        ))
+        assertEquals(1, run("1", attr).size)
+    }
+
     // ---- timestampMs from Onset ----
 
     @Test

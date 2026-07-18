@@ -116,7 +116,7 @@ import kotlin.random.Random
 import kotlinx.coroutines.delay
 
 @Composable
-private fun rememberMinuteTicker(): State<Long> {
+internal fun rememberMinuteTicker(): State<Long> {
     val now = remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {

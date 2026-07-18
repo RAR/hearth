@@ -80,6 +80,7 @@ import com.rar.echodash.vaca.VacaServer
 import com.rar.echodash.voice.EarconKind
 import com.rar.echodash.voice.EarconPlayer
 import com.rar.echodash.voice.MicStreamer
+import com.rar.echodash.voice.MixerGuard
 import com.rar.echodash.voice.SatelliteServer
 import com.rar.echodash.voice.TfliteWakeGraphs
 import com.rar.echodash.voice.TimerChime
@@ -481,6 +482,7 @@ class AppDeps(context: Context) {
                     satellite.stop()
                     micStreamer.stop()
                     if (enabled) {
+                        MixerGuard.apply()
                         val graphs = TfliteWakeGraphs.load(appContext.assets, wakeWord)
                         val detector = if (graphs != null) {
                             WakeDetector(graphs.first, graphs.second, graphs.third, threshold) {

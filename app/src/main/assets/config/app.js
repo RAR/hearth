@@ -21,6 +21,13 @@ const PANEL_LABELS = {
 };
 
 const TONE_OPTIONS = [
+  ["argon", "Argon"],
+  ["oxygen", "Oxygen"],
+  ["krypton", "Krypton"],
+  ["timer", "Timer (Android)"],
+  ["beep", "Alarm beep"],
+  ["helium", "Helium"],
+  ["cyan", "Cyan alarm"],
   ["twotone", "Two-tone"],
   ["beeps", "Beeps"],
   ["chime", "Chime"],
@@ -832,7 +839,7 @@ function renderVoice() {
   clear(host);
   if (!config.voice) config.voice = { enabled: false };
   const v = config.voice;
-  if (v.timerTone == null) v.timerTone = "twotone";
+  if (v.timerTone == null) v.timerTone = "argon";
   if (v.timerVolume == null) v.timerVolume = 80;
   if (v.wakeSoundVolume == null) v.wakeSoundVolume = 80;
   if (v.wakeWord == null) v.wakeWord = "okay_nabu";

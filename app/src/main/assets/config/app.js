@@ -38,6 +38,7 @@ const WAKE_WORD_OPTIONS = [
   ["okay_nabu", "Okay Nabu"],
   ["hey_jarvis", "Hey Jarvis"],
   ["alexa", "Alexa"],
+  ["ok_ember", "Ok Ember"],
 ];
 
 const SEVERITY_OPTIONS = [

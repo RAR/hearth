@@ -437,6 +437,7 @@ class DashConfigTest {
         assertEquals("okay_nabu", cfg.voice.wakeWord)               // old config -> default
         assertEquals("hey_jarvis", DashConfig(voice = VoiceSettings(wakeWord = "hey_jarvis")).clamped().voice.wakeWord)
         assertEquals("alexa", DashConfig(voice = VoiceSettings(wakeWord = "  alexa  ")).clamped().voice.wakeWord) // trimmed
+        assertEquals("ok_ember", DashConfig(voice = VoiceSettings(wakeWord = "ok_ember")).clamped().voice.wakeWord) // custom-trained word
         assertEquals("okay_nabu", DashConfig(voice = VoiceSettings(wakeWord = "bogus")).clamped().voice.wakeWord) // unknown -> default
     }
 

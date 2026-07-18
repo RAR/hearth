@@ -166,8 +166,8 @@ data class VoiceSettings(
             "twotone", "beeps", "chime", "trill",
         )
 
-        /** The three bundled on-device wake-word model ids. */
-        val WAKE_WORDS: Set<String> = setOf("okay_nabu", "hey_jarvis", "alexa")
+        /** The bundled on-device wake-word model ids ("ok_ember" is the user-trained Hearth word). */
+        val WAKE_WORDS: Set<String> = setOf("okay_nabu", "hey_jarvis", "alexa", "ok_ember")
     }
 }
 

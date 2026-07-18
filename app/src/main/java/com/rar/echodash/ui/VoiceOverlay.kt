@@ -38,6 +38,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rar.echodash.ui.model.formatTimer
 import com.rar.echodash.voice.TimerAlert
 import com.rar.echodash.voice.TimersUiState
 import com.rar.echodash.voice.VoiceOverlayPhase
@@ -141,14 +142,6 @@ private fun ThinkingDots(modifier: Modifier = Modifier) {
             )
         }
     }
-}
-
-private fun formatTimer(sec: Long): String {
-    val s = sec.coerceAtLeast(0)
-    val h = s / 3600
-    val m = (s % 3600) / 60
-    val ss = s % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, ss) else "%d:%02d".format(m, ss)
 }
 
 /** Top-center stack of live countdown chips. Renders nothing when there are no timers. */

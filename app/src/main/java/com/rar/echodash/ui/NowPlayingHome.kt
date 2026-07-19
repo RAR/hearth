@@ -26,6 +26,9 @@ import androidx.compose.material.icons.automirrored.outlined.VolumeOff
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Repeat
+import androidx.compose.material.icons.outlined.RepeatOne
+import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SkipPrevious
 import androidx.compose.material3.Icon
@@ -55,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import com.rar.echodash.media.ArtBitmaps
 import com.rar.echodash.media.NowPlayingState
 import com.rar.echodash.media.formatTrackTime
+import com.rar.echodash.sendspin.musicassistant.MaQueueItem
 import com.rar.echodash.ui.model.takeoverLayout
 import kotlinx.coroutines.delay
 
@@ -75,6 +79,10 @@ fun NowPlayingHome(
     onVolume: (Int) -> Unit,
     onSeek: (Long) -> Unit = {},
     onBrowse: () -> Unit = {},
+    onCycleRepeat: () -> Unit = {},
+    onToggleShuffle: () -> Unit = {},
+    upNext: MaQueueItem? = null,
+    onUpNextTap: () -> Unit = {},
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // Two growable regions dividing the width — the one true proportional split in the design.
@@ -142,6 +150,16 @@ fun NowPlayingHome(
             if (state.durationMs > 0) {
                 TrackProgressRow(state = state, onSeek = onSeek)
             }
+            // Up next (SendSpin only): a single dimmed line, glanceable, tap -> queue overlay.
+            if (state.sendspin && upNext != null) {
+                val upNextLabel = "Up next: ${upNext.name}" + (upNext.artist?.let { " — $it" } ?: "")
+                Text(
+                    upNextLabel,
+                    color = Color.White.copy(alpha = 0.55f), fontSize = 14.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.clickable { onUpNextTap() },
+                )
+            }
             // Fixed group width = the full three-button transport row, so the volume bar sits
             // centered under the buttons whether or not prev/next are showing. Centered in the
             // full-width meta column above.
@@ -179,6 +197,23 @@ fun NowPlayingHome(
                         modifier = Modifier.weight(1f).alpha(if (state.muted) 0.35f else 1f),
                     )
                 }
+                val showShuffle = state.sendspin && state.shuffle != null && state.canShuffle
+                val showRepeat = state.sendspin && state.repeatMode != null && state.canRepeat
+                if (showShuffle || showRepeat) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (showShuffle) {
+                            NpToggleButton(Icons.Outlined.Shuffle, on = state.shuffle == true) { onToggleShuffle() }
+                        }
+                        if (showRepeat) {
+                            val repeatIcon = if (state.repeatMode == "one") Icons.Outlined.RepeatOne else Icons.Outlined.Repeat
+                            val repeatOn = state.repeatMode == "all" || state.repeatMode == "one"
+                            NpToggleButton(repeatIcon, on = repeatOn) { onCycleRepeat() }
+                        }
+                    }
+                }
             }
         }
     }
@@ -200,6 +235,25 @@ private fun NpTransportButton(
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(iconSize))
+    }
+}
+
+/** A 40 dp round toggle chip (20 dp icon): accent tint when [on], dimmed white when off. */
+@Composable
+private fun NpToggleButton(icon: ImageVector, on: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF2A2F3C))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon, contentDescription = null,
+            tint = if (on) Color(0xFF4FC3F7) else Color.White.copy(alpha = 0.45f),
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 

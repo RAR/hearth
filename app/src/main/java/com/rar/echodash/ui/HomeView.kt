@@ -87,6 +87,7 @@ import com.rar.echodash.config.ClockFormat
 import com.rar.echodash.ha.ConnState
 import com.rar.echodash.media.ArtBitmaps
 import com.rar.echodash.media.NowPlayingState
+import com.rar.echodash.sendspin.musicassistant.MaQueueItem
 import com.rar.echodash.ui.model.AqiPill
 import com.rar.echodash.ui.model.BattFlow
 import com.rar.echodash.ui.model.CalendarEvent
@@ -200,6 +201,10 @@ fun HomeView(
     onMediaVolume: (Int) -> Unit,
     onMediaSeek: (Long) -> Unit = {},
     onBrowse: () -> Unit = {},
+    onMediaCycleRepeat: () -> Unit = {},
+    onMediaToggleShuffle: () -> Unit = {},
+    upNext: MaQueueItem? = null,
+    onUpNextTap: () -> Unit = {},
     calendarEvents: List<CalendarEvent> = emptyList(),
     onOpenCalendar: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -252,6 +257,10 @@ fun HomeView(
                     onVolume = onMediaVolume,
                     onSeek = onMediaSeek,
                     onBrowse = onBrowse,
+                    onCycleRepeat = onMediaCycleRepeat,
+                    onToggleShuffle = onMediaToggleShuffle,
+                    upNext = upNext,
+                    onUpNextTap = onUpNextTap,
                 )
             } else {
                 Box(Modifier.fillMaxSize()) {

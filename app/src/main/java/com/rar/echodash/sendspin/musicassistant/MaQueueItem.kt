@@ -15,5 +15,8 @@ data class MaQueueItem(
     val imageUri: String?,
     val duration: Long?,       // seconds
     val uri: String?,          // media URI (e.g., "library://track/123")
-    val isCurrentItem: Boolean // is this the currently playing track
+    val isCurrentItem: Boolean, // is this the currently playing track
+    val favorite: Boolean = false,      // media_item.favorite; false when media_item absent
+    val mediaItemId: String? = null,    // media_item.item_id (string-or-int on wire -> string)
+    val mediaType: String? = null,      // media_item.media_type ("track"|"radio"|...)
 )

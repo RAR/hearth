@@ -157,10 +157,11 @@ class MaCommandClient {
         uri: String,
         queueId: String,
         mediaType: String? = null,
-        enqueueMode: EnqueueMode = EnqueueMode.PLAY
+        enqueueMode: EnqueueMode = EnqueueMode.PLAY,
+        radioMode: Boolean = false,
     ): Result<Unit> {
         return try {
-            Log.d(TAG, "${enqueueMode.name} media: $uri on queue: $queueId")
+            Log.d(TAG, "${enqueueMode.name} media: $uri on queue: $queueId (radio=$radioMode)")
             val args = mutableMapOf<String, Any>(
                 "queue_id" to queueId,
                 "media" to uri
@@ -169,12 +170,48 @@ class MaCommandClient {
                 args["media_type"] = mediaType
             }
             enqueueMode.apiValue?.let { args["option"] = it }
+            // MA 2.9.x: native dynamic-radio refill. (2.10+ deprecates-but-translates radio_mode.)
+            if (radioMode) args["radio_mode"] = true
 
             sendCommand("player_queues/play_media", args)
             Log.i(TAG, "Successfully ${enqueueMode.name}: $uri")
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to ${enqueueMode.name} media: $uri", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Add the current queue item to library favorites. The server resolves the active queue's
+     * current item itself (it even resolves a radio station's stream title to a real track);
+     * raises PlayerCommandFailed — surfaced here as Result.failure — when nothing is resolvable.
+     */
+    suspend fun addCurrentToFavorites(playerId: String): Result<Unit> {
+        return try {
+            sendCommand(
+                "players/add_currently_playing_to_favorites",
+                mapOf("player_id" to playerId),
+            )
+            Log.i(TAG, "Favorited current item on player: $playerId")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to favorite current item on player: $playerId", e)
+            Result.failure(e)
+        }
+    }
+
+    /** Remove a library item from favorites by media type + library item id. */
+    suspend fun removeFavorite(mediaType: String, libraryItemId: String): Result<Unit> {
+        return try {
+            sendCommand(
+                "music/favorites/remove_item",
+                mapOf("media_type" to mediaType, "library_item_id" to libraryItemId),
+            )
+            Log.i(TAG, "Removed favorite: $mediaType/$libraryItemId")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to remove favorite: $mediaType/$libraryItemId", e)
             Result.failure(e)
         }
     }
@@ -747,6 +784,12 @@ class MaCommandClient {
                 .ifEmpty { mediaItem?.optString("uri") ?: "" }
                 .ifEmpty { null }
 
+            // Favorite state + library identity live on the nested media_item (the queue-item
+            // wrapper carries neither). item_id may arrive as a JSON number; optString coerces it.
+            val favorite = mediaItem?.optBoolean("favorite", false) ?: false
+            val mediaItemId = mediaItem?.optString("item_id")?.ifEmpty { null }
+            val mediaType = mediaItem?.optString("media_type")?.ifEmpty { null }
+
             val isCurrentItem = currentItemId.isNotEmpty() && queueItemId == currentItemId
 
             items.add(MaQueueItem(
@@ -757,7 +800,10 @@ class MaCommandClient {
                 imageUri = imageUri,
                 duration = duration,
                 uri = uri,
-                isCurrentItem = isCurrentItem
+                isCurrentItem = isCurrentItem,
+                favorite = favorite,
+                mediaItemId = mediaItemId,
+                mediaType = mediaType,
             ))
         }
 

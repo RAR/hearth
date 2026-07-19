@@ -326,6 +326,42 @@ class MaCommandClientSearchQueueTest {
         assertFalse(state.items[1].isCurrentItem)
     }
 
+    @Test
+    fun `parseQueueState reads favorite fields from media_item`() {
+        val queueJson = parseJson("""{ "result": { "current_index": 0 } }""")
+        val itemsJson = parseJson("""
+        {
+            "result": [
+                {
+                    "queue_item_id": "qi_1",
+                    "media_item": {
+                        "name": "Fav Track",
+                        "favorite": true,
+                        "item_id": 123,
+                        "media_type": "track"
+                    }
+                }
+            ]
+        }
+        """)
+        val state = client.parseQueueState(queueJson, itemsJson)
+        assertEquals(1, state.items.size)
+        assertTrue(state.items[0].favorite)
+        assertEquals("123", state.items[0].mediaItemId) // numeric item_id coerced to string
+        assertEquals("track", state.items[0].mediaType)
+    }
+
+    @Test
+    fun `parseQueueState defaults favorite fields when media_item absent`() {
+        val queueJson = parseJson("""{ "result": {} }""")
+        val itemsJson = parseJson("""{ "result": [ {"queue_item_id": "qi_1", "name": "Bare"} ] }""")
+        val state = client.parseQueueState(queueJson, itemsJson)
+        assertEquals(1, state.items.size)
+        assertFalse(state.items[0].favorite)
+        assertNull(state.items[0].mediaItemId)
+        assertNull(state.items[0].mediaType)
+    }
+
     // ========================================================================
     // Helpers
     // ========================================================================

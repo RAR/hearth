@@ -87,6 +87,11 @@ class SatelliteSession(
     private val timers = LinkedHashMap<String, TimerRec>()
     private var alert: TimerAlert? = null
     private var alertSilenceAtMs: Long? = null
+    // True while the CURRENT run began by silencing a ringing timer alert ("OK Ember, stop").
+    // Scopes two courtesies to that one run: a transcript that is just a stop-phrase is swallowed
+    // (no THINKING, no LLM "no device is playing" answer), and an STT-timeout error dismisses
+    // quietly instead of flashing FAILED (bare "OK Ember" already did what the user wanted).
+    private var alarmSilencedThisRun = false
 
     fun onConnected(): List<SatelliteAction> {
         reset()
@@ -147,24 +152,55 @@ class SatelliteSession(
             if (alert != null) {
                 alert = null
                 alertSilenceAtMs = null
+                alarmSilencedThisRun = true
                 base += SatelliteAction.Timers(timersState(nowMs))
             }
             base
         }
         "transcript" -> {
-            watchdogAtMs = nowMs + WATCHDOG_MS
-            val base = listOf(
-                SatelliteAction.Earcon(EarconKind.DONE),
-                overlayAction(VoiceOverlayState(VoiceOverlayPhase.THINKING, textOf(event))),
-            )
-            if (localWake) {
+            val silencedRun = alarmSilencedThisRun
+            alarmSilencedThisRun = false
+            val rearm = if (localWake) {
                 wakeState = WakeState.DETECTING
-                base + listOf(SatelliteAction.Send(WyomingEvent("streaming-stopped")), SatelliteAction.ResetDetector)
+                listOf(SatelliteAction.Send(WyomingEvent("streaming-stopped")), SatelliteAction.ResetDetector)
             } else {
-                base
+                emptyList()
+            }
+            if (silencedRun && isStopPhrase(textOf(event))) {
+                // The run began by silencing a ringing alarm and the utterance was just the
+                // "stop" that did it — the user already has what they wanted. Swallow the rest
+                // of the run: suppressRun eats synthesize/audio-* (audio-stop still answers
+                // "played", so HA's pipeline completes cleanly) and the overlay hides with no
+                // earcon. Outside an alarm run "stop" remains a real command (media stop etc.).
+                suppressRun = true
+                watchdogAtMs = null
+                dismissAtMs = null
+                rearm + overlayAction(VoiceOverlayState())
+            } else {
+                watchdogAtMs = nowMs + WATCHDOG_MS
+                listOf(
+                    SatelliteAction.Earcon(EarconKind.DONE),
+                    overlayAction(VoiceOverlayState(VoiceOverlayPhase.THINKING, textOf(event))),
+                ) + rearm
             }
         }
-        "error" -> failActions(nowMs)
+        "error" -> if (alarmSilencedThisRun) {
+            // "OK Ember" (to hush the alarm), then nothing: HA's STT times out with an error.
+            // The wake already silenced the ring, so dismiss quietly — a FAILED flash would
+            // punish a fully successful interaction.
+            alarmSilencedThisRun = false
+            watchdogAtMs = null
+            dismissAtMs = null
+            val cleanup = if (localWake) {
+                wakeState = WakeState.DETECTING
+                listOf(SatelliteAction.Send(WyomingEvent("streaming-stopped")), SatelliteAction.ResetDetector)
+            } else {
+                emptyList()
+            }
+            cleanup + overlayAction(VoiceOverlayState())
+        } else {
+            failActions(nowMs)
+        }
         "synthesize" -> if (suppressRun) emptyList() else {
             watchdogAtMs = nowMs + WATCHDOG_MS
             listOf(overlayAction(VoiceOverlayState(VoiceOverlayPhase.RESPONSE, textOf(event))))
@@ -240,10 +276,12 @@ class SatelliteSession(
         // alarm — the "OK Ember, stop" instinct. Silence the ring like a tap: once streaming
         // starts the detector is no longer fed, so the bare-"stop" head can't help, and without
         // this the alarm blares over the whole HA session (observed live 2026-07-18). The
-        // trailing utterance still runs as a normal command.
+        // trailing utterance still runs as a normal command (unless it is just a stop-phrase —
+        // see the transcript handler's alarmSilencedThisRun swallow).
         if (alert != null) {
             alert = null
             alertSilenceAtMs = null
+            alarmSilencedThisRun = true
             actions += SatelliteAction.Timers(timersState(nowMs))
         }
         return actions
@@ -379,6 +417,7 @@ class SatelliteSession(
         dismissAtMs = null
         watchdogAtMs = null
         suppressRun = false
+        alarmSilencedThisRun = false
         overlay = VoiceOverlayState()
     }
 
@@ -388,6 +427,7 @@ class SatelliteSession(
      * in localWake mode; a no-op cleanup otherwise. Clears the watchdog it was called from.
      */
     private fun failActions(nowMs: Long): List<SatelliteAction> {
+        alarmSilencedThisRun = false
         dismissAtMs = nowMs + FAILED_MS
         watchdogAtMs = null
         val cleanup = if (localWake) {
@@ -516,6 +556,20 @@ class SatelliteSession(
         const val WATCHDOG_MS = 30_000L
         const val FAILED_MS = 3_000L
         const val FAILED_TEXT = "No response — try again"
+
+        /** Utterances that mean "shut the alarm up" and nothing more, matched against a
+         *  normalized transcript (lowercased, punctuation stripped, whitespace collapsed).
+         *  Only consulted on a run that began by wake-silencing a ringing alert — outside
+         *  that, these words keep their normal meanings. */
+        val STOP_PHRASES = setOf(
+            "stop", "stop it", "stop alarm", "stop the alarm", "stop timer", "stop the timer",
+            "alarm off", "turn off the alarm", "turn the alarm off",
+            "cancel", "cancel the alarm", "cancel the timer", "dismiss",
+            "okay", "ok", "thanks", "thank you",
+        )
+
+        fun isStopPhrase(raw: String): Boolean =
+            raw.lowercase().replace(Regex("[^a-z ]"), " ").trim().replace(Regex("\\s+"), " ") in STOP_PHRASES
 
         /** The bundled wake-word model ids and their friendly phrases (HA display only).
          *  Must track DashConfig.VoiceSettings.WAKE_WORDS. */

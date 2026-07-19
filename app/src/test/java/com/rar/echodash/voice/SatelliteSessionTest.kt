@@ -249,6 +249,71 @@ class SatelliteSessionTest {
     }
 
     @Test
+    fun stopTranscriptAfterAlarmSilencingWakeIsSwallowedQuietly() {
+        // "OK Ember, stop" while ringing: the wake silenced the ring; the "stop" transcript
+        // must not reach the LLM's UI path (observed live: TTS answered "no device is playing").
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"))
+        s.onEvent(event("timer-started", """{"id":"t1","total_seconds":10}"""), nowMs = 0)
+        s.onEvent(event("timer-finished", """{"id":"t1"}"""), nowMs = 10_000)
+        s.onWakeDetected("ok_ember", nowMs = 11_000)
+        val a = s.onEvent(event("transcript", """{"text":"Stop."}"""), nowMs = 12_000)
+        assertEquals(VoiceOverlayState(), s.overlay)                              // no THINKING
+        assertTrue(a.filterIsInstance<SatelliteAction.Earcon>().isEmpty())        // no earcon
+        assertTrue(sends(a).map { it.type }.contains("streaming-stopped"))        // still re-arms
+        // The suppressed run's response never surfaces.
+        assertTrue(s.onEvent(event("synthesize", """{"text":"No device is playing"}""")).isEmpty())
+    }
+
+    @Test
+    fun commandTranscriptAfterAlarmSilencingWakeRunsNormally() {
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"))
+        s.onEvent(event("timer-started", """{"id":"t1","total_seconds":10}"""), nowMs = 0)
+        s.onEvent(event("timer-finished", """{"id":"t1"}"""), nowMs = 10_000)
+        s.onWakeDetected("ok_ember", nowMs = 11_000)
+        s.onEvent(event("transcript", """{"text":"set another timer for 5 minutes"}"""), nowMs = 12_000)
+        assertEquals(VoiceOverlayPhase.THINKING, s.overlay.phase)
+    }
+
+    @Test
+    fun stopTranscriptWithoutAlarmStaysARealCommand() {
+        // Music playing, no alarm: "OK Ember, stop" must reach the pipeline UI as usual.
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"))
+        s.onWakeDetected("ok_ember", nowMs = 0)
+        s.onEvent(event("transcript", """{"text":"stop"}"""), nowMs = 1_000)
+        assertEquals(VoiceOverlayPhase.THINKING, s.overlay.phase)
+    }
+
+    @Test
+    fun errorAfterAlarmSilencingWakeDismissesQuietlyNotFailed() {
+        // Bare "OK Ember" to hush the ring, then silence -> STT timeout error: no FAILED flash.
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"))
+        s.onEvent(event("timer-started", """{"id":"t1","total_seconds":10}"""), nowMs = 0)
+        s.onEvent(event("timer-finished", """{"id":"t1"}"""), nowMs = 10_000)
+        s.onWakeDetected("ok_ember", nowMs = 11_000)
+        val a = s.onEvent(event("error"), nowMs = 20_000)
+        assertEquals(VoiceOverlayState(), s.overlay)
+        assertTrue(sends(a).map { it.type }.contains("streaming-stopped"))        // re-armed
+        // A later, unrelated error still fails loudly.
+        s.onWakeDetected("ok_ember", nowMs = 30_000)
+        s.onEvent(event("error"), nowMs = 31_000)
+        assertEquals(VoiceOverlayPhase.FAILED, s.overlay.phase)
+    }
+
+    @Test
+    fun stopPhraseNormalizationMatchesVariants() {
+        for (t in listOf("stop", "Stop.", "STOP!", " stop it ", "Cancel the timer", "Thank you.")) {
+            assertTrue(t, SatelliteSession.isStopPhrase(t))
+        }
+        for (t in listOf("stop the music", "set a timer", "", "stopwatch")) {
+            assertFalse(t, SatelliteSession.isStopPhrase(t))
+        }
+    }
+
+    @Test
     fun wakeWithNoRingEmitsNoTimersAction() {
         val s = wakeSession()
         s.onEvent(event("run-satellite"))

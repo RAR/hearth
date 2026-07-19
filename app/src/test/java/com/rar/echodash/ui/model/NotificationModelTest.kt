@@ -83,7 +83,7 @@ class NotificationModelTest {
         assertEquals(NotifSeverity.CRITICAL, sevOf("Extreme"))
         assertEquals(NotifSeverity.CRITICAL, sevOf("Severe"))
         assertEquals(NotifSeverity.WARNING, sevOf("Moderate"))
-        assertEquals(NotifSeverity.INFO, sevOf("Minor"))
+        assertEquals(NotifSeverity.WARNING, sevOf("Minor"))
         assertEquals(NotifSeverity.INFO, sevOf("Unknown"))
         assertEquals(NotifSeverity.INFO, sevOf("wat"))
     }
@@ -93,13 +93,16 @@ class NotificationModelTest {
     @Test
     fun minSeverityFiltersAtEachThreshold() {
         val attr = alertsAttr(
+            mapOf("Event" to "Unknown thing", "ID" to "u", "Severity" to "Unknown"),
             mapOf("Event" to "Minor thing", "ID" to "m", "Severity" to "Minor"),
             mapOf("Event" to "Moderate thing", "ID" to "o", "Severity" to "Moderate"),
             mapOf("Event" to "Severe thing", "ID" to "s", "Severity" to "Severe"),
         )
-        assertEquals(3, run("3", attr, NotifSeverity.INFO).size)
-        assertEquals(setOf("o", "s"), run("3", attr, NotifSeverity.WARNING).map { it.key }.toSet())
-        assertEquals(setOf("s"), run("3", attr, NotifSeverity.CRITICAL).map { it.key }.toSet())
+        assertEquals(4, run("4", attr, NotifSeverity.INFO).size)
+        // Minor now rides with Moderate in the WARNING band (advisories deserve amber); only the
+        // unrecognized "Unknown" severity stays INFO and is filtered out at the WARNING cutoff.
+        assertEquals(setOf("m", "o", "s"), run("4", attr, NotifSeverity.WARNING).map { it.key }.toSet())
+        assertEquals(setOf("s"), run("4", attr, NotifSeverity.CRITICAL).map { it.key }.toSet())
     }
 
     // ---- sort: severity, then onset asc (unparseable last), then title ----

@@ -35,12 +35,13 @@ fun notifSeverityOf(configValue: String): NotifSeverity =
         else -> NotifSeverity.INFO
     }
 
-/** Map an NWS `Severity` attribute value to the enum. Extreme/Severe -> CRITICAL, Moderate -> WARNING,
- *  Minor/Unknown/anything else -> INFO. */
+/** Map an NWS `Severity` attribute value to the enum. Extreme/Severe -> CRITICAL, Moderate/Minor ->
+ *  WARNING, Unknown/anything else -> INFO. Minor rides with Moderate because NWS advisories (e.g.
+ *  Flood Advisory) are graded Minor but still deserve amber, not the INFO auto-dismiss bucket. */
 private fun severityOfAlert(raw: String?): NotifSeverity =
     when (raw?.trim()?.lowercase(Locale.US)) {
         "extreme", "severe" -> NotifSeverity.CRITICAL
-        "moderate" -> NotifSeverity.WARNING
+        "moderate", "minor" -> NotifSeverity.WARNING
         else -> NotifSeverity.INFO
     }
 

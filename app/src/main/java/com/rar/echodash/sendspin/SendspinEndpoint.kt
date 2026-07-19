@@ -98,6 +98,7 @@ class SendspinEndpoint(
     @Volatile private var sendSpin: SendSpin? = null
     @Volatile private var nsd: NsdDiscoveryManager? = null
     private var stateCollectorJob: Job? = null
+    private var controllerCollectorJob: Job? = null
 
     // User sync-delay (ms) from config, applied to the time filter's USER static-delay slot -- the
     // seam upstream SendSpinDroid's settings slider used (setUserSyncOffsetMs). Positive = this
@@ -183,6 +184,10 @@ class SendspinEndpoint(
     fun transportStop() { playWhenReady = false; sendSpin?.pause(); publishNowPlaying() }
     fun transportNext() { sendSpin?.next() }
     fun transportPrev() { sendSpin?.previous() }
+    /** Cycle the group repeat mode via the engine (no-op while disconnected). */
+    fun transportSetRepeat(mode: String) { sendSpin?.setRepeatMode(mode) }
+    /** Set group shuffle via the engine (no-op while disconnected). */
+    fun transportSetShuffle(enabled: Boolean) { sendSpin?.setShuffle(enabled) }
     /** Set the group volume (0..100): apply it to the device output AND sync it to Music Assistant. */
     fun transportVolume(volume: Int) {
         val v = volume.coerceIn(0, 100)
@@ -219,6 +224,15 @@ class SendspinEndpoint(
     @Volatile private var npPositionMs: Long = 0
     @Volatile private var npPositionAtMs: Long = 0
 
+    // Toggle state merged from the engine's controllerState push (repeat/shuffle) and its
+    // supported_commands (the gates). Written on the controllerState collector (Default
+    // dispatcher), read in publishNowPlaying -- @Volatile for cross-thread visibility, matching
+    // the np* fields around them. Null repeat/shuffle = the server never sent controller state.
+    @Volatile private var npRepeatMode: String? = null
+    @Volatile private var npShuffle: Boolean? = null
+    @Volatile private var npCanRepeat: Boolean = false
+    @Volatile private var npCanShuffle: Boolean = false
+
     // Play/pause INTENT, mirroring the reference SendSpinPlayer.playWhenReady. Set optimistically by
     // the transport buttons and reconciled from the server's playback_state broadcasts (WITHOUT
     // echoing a command back). This -- not the raw stream/start-end flag -- is the takeover's
@@ -246,6 +260,8 @@ class SendspinEndpoint(
                 title = npTitle, artist = npArtist, album = npAlbum,
                 artworkData = npArtwork, volume = npVolume, muted = mutedNow,
                 durationMs = npDurationMs, positionMs = npPositionMs, positionAtMs = npPositionAtMs,
+                repeatMode = npRepeatMode, shuffle = npShuffle,
+                canRepeat = npCanRepeat, canShuffle = npCanShuffle,
             )
         }
     }
@@ -459,6 +475,7 @@ class SendspinEndpoint(
                     // Clear progress too so a later reactivation can't flash this track's stale
                     // position before MA's first progress update lands.
                     npDurationMs = 0; npPositionMs = 0; npPositionAtMs = 0
+                    npRepeatMode = null; npShuffle = null; npCanRepeat = false; npCanShuffle = false
                     mainScope.launch {
                         nowPlaying.onSendspin(false, false, null, null, null, null, npVolume, muted = false)
                     }
@@ -474,6 +491,20 @@ class SendspinEndpoint(
                     publishNowPlaying()
                     sendSpin?.setVolume(devVol / 100.0)
                 }
+            }
+        }
+
+        // Push repeat/shuffle + the toggle gates into the now-playing state as the server's
+        // controller object arrives (delta-merged in ControllerState.mergedWith). Null cs (no
+        // controller object yet) leaves repeat/shuffle null -> the takeover hides both toggles.
+        controllerCollectorJob = scope.launch {
+            ss.controllerState.collect { cs ->
+                npRepeatMode = cs?.repeat
+                npShuffle = cs?.shuffle
+                val gates = repeatShuffleGates(cs?.supportedCommands)
+                npCanRepeat = gates.canRepeat
+                npCanShuffle = gates.canShuffle
+                publishNowPlaying()
             }
         }
 
@@ -512,6 +543,8 @@ class SendspinEndpoint(
 
         stateCollectorJob?.cancel()
         stateCollectorJob = null
+        controllerCollectorJob?.cancel()
+        controllerCollectorJob = null
 
         val discovery = nsd
         nsd = null
@@ -546,6 +579,7 @@ class SendspinEndpoint(
         muted = false // MA mute is per-session; a fresh start() begins unmuted (duckGain persists)
         // Clear progress so a later start() -> reactivation can't flash the old track's position.
         npDurationMs = 0; npPositionMs = 0; npPositionAtMs = 0
+        npRepeatMode = null; npShuffle = null; npCanRepeat = false; npCanShuffle = false
         mainScope.launch { nowPlaying.onSendspin(false, false, null, null, null, null, npVolume, muted = false) }
     }
 

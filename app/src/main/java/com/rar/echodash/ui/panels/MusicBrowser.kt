@@ -29,7 +29,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.Repeat
+import androidx.compose.material.icons.outlined.RepeatOne
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -51,6 +54,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -125,7 +129,14 @@ fun browserContent(
  * remember{} so leaving the MEDIA view drops it — no resident library cache on the 1 GB Echo.
  */
 @Composable
-fun MusicBrowser(library: MaLibrary, thumbs: MaThumbs, modifier: Modifier = Modifier) {
+fun MusicBrowser(
+    library: MaLibrary,
+    thumbs: MaThumbs,
+    modifier: Modifier = Modifier,
+    openQueueSignal: Int = 0,
+    onCycleRepeat: () -> Unit = {},
+    onToggleShuffle: () -> Unit = {},
+) {
     val maState by library.state.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
     var shelves by remember { mutableStateOf<BrowserShelves?>(null) }
@@ -196,6 +207,12 @@ fun MusicBrowser(library: MaLibrary, thumbs: MaThumbs, modifier: Modifier = Modi
             }
     }
 
+    // Open the queue overlay when DashboardShell bumps the signal (up-next line tapped). 0 is the
+    // never-requested value; a nonzero value opens the queue on (re)composition.
+    LaunchedEffect(openQueueSignal) {
+        if (openQueueSignal > 0) queueVisible = true
+    }
+
     // Queue: poll every 5 s while the overlay is visible; queueVersion bumps restart the
     // effect for an immediate refetch after every mutation (jump / clear / enqueue).
     LaunchedEffect(queueVisible, queueVersion) {
@@ -258,6 +275,8 @@ fun MusicBrowser(library: MaLibrary, thumbs: MaThumbs, modifier: Modifier = Modi
                                 .onFailure { showError(it.message ?: "Couldn't clear the queue") }
                         }
                     },
+                    onToggleShuffle = { onToggleShuffle(); queueVersion++ },
+                    onCycleRepeat = { onCycleRepeat(); queueVersion++ },
                 )
             } else when (content) {
                 is BrowserContent.Notice -> EmptyHint(content.message)
@@ -511,13 +530,25 @@ private fun QueuePane(
     thumbs: MaThumbs,
     onJump: (String) -> Unit,
     onClear: () -> Unit,
+    onToggleShuffle: () -> Unit,
+    onCycleRepeat: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             Text(
                 "Queue", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp,
                 modifier = Modifier.weight(1f),
             )
+            // Toggle chips mirror the takeover: lit off the queue's own shuffle/repeat state.
+            if (queue != null) {
+                QueueToggleChip(Icons.Outlined.Shuffle, on = queue.shuffleEnabled) { onToggleShuffle() }
+                val repeatIcon = if (queue.repeatMode == "one") Icons.Outlined.RepeatOne else Icons.Outlined.Repeat
+                val repeatOn = queue.repeatMode == "all" || queue.repeatMode == "one"
+                QueueToggleChip(repeatIcon, on = repeatOn) { onCycleRepeat() }
+            }
             Text(
                 "Clear", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp,
                 modifier = Modifier
@@ -536,6 +567,25 @@ private fun QueuePane(
                 }
             }
         }
+    }
+}
+
+/** A 28 dp round toggle chip (16 dp icon) for the queue header: accent tint when [on]. */
+@Composable
+private fun QueueToggleChip(icon: ImageVector, on: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF2A2F3C))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon, contentDescription = null,
+            tint = if (on) Color(0xFF4FC3F7) else Color.White.copy(alpha = 0.45f),
+            modifier = Modifier.size(16.dp),
+        )
     }
 }
 

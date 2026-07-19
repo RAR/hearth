@@ -319,6 +319,9 @@ fun DashboardShell(
                     nowPlaying, art, onMediaPlay, onMediaPause, onMediaStop,
                     onMediaNext, onMediaPrev, onMediaVolume,
                     library = library, thumbs = thumbs,
+                    openQueueSignal = openQueueSignal,
+                    onCycleRepeat = onMediaCycleRepeat,
+                    onToggleShuffle = onMediaToggleShuffle,
                 )
                 DashView.CALENDAR -> CalendarPanel(
                     events = calendarEvents,

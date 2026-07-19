@@ -105,6 +105,7 @@ import com.rar.echodash.ui.model.eventTimeLabel
 import com.rar.echodash.ui.model.homeCardWidthDp
 import com.rar.echodash.ui.model.homeOverlayCaps
 import com.rar.echodash.ui.model.nextEventCard
+import com.rar.echodash.ui.model.nowPlayingRowLabel
 import com.rar.echodash.ui.model.solarFlowCard
 import com.rar.echodash.ui.model.solarStatsCompact
 import com.rar.echodash.ui.model.weatherPillText
@@ -381,27 +382,56 @@ fun HomeView(
                 }
             }
 
-            // Notification area: just below the weather/AQI pill row (top = 70dp). Its width and
-            // height caps come from AdaptiveGeometry.homeOverlayCaps: width so a row never slides
-            // under the EV/solar card column, height (+ clipToBounds) so the bottom-left clock is
-            // never covered. Both grow with the screen (see the design spec's golden table).
+            // Notification stack + pinned now-playing row: just below the weather/AQI pill row
+            // (top = 70dp). The row shows whenever music is active but the takeover is dismissed
+            // (manual home-button OR the paused-timeout); tapping it restores the takeover. The
+            // width cap moves onto the Column so the row and notifications share one edge; the
+            // height cap + clipToBounds stay on NotificationArea so real notifications scroll
+            // under their cap while the pinned row never clips. `!takeoverVisible` is always true
+            // in this else-branch — kept defensively per the design spec (which covers BOTH
+            // dismissal paths through this one formula).
+            val showNowPlayingRow = nowPlaying.active && !takeoverVisible
+            // homeOverlayCaps sizes notifMaxHeightDp so the stack ends NOTIF_CLOCK_GAP above the
+            // clock block; the pinned row adds 62dp above the stack (34dp thumb + 2×10dp pad +
+            // 8dp Column gap), so shrink the stack's cap by the same amount to keep that contract
+            // (Show 5: 200 → 138, still ~3 scrollable rows). Floor of 60 keeps one row usable if
+            // a future tiny screen ever bottoms out the geometry floor.
+            val notifHeightCap =
+                if (showNowPlayingRow) (caps.notifMaxHeightDp - 62).coerceAtLeast(60)
+                else caps.notifMaxHeightDp
             AnimatedVisibility(
-                visible = notifications.isNotEmpty(),
+                visible = notifications.isNotEmpty() || showNowPlayingRow,
                 enter = fadeIn(tween(600)),
                 exit = fadeOut(tween(600)),
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(start = 28.dp, top = 70.dp),
             ) {
-                NotificationArea(
-                    notifications = notifications,
-                    nowMs = now,
-                    onDismiss = onDismiss,
-                    modifier = Modifier
-                        .widthIn(max = caps.notifMaxWidthDp.dp)
-                        .heightIn(max = caps.notifMaxHeightDp.dp)
-                        .clipToBounds(),
-                )
+                Column(
+                    Modifier.widthIn(max = caps.notifMaxWidthDp.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (showNowPlayingRow) {
+                        NowPlayingRow(
+                            label = nowPlayingRowLabel(nowPlaying.title, nowPlaying.artist),
+                            artThumb = art?.sharp,
+                            onTap = onTakeoverRestore,
+                        )
+                    }
+                    // Guarded so NotificationArea's "empty lists should not be rendered by the
+                    // caller" contract holds when only the row is showing (no scroll container spun
+                    // up for zero rows).
+                    if (notifications.isNotEmpty()) {
+                        NotificationArea(
+                            notifications = notifications,
+                            nowMs = now,
+                            onDismiss = onDismiss,
+                            modifier = Modifier
+                                .heightIn(max = notifHeightCap.dp)
+                                .clipToBounds(),
+                        )
+                    }
+                }
             }
 
             // Next-event card: bottom-right, diagonal from the clock. Width-capped by

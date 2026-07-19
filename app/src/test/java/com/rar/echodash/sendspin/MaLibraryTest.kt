@@ -1,6 +1,8 @@
 package com.rar.echodash.sendspin
 
 import com.rar.echodash.sendspin.musicassistant.EnqueueMode
+import com.rar.echodash.sendspin.musicassistant.MaAlbum
+import com.rar.echodash.sendspin.musicassistant.MaArtist
 import com.rar.echodash.sendspin.musicassistant.MaAuthHelper
 import com.rar.echodash.sendspin.musicassistant.transport.MaApiTransport
 import com.rar.echodash.sendspin.musicassistant.transport.MaTransportException
@@ -396,6 +398,71 @@ class MaLibraryTest {
         assertTrue(h.lib.play("library://track/1", "track", EnqueueMode.PLAY).isSuccess)
         val playArgs = h.commands.first { it.first == "player_queues/play_media" }.second
         assertNull(playArgs["radio_mode"]) // non-radio play must never send the flag
+        h.lib.stop()
+    }
+
+    // ---- library browse / drill-in ops ----
+
+    @Test
+    fun libraryArtistsSendsLibraryItemsWithSortName() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        assertTrue(h.lib.libraryArtists().isSuccess)
+        assertEquals(listOf("music/artists/library_items"), h.commands.map { it.first })
+        val args = h.commands[0].second
+        assertEquals(200, args["limit"])
+        assertEquals(0, args["offset"])
+        assertEquals("sort_name", args["order_by"])
+        h.lib.stop()
+    }
+
+    @Test
+    fun libraryAlbumsPassesOffsetThrough() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        assertTrue(h.lib.libraryAlbums(offset = 200).isSuccess)
+        assertEquals(listOf("music/albums/library_items"), h.commands.map { it.first })
+        val args = h.commands[0].second
+        assertEquals(200, args["limit"])
+        assertEquals(200, args["offset"])
+        assertEquals("sort_name", args["order_by"])
+        h.lib.stop()
+    }
+
+    @Test
+    fun artistAlbumsSendsItemIdAndProviderFromArtist() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        val artist = MaArtist(
+            artistId = "art-5", name = "Boards of Canada",
+            imageUri = null, uri = "library://artist/art-5", provider = "spotify",
+        )
+        assertTrue(h.lib.artistAlbums(artist).isSuccess)
+        assertEquals(listOf("music/artists/artist_albums"), h.commands.map { it.first })
+        val args = h.commands[0].second
+        assertEquals("art-5", args["item_id"])
+        assertEquals("spotify", args["provider_instance_id_or_domain"])
+        h.lib.stop()
+    }
+
+    @Test
+    fun albumTracksSendsItemIdAndProviderFromAlbum() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        val album = MaAlbum(
+            albumId = "alb-9", name = "Geogaddi", imageUri = null,
+            uri = "library://album/alb-9", artist = "Boards of Canada",
+            year = null, trackCount = null, albumType = null, provider = "library",
+        )
+        assertTrue(h.lib.albumTracks(album).isSuccess)
+        assertEquals(listOf("music/albums/album_tracks"), h.commands.map { it.first })
+        val args = h.commands[0].second
+        assertEquals("alb-9", args["item_id"])
+        assertEquals("library", args["provider_instance_id_or_domain"])
         h.lib.stop()
     }
 }

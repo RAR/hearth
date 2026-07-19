@@ -2,6 +2,8 @@ package com.rar.echodash.sendspin
 
 import android.util.Log
 import com.rar.echodash.sendspin.musicassistant.EnqueueMode
+import com.rar.echodash.sendspin.musicassistant.MaAlbum
+import com.rar.echodash.sendspin.musicassistant.MaArtist
 import com.rar.echodash.sendspin.musicassistant.MaAuthHelper
 import com.rar.echodash.sendspin.musicassistant.MaCommandClient
 import com.rar.echodash.sendspin.musicassistant.MaPlaylist
@@ -135,6 +137,24 @@ class MaLibrary(
     suspend fun recentlyPlayed(): Result<List<MaTrack>> = withClient { it.getRecentlyPlayed() }
 
     suspend fun search(query: String): Result<SearchResults> = withClient { it.search(query) }
+
+    // ---- Library browse / drill-in ops (all read-only; withClient, not withQueue) ----
+
+    /** A page of library artists A-Z (page size 200, sort_name order). */
+    suspend fun libraryArtists(offset: Int = 0): Result<List<MaArtist>> =
+        withClient { it.getLibraryArtists(offset = offset) }
+
+    /** A page of library albums A-Z (page size 200, sort_name order). */
+    suspend fun libraryAlbums(offset: Int = 0): Result<List<MaAlbum>> =
+        withClient { it.getLibraryAlbums(offset = offset) }
+
+    /** The albums of [artist] (drill-in); unpacks its id + provider so the UI never sees them. */
+    suspend fun artistAlbums(artist: MaArtist): Result<List<MaAlbum>> =
+        withClient { it.getArtistAlbums(artist.artistId, artist.provider) }
+
+    /** The tracks of [album] (drill-in), server-sorted by disc/track. */
+    suspend fun albumTracks(album: MaAlbum): Result<List<MaTrack>> =
+        withClient { it.getAlbumTracks(album.albumId, album.provider) }
 
     // ---- Queue ops (all resolve the panel's effective queue first) ----
 

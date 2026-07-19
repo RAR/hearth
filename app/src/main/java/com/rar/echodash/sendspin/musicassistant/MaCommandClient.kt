@@ -355,6 +355,89 @@ class MaCommandClient {
     }
 
     /**
+     * Get a page of library artists A-Z. Reuses [parseArtistsArray]; the response is either a
+     * top-level `result` array or `result.items`. `order_by: "sort_name"` for stable A-Z order.
+     */
+    suspend fun getLibraryArtists(limit: Int = 200, offset: Int = 0): Result<List<MaArtist>> {
+        return try {
+            Log.d(TAG, "Fetching library artists (limit=$limit, offset=$offset)")
+            val response = sendCommand(
+                "music/artists/library_items",
+                mapOf("limit" to limit, "offset" to offset, "order_by" to "sort_name"),
+            )
+            val array = response.optJsonArray("result")
+                ?: response.optJsonObject("result")?.optJsonArray("items")
+            val artists = parseArtistsArray(array)
+            Log.d(TAG, "Got ${artists.size} library artists")
+            Result.success(artists)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch library artists", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Get a page of library albums A-Z. Reuses [parseAlbumsArray]; response shape as above.
+     */
+    suspend fun getLibraryAlbums(limit: Int = 200, offset: Int = 0): Result<List<MaAlbum>> {
+        return try {
+            Log.d(TAG, "Fetching library albums (limit=$limit, offset=$offset)")
+            val response = sendCommand(
+                "music/albums/library_items",
+                mapOf("limit" to limit, "offset" to offset, "order_by" to "sort_name"),
+            )
+            val array = response.optJsonArray("result")
+                ?: response.optJsonObject("result")?.optJsonArray("items")
+            val albums = parseAlbumsArray(array)
+            Log.d(TAG, "Got ${albums.size} library albums")
+            Result.success(albums)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch library albums", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Get an artist's albums (drill-in). [provider] is the artist's `provider_instance_id_or_domain`
+     * ("library" for a library artist). Reuses [parseAlbumsArray].
+     */
+    suspend fun getArtistAlbums(artistId: String, provider: String): Result<List<MaAlbum>> {
+        return try {
+            Log.d(TAG, "Fetching artist albums (item_id=$artistId, provider=$provider)")
+            val response = sendCommand(
+                "music/artists/artist_albums",
+                mapOf("item_id" to artistId, "provider_instance_id_or_domain" to provider),
+            )
+            val array = response.optJsonArray("result")
+                ?: response.optJsonObject("result")?.optJsonArray("items")
+            Result.success(parseAlbumsArray(array))
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch artist albums: $artistId", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Get an album's tracks (drill-in), server-sorted by disc/track. [provider] is the album's
+     * `provider_instance_id_or_domain`. Reuses [parseTracksArray].
+     */
+    suspend fun getAlbumTracks(albumId: String, provider: String): Result<List<MaTrack>> {
+        return try {
+            Log.d(TAG, "Fetching album tracks (item_id=$albumId, provider=$provider)")
+            val response = sendCommand(
+                "music/albums/album_tracks",
+                mapOf("item_id" to albumId, "provider_instance_id_or_domain" to provider),
+            )
+            val array = response.optJsonArray("result")
+                ?: response.optJsonObject("result")?.optJsonArray("items")
+            Result.success(parseTracksArray(array))
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch album tracks: $albumId", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Search Music Assistant library.
      */
     suspend fun search(

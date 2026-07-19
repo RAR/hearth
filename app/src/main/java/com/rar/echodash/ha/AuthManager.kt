@@ -86,8 +86,16 @@ class AuthManager(
     private suspend fun tokenRequest(base: String, body: FormBody): TokenResponse = withContext(Dispatchers.IO) {
         val request = Request.Builder().url("$base/auth/token").post(body).build()
         client.newCall(request).execute().use { resp ->
-            if (resp.code == 400) throw TokenRejectedException()
-            if (!resp.isSuccessful) throw IOException("token endpoint HTTP ${resp.code}")
+            if (!resp.isSuccessful) {
+                val errorBody = resp.body?.string().orEmpty()
+                android.util.Log.w("AuthManager", "token endpoint HTTP ${resp.code}: $errorBody")
+                // Only a definitive invalid_grant means the token is dead. Any other
+                // failure — e.g. HA rejecting a local_only user whose request arrived
+                // via the external path during a DNS blip — must stay retryable, or a
+                // transient network wobble self-wipes the device's auth.
+                if (resp.code == 400 && errorField(errorBody) == "invalid_grant") throw TokenRejectedException()
+                throw IOException("token endpoint HTTP ${resp.code}")
+            }
             val obj = Json.parseToJsonElement(resp.body!!.string()).jsonObject
             TokenResponse(
                 accessToken = obj["access_token"]?.jsonPrimitive?.contentOrNull
@@ -96,5 +104,11 @@ class AuthManager(
                 expiresInSec = obj["expires_in"]?.jsonPrimitive?.long ?: 1800L,
             )
         }
+    }
+
+    private fun errorField(body: String): String? = try {
+        Json.parseToJsonElement(body).jsonObject["error"]?.jsonPrimitive?.contentOrNull
+    } catch (e: Exception) {
+        null
     }
 }

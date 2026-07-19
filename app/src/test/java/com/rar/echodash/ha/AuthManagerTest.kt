@@ -81,6 +81,56 @@ class AuthManagerTest {
     }
 
     @Test
+    fun transient400KeepsAuthAndIsRetryable() = runBlocking {
+        // local_only user hit via the external path: HA answers 400 but NOT invalid_grant.
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(400).setBody("""{"error":"invalid_request"}"""))
+            server.start()
+            settings.baseUrl = server.url("/").toString().trimEnd('/')
+            settings.refreshToken = "RT"
+            try {
+                auth().validAccessToken()
+                fail("expected IOException")
+            } catch (e: java.io.IOException) {
+                assertEquals("RT", settings.refreshToken)
+            }
+        }
+    }
+
+    @Test
+    fun nonJson400BodyKeepsAuthAndIsRetryable() = runBlocking {
+        // e.g. a proxy error page — never treat an unparseable 400 as revocation.
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(400).setBody("<html>Bad Request</html>"))
+            server.start()
+            settings.baseUrl = server.url("/").toString().trimEnd('/')
+            settings.refreshToken = "RT"
+            try {
+                auth().validAccessToken()
+                fail("expected IOException")
+            } catch (e: java.io.IOException) {
+                assertEquals("RT", settings.refreshToken)
+            }
+        }
+    }
+
+    @Test
+    fun serverErrorKeepsAuthAndIsRetryable() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(502).setBody("Bad Gateway"))
+            server.start()
+            settings.baseUrl = server.url("/").toString().trimEnd('/')
+            settings.refreshToken = "RT"
+            try {
+                auth().validAccessToken()
+                fail("expected IOException")
+            } catch (e: java.io.IOException) {
+                assertEquals("RT", settings.refreshToken)
+            }
+        }
+    }
+
+    @Test
     fun refreshUsesStoredAuthClientId() = runBlocking {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setBody(

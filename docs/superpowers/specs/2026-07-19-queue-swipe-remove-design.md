@@ -23,10 +23,13 @@ current/near-current row is safe but may no-op.
   shape as `clearQueue`.
 - `MaLibrary.removeQueueItem(queueItemId: String): Result<Unit>` — `withQueue` (same
   effective-queue resolution as `jumpTo`/`clearQueue`).
-- MusicBrowser: swipe completion calls `library.removeQueueItem(item.queueItemId)`;
-  `.onSuccess { queueVersion++ }` (refetch confirms), `.onFailure { showError(...) }` —
-  matching `playItem`'s completion-ordered bump convention (NOT a synchronous bump; final
-  review of Batch A flagged the synchronous variant as dead intent).
+- `QueueRow` takes `onRemove: suspend (MaQueueItem) -> Boolean` (not a fire-and-forget
+  callback — removal is a server round trip that can fail, so the row needs the outcome to
+  decide whether to stay off-screen or animate back). MusicBrowser implements it as
+  `library.removeQueueItem(item.queueItemId)` → `.onSuccess { queueVersion++ }` (NOT a
+  synchronous bump; matches `playItem`'s completion-ordered convention — final review of
+  Batch A flagged the synchronous variant as dead intent) → `.onFailure { showError(...) }`
+  → returns `result.isSuccess`.
 
 ## UI (MusicBrowser.kt QueuePane/QueueRow)
 
@@ -40,9 +43,10 @@ current/near-current row is safe but may no-op.
   vertical scroll claim separate axes (same coexistence as the notification stack).
 - The CURRENT item's row does NOT get the swipe (guard: `if (!item.isCurrentItem)`) — the
   server would silently ignore near-buffer deletes anyway (recon §3); offering a gesture
-  that no-ops is worse than not offering it. Rows after removal: the optimistic slide-off
-  hides the row immediately; the `queueVersion` refetch reconciles (row returns if the
-  server refused).
+  that no-ops is worse than not offering it. Rows after removal: `QueueRow`'s `onDragEnd`
+  animates fully off-screen first, then awaits `onRemove`'s Boolean result — a `true`
+  (removed) leaves it off-screen for the following `queueVersion` refetch to naturally omit;
+  a `false` (failed) animates the row back into view immediately, no refetch needed.
 - No trash icon / affordance chrome — discoverability matches the notification rows
   (consistent gesture language on this dashboard).
 
@@ -50,10 +54,10 @@ current/near-current row is safe but may no-op.
 
 | Condition | Behavior |
 |---|---|
-| Delete fails (socket drop, server error) | Row slides back into place on refetch; error toast via existing `showError` |
+| Delete fails (socket drop, server error) | Row animates back on failure result; toast via existing `showError` |
 | Swipe the current item | No swipe gesture offered |
-| Server silently ignores (buffered item) | Refetch restores the row; no error |
-| Rapid multi-swipe | Each fires independently; refetch after each reconciles |
+| Server silently ignores (buffered/near-current item) | Command still reports success, so the row does not animate back on its own — it stays hidden until the queue panel is closed/reopened (same recovery path as the old pre-fix failure case); no error shown, since none occurred |
+| Rapid multi-swipe | Each fires independently; each row's own animate/await/maybe-animate-back sequence is independent |
 
 ## Out of scope (deliberate)
 
@@ -74,4 +78,5 @@ current/near-current row is safe but may no-op.
 2. Below-threshold swipe → snaps back, no removal.
 3. Vertical scroll in the pane still works; tap-to-jump still works.
 4. Current row: cannot be swiped.
-5. Kill the MA socket (stop MA) mid-pane → swipe shows the error toast, row returns.
+5. Kill the MA socket (stop MA) mid-pane → swipe shows the error toast and the row slides
+   back into view immediately (no refetch needed).

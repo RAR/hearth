@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -28,11 +29,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rar.echodash.camera.StreamResolver
 import com.rar.echodash.config.DashConfig
 import com.rar.echodash.ha.ConnState
 import com.rar.echodash.ha.EntityState
 import com.rar.echodash.ha.RegistryIndex
+import com.rar.echodash.sendspin.MaLibraryState
+import com.rar.echodash.sendspin.musicassistant.MaQueueItem
 import com.rar.echodash.ui.model.CalendarEvent
 import com.rar.echodash.ui.model.NotificationItem
 import com.rar.echodash.ui.model.PUSH_KEY_PREFIX
@@ -50,6 +54,7 @@ import com.rar.echodash.ui.model.solarCard
 import com.rar.echodash.ui.model.solarFlowGraph
 import com.rar.echodash.ui.model.thermostats
 import com.rar.echodash.ui.model.rainPill
+import com.rar.echodash.ui.model.upNextOf
 import com.rar.echodash.ui.model.weatherPill
 import com.rar.echodash.ui.panels.CalendarPanel
 import com.rar.echodash.ui.panels.CamerasPanel
@@ -95,6 +100,8 @@ fun DashboardShell(
     library: MaLibrary?,
     thumbs: MaThumbs?,
     onBrowse: () -> Unit,
+    onMediaCycleRepeat: () -> Unit = {},
+    onMediaToggleShuffle: () -> Unit = {},
     fetchForecast: suspend (String) -> JsonElement?,
     configUrl: String,
     configPin: String,
@@ -108,6 +115,35 @@ fun DashboardShell(
     calendarEvents: List<CalendarEvent> = emptyList(),
 ) {
     val connected = connState == ConnState.CONNECTED
+    // Up-next line state, owned here (not in NowPlayingState): it comes from the MA API poll, a
+    // different producer than SendspinEndpoint. library is a process-lifetime dependency, so its
+    // null-ness is fixed for this composition -- the guarded collect below is stable across
+    // recompositions.
+    var upNext by remember { mutableStateOf<MaQueueItem?>(null) }
+    // Bumped when the takeover's up-next line is tapped; threaded to MusicBrowser to open the
+    // queue overlay on first composition in the MEDIA view. Starts at 0 (never-requested).
+    var openQueueSignal by remember { mutableIntStateOf(0) }
+    // deps.maLibrary is a process-lifetime constant (App.kt:295) -- this branch never flips, so the
+    // collectAsStateWithLifecycle call stays structurally stable across recompositions (it is kept
+    // out of a conditional expression -- the composable is called only inside the stable branch).
+    val maConnected = if (library != null) {
+        val maState by library.state.collectAsStateWithLifecycle()
+        maState is MaLibraryState.Connected
+    } else false
+    // Poll the queue while the takeover is up on a SendSpin source with a live MA socket. Keyed on
+    // nowPlaying.title so a track advance restarts the poll and refreshes the line immediately;
+    // any fetch failure (or a null next item) sets null -- the takeover is glanceable, not a
+    // diagnostics surface. The gate going false clears the line.
+    LaunchedEffect(takeoverVisible, nowPlaying.sendspin, nowPlaying.title, maConnected) {
+        if (!(takeoverVisible && nowPlaying.sendspin && library != null && maConnected)) {
+            upNext = null
+            return@LaunchedEffect
+        }
+        while (true) {
+            upNext = library.queue().getOrNull()?.let { upNextOf(it) }
+            delay(10_000)
+        }
+    }
     val weatherEntityId = config.entities.weather
     val views = remember(config.panels, config.entities.cameras) {
         railViews(config.panels, config.entities.cameras.isNotEmpty())
@@ -258,6 +294,13 @@ fun DashboardShell(
                         onMediaVolume = onMediaVolume,
                         onMediaSeek = onMediaSeek,
                         onBrowse = onBrowse,
+                        onMediaCycleRepeat = onMediaCycleRepeat,
+                        onMediaToggleShuffle = onMediaToggleShuffle,
+                        upNext = upNext,
+                        onUpNextTap = {
+                            openQueueSignal++
+                            onSelect(DashView.MEDIA)
+                        },
                     )
                 }
                 DashView.LIGHTS -> {

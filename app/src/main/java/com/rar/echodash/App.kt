@@ -56,6 +56,7 @@ import com.rar.echodash.ui.VoiceOverlay
 import com.rar.echodash.ui.WakeGlow
 import com.rar.echodash.ui.model.CalendarEvent
 import com.rar.echodash.ui.model.TimerTakeoverModel
+import com.rar.echodash.ui.model.nextRepeatMode
 import com.rar.echodash.ui.model.parseCalendarEvents
 import com.rar.echodash.ui.model.pushedNotificationItems
 import com.rar.echodash.ui.model.quickButtonService
@@ -910,6 +911,16 @@ fun EchoDashApp(deps: AppDeps) {
                                     entityId = it,
                                 )
                             }
+                        },
+                        // SendSpin-only: cycle group repeat / toggle group shuffle. Companion
+                        // media_player has no queue concept here, so the else branch is a no-op.
+                        onMediaCycleRepeat = {
+                            if (nowPlayingState.sendspin)
+                                deps.sendspin.transportSetRepeat(nextRepeatMode(nowPlayingState.repeatMode))
+                        },
+                        onMediaToggleShuffle = {
+                            if (nowPlayingState.sendspin)
+                                deps.sendspin.transportSetShuffle(!(nowPlayingState.shuffle ?: false))
                         },
                         library = deps.maLibrary,
                         thumbs = deps.maThumbs,

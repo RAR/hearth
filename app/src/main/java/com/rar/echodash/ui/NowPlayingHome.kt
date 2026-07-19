@@ -63,6 +63,7 @@ fun NowPlayingHome(
     onNext: () -> Unit,
     onPrev: () -> Unit,
     onVolume: (Int) -> Unit,
+    onSeek: (Long) -> Unit = {},
     onBrowse: () -> Unit = {},
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {

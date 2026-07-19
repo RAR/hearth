@@ -891,6 +891,18 @@ fun EchoDashApp(deps: AppDeps) {
                                 deps.media.handleAction("set-volume", buildJsonObject { put("volume", vol) })
                             }
                         },
+                        // Seek is companion-only: the UI never offers it for SendSpin (MA has no seek
+                        // command), so that branch is a no-op. seek_position is in seconds.
+                        onMediaSeek = { secs ->
+                            if (nowPlayingState.sendspin) Unit
+                            else config.media.companionEntity?.let {
+                                deps.entityHub.callService(
+                                    "media_player", "media_seek",
+                                    serviceData = buildJsonObject { put("seek_position", secs) },
+                                    entityId = it,
+                                )
+                            }
+                        },
                         library = deps.maLibrary,
                         thumbs = deps.maThumbs,
                         // Takeover's browse button: land on the MEDIA view's library browser

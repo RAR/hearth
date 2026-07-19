@@ -2,6 +2,7 @@ package com.rar.echodash.media
 
 import com.rar.echodash.ha.EntityState
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
@@ -23,6 +24,10 @@ class NowPlayingStoreTest {
 
     private fun emptyEntity(): EntityState =
         EntityState("media_player.ma", "idle", JsonObject(emptyMap()), 0L)
+
+    /** Build a media_player EntityState with arbitrary (incl. numeric) attributes. */
+    private fun mediaEntity(build: JsonObjectBuilder.() -> Unit): EntityState =
+        EntityState("media_player.ma", "playing", buildJsonObject(build), 0L)
 
     @Test
     fun icySplitsOnFirstSeparator() {
@@ -164,6 +169,96 @@ class NowPlayingStoreTest {
         assertEquals(30, s.state.value.volume)
         s.onEngine(active = true, playing = true, volume = 88)
         assertEquals(88, s.state.value.volume)
+    }
+
+    // ---- Progress + seek: companion media_player entity branch ----
+
+    @Test
+    fun entityProgressParsesSecondsToMsAndTimestamp() {
+        val s = NowPlayingStore()
+        s.onEngine(active = true, playing = true, volume = 70)
+        s.onEntity(mediaEntity {
+            put("media_title", "Song")
+            put("media_duration", 210)          // seconds -> 210_000 ms
+            put("media_position", 42.5)         // fractional seconds -> 42_500 ms
+            put("media_position_updated_at", "2026-07-18T00:00:00+00:00")
+            put("supported_features", 3)        // PAUSE | SEEK
+        })
+        val v = s.state.value
+        assertEquals(210_000L, v.durationMs)
+        assertEquals(42_500L, v.positionMs)
+        assertEquals(1784332800000L, v.positionAtMs) // 2026-07-18T00:00:00Z
+        assertTrue("SEEK bit set + duration -> seekable", v.canSeek)
+    }
+
+    @Test
+    fun entityBadTimestampYieldsZeroPositionAt() {
+        val s = NowPlayingStore()
+        s.onEngine(active = true, playing = true, volume = 70)
+        s.onEntity(mediaEntity {
+            put("media_title", "Song")
+            put("media_duration", 100)
+            put("media_position", 10)
+            put("media_position_updated_at", "not-a-timestamp")
+            put("supported_features", 2)
+        })
+        assertEquals("unparseable updated_at -> 0 (don't extrapolate)", 0L, s.state.value.positionAtMs)
+    }
+
+    @Test
+    fun entityCanSeekRequiresSeekBitAndDuration() {
+        val s = NowPlayingStore()
+        s.onEngine(active = true, playing = true, volume = 70)
+        // SEEK bit set (2) but no duration -> not seekable (a bar with no end can't map a drag).
+        s.onEntity(mediaEntity {
+            put("media_title", "Song"); put("supported_features", 2)
+        })
+        assertFalse(s.state.value.canSeek)
+        // SEEK bit set + duration -> seekable.
+        s.onEntity(mediaEntity {
+            put("media_title", "Song"); put("supported_features", 2); put("media_duration", 120)
+        })
+        assertTrue(s.state.value.canSeek)
+        // SEEK bit clear (VOLUME_SET=4) even with duration -> not seekable.
+        s.onEntity(mediaEntity {
+            put("media_title", "Song"); put("supported_features", 4); put("media_duration", 120)
+        })
+        assertFalse(s.state.value.canSeek)
+    }
+
+    @Test
+    fun entityWithoutProgressAttrsIsAllZeros() {
+        val s = NowPlayingStore()
+        s.onEngine(active = true, playing = true, volume = 70)
+        s.onEntity(entity("media_title" to "Song")) // no duration/position/features
+        val v = s.state.value
+        assertEquals(0L, v.durationMs)
+        assertEquals(0L, v.positionMs)
+        assertEquals(0L, v.positionAtMs)
+        assertFalse(v.canSeek)
+    }
+
+    @Test
+    fun icyRadioBranchHasNoProgressOrSeek() {
+        val s = NowPlayingStore()
+        s.onEngine(active = true, playing = true, volume = 70)
+        // No entity title -> ICY/local branch: no duration means no bar, never seekable.
+        s.onLocalMeta("Radio Paradise - Some Track", null)
+        val v = s.state.value
+        assertEquals(0L, v.durationMs)
+        assertEquals(0L, v.positionMs)
+        assertEquals(0L, v.positionAtMs)
+        assertFalse(v.canSeek)
+    }
+
+    @Test
+    fun parseUpdatedAtHandlesOffsetsAndFailures() {
+        assertEquals(1784332800000L, NowPlayingStore.parseUpdatedAt("2026-07-18T00:00:00Z"))
+        assertEquals(1784332800000L, NowPlayingStore.parseUpdatedAt("2026-07-18T00:00:00+00:00"))
+        assertEquals(1784332800789L, NowPlayingStore.parseUpdatedAt("2026-07-18T00:00:00.789+00:00"))
+        assertEquals(0L, NowPlayingStore.parseUpdatedAt(null))
+        assertEquals(0L, NowPlayingStore.parseUpdatedAt("   "))
+        assertEquals(0L, NowPlayingStore.parseUpdatedAt("garbage"))
     }
 
     private fun assertArrayEqualsOrNull(expected: ByteArray, actual: ByteArray?) {

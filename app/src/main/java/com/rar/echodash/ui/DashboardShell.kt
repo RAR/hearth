@@ -91,6 +91,7 @@ fun DashboardShell(
     onMediaNext: () -> Unit,
     onMediaPrev: () -> Unit,
     onMediaVolume: (Int) -> Unit,
+    onMediaSeek: (Long) -> Unit,
     library: MaLibrary?,
     thumbs: MaThumbs?,
     onBrowse: () -> Unit,
@@ -255,6 +256,7 @@ fun DashboardShell(
                         onMediaNext = onMediaNext,
                         onMediaPrev = onMediaPrev,
                         onMediaVolume = onMediaVolume,
+                        onMediaSeek = onMediaSeek,
                         onBrowse = onBrowse,
                     )
                 }

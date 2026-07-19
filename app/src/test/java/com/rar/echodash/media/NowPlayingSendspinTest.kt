@@ -1,6 +1,7 @@
 package com.rar.echodash.media
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -48,5 +49,30 @@ class NowPlayingSendspinTest {
         store.onEngine(true, true, 80)
         // Only the SendSpin source carries a mute; the local ExoPlayer path never sets it.
         assertEquals(false, store.state.value.muted)
+    }
+
+    @Test fun sendspinProgressPassesThroughButNeverSeekable() {
+        val store = NowPlayingStore()
+        store.onSendspin(true, true, "Song", "Artist", "Album", null, 55,
+            durationMs = 210_000, positionMs = 42_000, positionAtMs = 1_000_000)
+        val s = store.state.value
+        assertEquals(210_000L, s.durationMs)
+        assertEquals(42_000L, s.positionMs)
+        assertEquals(1_000_000L, s.positionAtMs)
+        // MA has no seek command -> the SendSpin bar is always display-only.
+        assertFalse(s.canSeek)
+    }
+
+    @Test fun deactivateResetsProgressToZeroViaDefaults() {
+        val store = NowPlayingStore()
+        store.onSendspin(true, true, "Song", "Artist", "Album", null, 55,
+            durationMs = 210_000, positionMs = 42_000, positionAtMs = 1_000_000)
+        // The existing deactivation call passes no progress -> the param defaults zero it out.
+        store.onSendspin(false, false, null, null, null, null, 55)
+        val s = store.state.value
+        assertFalse(s.active)
+        assertEquals(0L, s.durationMs)
+        assertEquals(0L, s.positionMs)
+        assertEquals(0L, s.positionAtMs)
     }
 }

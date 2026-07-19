@@ -3,6 +3,7 @@ package com.rar.echodash.media
 import com.rar.echodash.ha.EntityState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.time.Instant
 
 /**
  * Read-side snapshot of the on-device player merged with an optional HA companion media_player
@@ -23,16 +24,38 @@ data class NowPlayingState(
     val sendspin: Boolean = false,
     /** Music Assistant muted this player (SendSpin source only; the engine path never mutes). */
     val muted: Boolean = false,
+    /** Track length in ms; 0 = unknown (radio/ICY) -> the takeover draws no progress bar. */
+    val durationMs: Long = 0,
+    /** Last sampled playback position in ms. */
+    val positionMs: Long = 0,
+    /** Epoch-ms wall-clock instant [positionMs] was sampled at; 0 = don't extrapolate. */
+    val positionAtMs: Long = 0,
+    /** Seek is offered (companion media_player with the SEEK feature + a known duration only). */
+    val canSeek: Boolean = false,
 ) {
+    /**
+     * Position to display at [nowMs], extrapolating past the last sample. While playing with a real
+     * sample instant, advance [positionMs] by the wall-clock elapsed since [positionAtMs]; otherwise
+     * show the raw [positionMs] (paused = frozen, positionAtMs==0 = "don't extrapolate"). Clamped to
+     * the track length when known. Playback speed is ignored on purpose: Music Assistant music is
+     * always 1x.
+     */
+    fun displayedPositionMs(nowMs: Long): Long {
+        val base = if (playing && positionAtMs > 0) positionMs + (nowMs - positionAtMs) else positionMs
+        return if (durationMs > 0) base.coerceIn(0, durationMs) else base
+    }
+
     // ByteArray in a data class defaults to identity equals/hashCode; override so StateFlow dedups by
-    // content and tests compare by content.
+    // content and tests compare by content. The progress fields are part of the identity too -- omit
+    // them and a position-only change would be deduped away and the bar would freeze.
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is NowPlayingState) return false
         return active == other.active && playing == other.playing && title == other.title &&
             artist == other.artist && album == other.album && artUrl == other.artUrl &&
             volume == other.volume && canSkip == other.canSkip && sendspin == other.sendspin &&
-            muted == other.muted &&
+            muted == other.muted && durationMs == other.durationMs && positionMs == other.positionMs &&
+            positionAtMs == other.positionAtMs && canSeek == other.canSeek &&
             (localArt?.contentEquals(other.localArt ?: ByteArray(0)) ?: (other.localArt == null))
     }
 
@@ -48,8 +71,25 @@ data class NowPlayingState(
         r = 31 * r + canSkip.hashCode()
         r = 31 * r + sendspin.hashCode()
         r = 31 * r + muted.hashCode()
+        r = 31 * r + durationMs.hashCode()
+        r = 31 * r + positionMs.hashCode()
+        r = 31 * r + positionAtMs.hashCode()
+        r = 31 * r + canSeek.hashCode()
         return r
     }
+}
+
+/**
+ * Format a track time (ms) for the takeover's progress labels: `m:ss` below an hour, `h:mm:ss`
+ * at/over. Negative or zero (and sub-second) collapse to "0:00". Pure so it is unit-testable.
+ */
+fun formatTrackTime(ms: Long): String {
+    if (ms <= 0) return "0:00"
+    val totalSec = ms / 1000
+    val h = totalSec / 3600
+    val m = (totalSec % 3600) / 60
+    val s = totalSec % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }
 
 /**
@@ -82,6 +122,9 @@ class NowPlayingStore {
     private var sendspinArt: ByteArray? = null
     private var sendspinVolume = 90
     private var sendspinMuted = false // display only; the endpoint handles the audio-side mute
+    private var sendspinDurationMs = 0L
+    private var sendspinPositionMs = 0L
+    private var sendspinPositionAtMs = 0L
 
     @Synchronized
     fun onEngine(active: Boolean, playing: Boolean, volume: Int) {
@@ -109,7 +152,10 @@ class NowPlayingStore {
     @Synchronized
     fun onSendspin(active: Boolean, playing: Boolean, title: String?, artist: String?,
                    album: String?, artworkData: ByteArray?, volume: Int,
-                   muted: Boolean = false) {
+                   muted: Boolean = false,
+                   // Progress default to 0 so every existing deactivation call (onSendspin(false, ...))
+                   // stays correct: a cleared takeover reports no progress.
+                   durationMs: Long = 0, positionMs: Long = 0, positionAtMs: Long = 0) {
         sendspinActive = active
         sendspinPlaying = playing
         sendspinTitle = title?.takeIf { it.isNotBlank() }
@@ -118,6 +164,9 @@ class NowPlayingStore {
         sendspinArt = artworkData
         sendspinVolume = volume
         sendspinMuted = muted
+        sendspinDurationMs = durationMs
+        sendspinPositionMs = positionMs
+        sendspinPositionAtMs = positionAtMs
         recompute()
     }
 
@@ -131,6 +180,11 @@ class NowPlayingStore {
                 // controls would hit the wrong player, so transport controls are out of scope.
                 artUrl = null, localArt = sendspinArt, volume = sendspinVolume, canSkip = true, sendspin = true,
                 muted = sendspinMuted,
+                durationMs = sendspinDurationMs, positionMs = sendspinPositionMs,
+                positionAtMs = sendspinPositionAtMs,
+                // SendSpin/MA has no seek command (supported_commands never carries one), so the bar
+                // is display-only here -- never draggable.
+                canSeek = false,
             )
             return
         }
@@ -141,6 +195,15 @@ class NowPlayingStore {
             return
         }
         _state.value = if (entityTitle != null) {
+            // media_duration/media_position are in SECONDS (may be fractional); scale to ms.
+            val durationMs = entity?.attrDouble("media_duration")?.let { (it * 1000).toLong() } ?: 0L
+            val positionMs = entity?.attrDouble("media_position")?.let { (it * 1000).toLong() } ?: 0L
+            // media_position_updated_at is an ISO-8601 instant (with offset). Any parse failure -> 0
+            // ("don't extrapolate"), never a throw.
+            val positionAtMs = parseUpdatedAt(entity?.attr("media_position_updated_at"))
+            // Seek is offered only when the player advertises the SEEK feature AND the length is
+            // known (a bar with no end can't map a drag to a position).
+            val features = entity?.attrDouble("supported_features")?.toInt() ?: 0
             NowPlayingState(
                 active = true,
                 playing = enginePlaying,
@@ -151,6 +214,10 @@ class NowPlayingStore {
                 localArt = null,
                 volume = engineVolume,
                 canSkip = true,
+                durationMs = durationMs,
+                positionMs = positionMs,
+                positionAtMs = positionAtMs,
+                canSeek = (features and MEDIA_FEATURE_SEEK) != 0 && durationMs > 0,
             )
         } else {
             val (artist, title) = parseIcy(localTitle)
@@ -169,6 +236,20 @@ class NowPlayingStore {
     }
 
     companion object {
+        // HA MediaPlayerEntityFeature.SEEK is the flag with value 2 (not bit index 2); a player
+        // supports seeking when this bit is set in its supported_features bitmask.
+        private const val MEDIA_FEATURE_SEEK = 2
+
+        /**
+         * Parse HA's `media_position_updated_at` (ISO-8601 instant, e.g. "…T12:34:56.789+00:00")
+         * to epoch ms. Blank/null or any unparseable value -> 0, meaning "don't extrapolate" (the
+         * displayed position then just shows the raw sample). Never throws.
+         */
+        fun parseUpdatedAt(raw: String?): Long {
+            val s = raw?.takeIf { it.isNotBlank() } ?: return 0L
+            return runCatching { Instant.parse(s).toEpochMilli() }.getOrDefault(0L)
+        }
+
         /**
          * Split an ICY/tag "Artist - Title" string on the FIRST " - " (artist left, title right).
          * No separator -> the whole string is the title, artist null. Blank/null -> (null, null).

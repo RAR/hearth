@@ -198,6 +198,7 @@ fun HomeView(
     onMediaNext: () -> Unit,
     onMediaPrev: () -> Unit,
     onMediaVolume: (Int) -> Unit,
+    onMediaSeek: (Long) -> Unit = {},
     onBrowse: () -> Unit = {},
     calendarEvents: List<CalendarEvent> = emptyList(),
     onOpenCalendar: () -> Unit = {},
@@ -249,6 +250,7 @@ fun HomeView(
                     onNext = onMediaNext,
                     onPrev = onMediaPrev,
                     onVolume = onMediaVolume,
+                    onSeek = onMediaSeek,
                     onBrowse = onBrowse,
                 )
             } else {

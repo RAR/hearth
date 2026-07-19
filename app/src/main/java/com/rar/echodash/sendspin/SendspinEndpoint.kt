@@ -211,6 +211,13 @@ class SendspinEndpoint(
     @Volatile private var npAlbum: String? = null
     @Volatile private var npArtwork: ByteArray? = null
     @Volatile private var npVolume: Int = 90
+    // Track progress from onMetadataUpdate. MA interleaves progress-only updates (blank title) with
+    // full snapshots, so these advance independently of npTitle/artist/album. npPositionAtMs is the
+    // device-clock instant npPositionMs was received (positionMs is already server-extrapolated at
+    // receipt); the takeover extrapolates forward from it. 0 = no duration -> no progress bar.
+    @Volatile private var npDurationMs: Long = 0
+    @Volatile private var npPositionMs: Long = 0
+    @Volatile private var npPositionAtMs: Long = 0
 
     // Play/pause INTENT, mirroring the reference SendSpinPlayer.playWhenReady. Set optimistically by
     // the transport buttons and reconciled from the server's playback_state broadcasts (WITHOUT
@@ -238,6 +245,7 @@ class SendspinEndpoint(
                 active = active, playing = playing,
                 title = npTitle, artist = npArtist, album = npAlbum,
                 artworkData = npArtwork, volume = npVolume, muted = mutedNow,
+                durationMs = npDurationMs, positionMs = npPositionMs, positionAtMs = npPositionAtMs,
             )
         }
     }
@@ -448,6 +456,9 @@ class SendspinEndpoint(
                 if (state is TransportState.Failed || state is TransportState.Idle) {
                     hasTrack = false
                     playWhenReady = false
+                    // Clear progress too so a later reactivation can't flash this track's stale
+                    // position before MA's first progress update lands.
+                    npDurationMs = 0; npPositionMs = 0; npPositionAtMs = 0
                     mainScope.launch {
                         nowPlaying.onSendspin(false, false, null, null, null, null, npVolume, muted = false)
                     }
@@ -533,6 +544,8 @@ class SendspinEndpoint(
         hasTrack = false
         playWhenReady = false
         muted = false // MA mute is per-session; a fresh start() begins unmuted (duckGain persists)
+        // Clear progress so a later start() -> reactivation can't flash the old track's position.
+        npDurationMs = 0; npPositionMs = 0; npPositionAtMs = 0
         mainScope.launch { nowPlaying.onSendspin(false, false, null, null, null, null, npVolume, muted = false) }
     }
 
@@ -709,10 +722,20 @@ class SendspinEndpoint(
         ) {
             // MA interleaves progress-only server/state updates (no title/artist/album -- the
             // vendored callback flattens the absent fields to blanks) between full metadata
-            // snapshots. Ignore the progress-only ones so they don't wipe the real track info;
-            // a genuine track change always carries a non-blank title.
+            // snapshots. On a blank title, keep the real track text and update ONLY the progress
+            // fields -- the position/duration ARE the payload of those updates, so dropping them
+            // outright (as we used to) froze the takeover's progress bar between snapshots.
             // MA sends binary artwork via onArtwork -- ignore artworkUrl (do not fetch it).
-            if (title.isBlank()) return
+            npDurationMs = durationMs
+            npPositionMs = positionMs
+            // positionMs is server-time-extrapolated at receipt; stamp the device clock now so the
+            // takeover keeps extrapolating forward from here.
+            npPositionAtMs = System.currentTimeMillis()
+            if (title.isBlank()) {
+                Log.d(TAG, "meta progress-only pos=${positionMs}ms/${durationMs}ms")
+                publishNowPlaying()
+                return
+            }
             npTitle = title
             npArtist = artist
             npAlbum = album

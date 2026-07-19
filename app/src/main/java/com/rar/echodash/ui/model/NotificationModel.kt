@@ -191,3 +191,24 @@ fun autoDismissKeys(
         .filter { nowMs - (firstSeenMs[it.key] ?: nowMs) >= timeoutMs }
         .map { it.key }
 }
+
+/**
+ * Whether the home now-playing takeover should be showing: only while a session is [active] and
+ * neither the paused-timeout dismissal ([pausedTimedOut]) nor the user's manual home-button
+ * dismissal ([manualDismissed]) is in effect. Pure so App.kt can pin the gate instead of inlining
+ * the `&&` chain.
+ */
+fun takeoverVisibleOf(active: Boolean, pausedTimedOut: Boolean, manualDismissed: Boolean): Boolean =
+    active && !pausedTimedOut && !manualDismissed
+
+/**
+ * Label for the pinned now-playing row: "Title — Artist", with the artist (and its " — ") dropped
+ * when null/blank. A null/blank title falls back to "Now playing" (pre-metadata streams), and an
+ * artist with no title still yields just "Now playing". Same em-dash join as the takeover up-next
+ * line.
+ */
+fun nowPlayingRowLabel(title: String?, artist: String?): String {
+    val t = title?.takeIf { it.isNotBlank() } ?: return "Now playing"
+    val a = artist?.takeIf { it.isNotBlank() }
+    return if (a != null) "$t — $a" else t
+}

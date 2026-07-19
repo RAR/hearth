@@ -11,6 +11,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -417,5 +418,48 @@ class NotificationModelTest {
             emptyList<String>(),
             autoDismissKeys(items, null, firstSeen, 10_000L, 999_999L),
         )
+    }
+
+    // ---- takeoverVisibleOf ----
+
+    @Test
+    fun takeoverHiddenWheneverInactive() {
+        // active=false -> always hidden, regardless of the two flags (4 combinations).
+        assertFalse(takeoverVisibleOf(active = false, pausedTimedOut = false, manualDismissed = false))
+        assertFalse(takeoverVisibleOf(active = false, pausedTimedOut = true, manualDismissed = false))
+        assertFalse(takeoverVisibleOf(active = false, pausedTimedOut = false, manualDismissed = true))
+        assertFalse(takeoverVisibleOf(active = false, pausedTimedOut = true, manualDismissed = true))
+    }
+
+    @Test
+    fun takeoverVisibleOnlyWhenActiveAndNeitherFlagSet() {
+        assertTrue(takeoverVisibleOf(active = true, pausedTimedOut = false, manualDismissed = false))
+    }
+
+    @Test
+    fun takeoverHiddenByEitherFlagWhileActive() {
+        assertFalse(takeoverVisibleOf(active = true, pausedTimedOut = true, manualDismissed = false))
+        assertFalse(takeoverVisibleOf(active = true, pausedTimedOut = false, manualDismissed = true))
+        assertFalse(takeoverVisibleOf(active = true, pausedTimedOut = true, manualDismissed = true))
+    }
+
+    // ---- nowPlayingRowLabel ----
+
+    @Test
+    fun nowPlayingRowLabelJoinsTitleAndArtist() {
+        assertEquals("Song — Artist", nowPlayingRowLabel("Song", "Artist"))
+    }
+
+    @Test
+    fun nowPlayingRowLabelTitleOnlyWhenArtistAbsent() {
+        assertEquals("Song", nowPlayingRowLabel("Song", null))
+        assertEquals("Song", nowPlayingRowLabel("Song", "   ")) // blank artist treated as absent
+    }
+
+    @Test
+    fun nowPlayingRowLabelFallsBackWhenTitleBlank() {
+        assertEquals("Now playing", nowPlayingRowLabel(null, null))
+        assertEquals("Now playing", nowPlayingRowLabel("   ", "Artist")) // blank title, artist ignored
+        assertEquals("Now playing", nowPlayingRowLabel(null, "Artist"))  // artist without title
     }
 }

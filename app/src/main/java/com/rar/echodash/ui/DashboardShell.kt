@@ -102,6 +102,8 @@ fun DashboardShell(
     onBrowse: () -> Unit,
     onMediaCycleRepeat: () -> Unit = {},
     onMediaToggleShuffle: () -> Unit = {},
+    onMediaSetRepeat: (String) -> Unit = {},
+    onMediaSetShuffle: (Boolean) -> Unit = {},
     fetchForecast: suspend (String) -> JsonElement?,
     configUrl: String,
     configPin: String,
@@ -123,6 +125,11 @@ fun DashboardShell(
     // Bumped when the takeover's up-next line is tapped; threaded to MusicBrowser to open the
     // queue overlay on first composition in the MEDIA view. Starts at 0 (never-requested).
     var openQueueSignal by remember { mutableIntStateOf(0) }
+    // One-shot: the signal only auto-opens the queue for the MEDIA entry the up-next tap itself
+    // triggered. Reset after leaving MEDIA so later manual visits land on the browser as usual.
+    LaunchedEffect(current) {
+        if (current != DashView.MEDIA && openQueueSignal > 0) openQueueSignal = 0
+    }
     // deps.maLibrary is a process-lifetime constant (App.kt:295) -- this branch never flips, so the
     // collectAsStateWithLifecycle call stays structurally stable across recompositions (it is kept
     // out of a conditional expression -- the composable is called only inside the stable branch).
@@ -320,8 +327,8 @@ fun DashboardShell(
                     onMediaNext, onMediaPrev, onMediaVolume,
                     library = library, thumbs = thumbs,
                     openQueueSignal = openQueueSignal,
-                    onCycleRepeat = onMediaCycleRepeat,
-                    onToggleShuffle = onMediaToggleShuffle,
+                    onSetRepeat = onMediaSetRepeat,
+                    onSetShuffle = onMediaSetShuffle,
                 )
                 DashView.CALENDAR -> CalendarPanel(
                     events = calendarEvents,

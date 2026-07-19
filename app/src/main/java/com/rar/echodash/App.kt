@@ -922,6 +922,13 @@ fun EchoDashApp(deps: AppDeps) {
                             if (nowPlayingState.sendspin)
                                 deps.sendspin.transportSetShuffle(!(nowPlayingState.shuffle ?: false))
                         },
+                        // Queue-pane chips (MusicBrowser), deliberately NOT gated on
+                        // nowPlayingState.sendspin: they compute the next value from the queue's own
+                        // MaQueueState, not the local now-playing source, and the SendSpin socket
+                        // controls the group queue regardless of which source is locally active.
+                        // sendSpin?.setRepeatMode/setShuffle's own null-check is the real gate.
+                        onMediaSetRepeat = { mode -> deps.sendspin.transportSetRepeat(mode) },
+                        onMediaSetShuffle = { enabled -> deps.sendspin.transportSetShuffle(enabled) },
                         library = deps.maLibrary,
                         thumbs = deps.maThumbs,
                         // Takeover's browse button: land on the MEDIA view's library browser

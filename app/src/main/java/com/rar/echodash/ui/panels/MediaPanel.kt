@@ -59,8 +59,8 @@ fun MediaPanel(
     library: MaLibrary? = null,
     thumbs: MaThumbs? = null,
     openQueueSignal: Int = 0,
-    onCycleRepeat: () -> Unit = {},
-    onToggleShuffle: () -> Unit = {},
+    onSetRepeat: (String) -> Unit = {},
+    onSetShuffle: (Boolean) -> Unit = {},
 ) {
     // Deps not wired (Task 6) -> the classic panel, unchanged.
     if (library == null || thumbs == null) {
@@ -78,8 +78,8 @@ fun MediaPanel(
             MusicBrowser(
                 library, thumbs, Modifier.weight(1f).fillMaxWidth(),
                 openQueueSignal = openQueueSignal,
-                onCycleRepeat = onCycleRepeat,
-                onToggleShuffle = onToggleShuffle,
+                onSetRepeat = onSetRepeat,
+                onSetShuffle = onSetShuffle,
             )
             NowPlayingStrip(state, art, onPlay, onPause, onNext, onPrev)
         }

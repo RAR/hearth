@@ -74,6 +74,7 @@ import com.rar.echodash.sendspin.musicassistant.MaRadio
 import com.rar.echodash.sendspin.musicassistant.MaTrack
 import com.rar.echodash.sendspin.musicassistant.SearchResults
 import com.rar.echodash.sendspin.musicassistant.model.MaLibraryItem
+import com.rar.echodash.ui.model.nextRepeatMode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -134,8 +135,8 @@ fun MusicBrowser(
     thumbs: MaThumbs,
     modifier: Modifier = Modifier,
     openQueueSignal: Int = 0,
-    onCycleRepeat: () -> Unit = {},
-    onToggleShuffle: () -> Unit = {},
+    onSetRepeat: (String) -> Unit = {},
+    onSetShuffle: (Boolean) -> Unit = {},
 ) {
     val maState by library.state.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
@@ -275,8 +276,11 @@ fun MusicBrowser(
                                 .onFailure { showError(it.message ?: "Couldn't clear the queue") }
                         }
                     },
-                    onToggleShuffle = { onToggleShuffle(); queueVersion++ },
-                    onCycleRepeat = { onCycleRepeat(); queueVersion++ },
+                    // Computed off the queue's OWN state (not local now-playing), so a tap
+                    // always toggles what the chip is currently displaying — no cross-source
+                    // divergence between what's shown and what gets flipped.
+                    onToggleShuffle = { queueState?.let { q -> onSetShuffle(!q.shuffleEnabled) }; queueVersion++ },
+                    onCycleRepeat = { queueState?.let { q -> onSetRepeat(nextRepeatMode(q.repeatMode)) }; queueVersion++ },
                 )
             } else when (content) {
                 is BrowserContent.Notice -> EmptyHint(content.message)

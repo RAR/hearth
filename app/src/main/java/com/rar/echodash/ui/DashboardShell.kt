@@ -347,6 +347,7 @@ fun DashboardShell(
                     openQueueSignal = openQueueSignal,
                     onSetRepeat = onMediaSetRepeat,
                     onSetShuffle = onMediaSetShuffle,
+                    onFavoriteToggle = onFavoriteToggle,
                 )
                 DashView.CALENDAR -> CalendarPanel(
                     events = calendarEvents,

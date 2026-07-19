@@ -45,6 +45,7 @@ import com.rar.echodash.media.MaThumbs
 import com.rar.echodash.media.NowPlayingState
 import com.rar.echodash.sendspin.MaLibrary
 import com.rar.echodash.sendspin.MaLibraryState
+import com.rar.echodash.sendspin.musicassistant.MaQueueItem
 
 @Composable
 fun MediaPanel(
@@ -61,6 +62,7 @@ fun MediaPanel(
     openQueueSignal: Int = 0,
     onSetRepeat: (String) -> Unit = {},
     onSetShuffle: (Boolean) -> Unit = {},
+    onFavoriteToggle: (MaQueueItem?) -> Unit = {},
 ) {
     // Deps not wired (Task 6) -> the classic panel, unchanged.
     if (library == null || thumbs == null) {
@@ -80,6 +82,7 @@ fun MediaPanel(
                 openQueueSignal = openQueueSignal,
                 onSetRepeat = onSetRepeat,
                 onSetShuffle = onSetShuffle,
+                onFavoriteToggle = onFavoriteToggle,
             )
             NowPlayingStrip(state, art, onPlay, onPause, onNext, onPrev)
         }

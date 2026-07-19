@@ -27,7 +27,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.RepeatOne
@@ -74,6 +76,8 @@ import com.rar.echodash.sendspin.musicassistant.MaRadio
 import com.rar.echodash.sendspin.musicassistant.MaTrack
 import com.rar.echodash.sendspin.musicassistant.SearchResults
 import com.rar.echodash.sendspin.musicassistant.model.MaLibraryItem
+import com.rar.echodash.sendspin.musicassistant.model.MaMediaType
+import com.rar.echodash.ui.model.currentItemOf
 import com.rar.echodash.ui.model.nextRepeatMode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -137,6 +141,7 @@ fun MusicBrowser(
     openQueueSignal: Int = 0,
     onSetRepeat: (String) -> Unit = {},
     onSetShuffle: (Boolean) -> Unit = {},
+    onFavoriteToggle: (MaQueueItem?) -> Unit = {},
 ) {
     val maState by library.state.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
@@ -239,6 +244,21 @@ fun MusicBrowser(
         }
     }
 
+    // Radio is a separate axis from EnqueueMode (it always PLAYs, self-refilling), so it rides
+    // its own lambda landing on MaLibrary.playRadio rather than an EnqueueMode value.
+    val startRadio: (MaLibraryItem) -> Unit = { item ->
+        val uri = item.uri
+        if (uri == null) {
+            showError("Item can't be played (no URI)")
+        } else {
+            scope.launch {
+                library.playRadio(uri, item.mediaType.name.lowercase())
+                    .onSuccess { queueVersion++ } // the queue was replaced; refresh if visible
+                    .onFailure { showError(it.message ?: "Couldn't start radio") }
+            }
+        }
+    }
+
     val content = browserContent(maState, query, shelves, results)
 
     Column(modifier) {
@@ -281,6 +301,11 @@ fun MusicBrowser(
                     // divergence between what's shown and what gets flipped.
                     onToggleShuffle = { queueState?.let { q -> onSetShuffle(!q.shuffleEnabled) }; queueVersion++ },
                     onCycleRepeat = { queueState?.let { q -> onSetRepeat(nextRepeatMode(q.repeatMode)) }; queueVersion++ },
+                    // Favorite the queue's current item (the App callback decides add vs remove).
+                    onToggleFavorite = {
+                        queueState?.let { onFavoriteToggle(currentItemOf(it)) }
+                        queueVersion++
+                    },
                 )
             } else when (content) {
                 is BrowserContent.Notice -> EmptyHint(content.message)
@@ -288,8 +313,8 @@ fun MusicBrowser(
                     // UI-level override, not a BrowserContent case: all shelves failing while
                     // Connected would otherwise look like an endless load.
                     EmptyHint(if (shelvesFailed) "Couldn't load the library — check Music Assistant." else "Loading…")
-                is BrowserContent.Shelves -> ShelvesPane(content.shelves, thumbs, playItem)
-                is BrowserContent.Results -> ResultsPane(content.results, thumbs, playItem)
+                is BrowserContent.Shelves -> ShelvesPane(content.shelves, thumbs, playItem, startRadio)
+                is BrowserContent.Results -> ResultsPane(content.results, thumbs, playItem, startRadio)
             }
         }
     }
@@ -366,6 +391,7 @@ private fun ShelvesPane(
     shelves: BrowserShelves,
     thumbs: MaThumbs,
     onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
+    onStartRadio: (MaLibraryItem) -> Unit,
 ) {
     if (shelves.isEmpty()) {
         EmptyHint("Library empty or still syncing")
@@ -376,9 +402,9 @@ private fun ShelvesPane(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Shelf("Playlists", shelves.playlists, thumbs, onPlay)
-        Shelf("Radio", shelves.radios, thumbs, onPlay)
-        Shelf("Recently played", shelves.recent, thumbs, onPlay)
+        Shelf("Playlists", shelves.playlists, thumbs, onPlay, onStartRadio)
+        Shelf("Radio", shelves.radios, thumbs, onPlay, onStartRadio)
+        Shelf("Recently played", shelves.recent, thumbs, onPlay, onStartRadio)
     }
 }
 
@@ -388,13 +414,14 @@ private fun Shelf(
     items: List<MaLibraryItem>,
     thumbs: MaThumbs,
     onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
+    onStartRadio: (MaLibraryItem) -> Unit,
 ) {
     if (items.isEmpty()) return // an empty shelf renders nothing, not a bare header
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(items, key = { it.uri ?: it.id }) { item ->
-                MediaCell(item, thumbs, onPlay)
+                MediaCell(item, thumbs, onPlay, onStartRadio)
             }
         }
     }
@@ -406,6 +433,7 @@ private fun MediaCell(
     item: MaLibraryItem,
     thumbs: MaThumbs,
     onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
+    onStartRadio: (MaLibraryItem) -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Box {
@@ -430,6 +458,7 @@ private fun MediaCell(
             onDismiss = { menuOpen = false },
             onPlayNext = { onPlay(item, EnqueueMode.NEXT) },
             onAdd = { onPlay(item, EnqueueMode.ADD) },
+            onStartRadio = if (item.mediaType != MaMediaType.RADIO) ({ onStartRadio(item) }) else null,
         )
     }
 }
@@ -441,17 +470,18 @@ private fun ResultsPane(
     results: SearchResults,
     thumbs: MaThumbs,
     onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
+    onStartRadio: (MaLibraryItem) -> Unit,
 ) {
     if (results.isEmpty()) {
         EmptyHint("No matches")
         return
     }
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        resultGroup("Tracks", results.tracks, thumbs, onPlay)
-        resultGroup("Albums", results.albums, thumbs, onPlay)
-        resultGroup("Artists", results.artists, thumbs, onPlay)
-        resultGroup("Playlists", results.playlists, thumbs, onPlay)
-        resultGroup("Radio", results.radios, thumbs, onPlay)
+        resultGroup("Tracks", results.tracks, thumbs, onPlay, onStartRadio)
+        resultGroup("Albums", results.albums, thumbs, onPlay, onStartRadio)
+        resultGroup("Artists", results.artists, thumbs, onPlay, onStartRadio)
+        resultGroup("Playlists", results.playlists, thumbs, onPlay, onStartRadio)
+        resultGroup("Radio", results.radios, thumbs, onPlay, onStartRadio)
     }
 }
 
@@ -460,6 +490,7 @@ private fun LazyListScope.resultGroup(
     items: List<MaLibraryItem>,
     thumbs: MaThumbs,
     onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
+    onStartRadio: (MaLibraryItem) -> Unit,
 ) {
     if (items.isEmpty()) return
     // Keys are prefixed with the group title: a library item can appear in two groups
@@ -471,7 +502,7 @@ private fun LazyListScope.resultGroup(
         )
     }
     items(items, key = { "$title-${it.uri ?: it.id}" }) { item ->
-        ResultRow(item, thumbs, onPlay)
+        ResultRow(item, thumbs, onPlay, onStartRadio)
     }
 }
 
@@ -481,6 +512,7 @@ private fun ResultRow(
     item: MaLibraryItem,
     thumbs: MaThumbs,
     onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
+    onStartRadio: (MaLibraryItem) -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Box {
@@ -522,6 +554,7 @@ private fun ResultRow(
             onDismiss = { menuOpen = false },
             onPlayNext = { onPlay(item, EnqueueMode.NEXT) },
             onAdd = { onPlay(item, EnqueueMode.ADD) },
+            onStartRadio = if (item.mediaType != MaMediaType.RADIO) ({ onStartRadio(item) }) else null,
         )
     }
 }
@@ -536,6 +569,7 @@ private fun QueuePane(
     onClear: () -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
+    onToggleFavorite: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
@@ -546,8 +580,13 @@ private fun QueuePane(
                 "Queue", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp,
                 modifier = Modifier.weight(1f),
             )
-            // Toggle chips mirror the takeover: lit off the queue's own shuffle/repeat state.
+            // Toggle chips mirror the takeover: lit off the queue's own state.
             if (queue != null) {
+                val favoriteLit = currentItemOf(queue)?.favorite == true
+                QueueToggleChip(
+                    if (favoriteLit) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                    on = favoriteLit,
+                ) { onToggleFavorite() }
                 QueueToggleChip(Icons.Outlined.Shuffle, on = queue.shuffleEnabled) { onToggleShuffle() }
                 val repeatIcon = if (queue.repeatMode == "one") Icons.Outlined.RepeatOne else Icons.Outlined.Repeat
                 val repeatOn = queue.repeatMode == "all" || queue.repeatMode == "one"
@@ -653,9 +692,14 @@ private fun EnqueueMenu(
     onDismiss: () -> Unit,
     onPlayNext: () -> Unit,
     onAdd: () -> Unit,
+    onStartRadio: (() -> Unit)? = null,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(text = { Text("Play next") }, onClick = { onDismiss(); onPlayNext() })
         DropdownMenuItem(text = { Text("Add to queue") }, onClick = { onDismiss(); onAdd() })
+        // Radio seeds from a real media item (track/artist/album/playlist) — never a station.
+        if (onStartRadio != null) {
+            DropdownMenuItem(text = { Text("Start radio") }, onClick = { onDismiss(); onStartRadio() })
+        }
     }
 }

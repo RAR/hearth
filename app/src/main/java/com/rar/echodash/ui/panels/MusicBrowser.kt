@@ -23,13 +23,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Close
@@ -46,6 +52,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -72,10 +79,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rar.echodash.media.MaThumbs
+import com.rar.echodash.media.formatTrackTime
 import com.rar.echodash.sendspin.MaLibrary
 import com.rar.echodash.sendspin.MaLibraryState
 import com.rar.echodash.sendspin.musicassistant.EnqueueMode
 import com.rar.echodash.sendspin.musicassistant.MaAlbum
+import com.rar.echodash.sendspin.musicassistant.MaArtist
 import com.rar.echodash.sendspin.musicassistant.MaPlaylist
 import com.rar.echodash.sendspin.musicassistant.MaQueueItem
 import com.rar.echodash.sendspin.musicassistant.MaQueueState
@@ -84,8 +93,12 @@ import com.rar.echodash.sendspin.musicassistant.MaTrack
 import com.rar.echodash.sendspin.musicassistant.SearchResults
 import com.rar.echodash.sendspin.musicassistant.model.MaLibraryItem
 import com.rar.echodash.sendspin.musicassistant.model.MaMediaType
+import com.rar.echodash.ui.model.BrowserPage
 import com.rar.echodash.ui.model.currentItemOf
 import com.rar.echodash.ui.model.nextRepeatMode
+import com.rar.echodash.ui.model.popPage
+import com.rar.echodash.ui.model.pushPage
+import com.rar.echodash.ui.model.tabTarget
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -94,6 +107,7 @@ import kotlinx.coroutines.launch
 
 private const val TAG = "MusicBrowser"
 private const val SWIPE_DISMISS_FRACTION = 0.30f
+private const val LIBRARY_PAGE_SIZE = 200
 
 /** The three quick-pick shelves shown when no search is active. */
 data class BrowserShelves(
@@ -163,6 +177,9 @@ fun MusicBrowser(
     var error by remember { mutableStateOf<String?>(null) }
     var errorVersion by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+
+    // Browser back-stack; current page = pageStack.last(). Home is always at the bottom.
+    var pageStack by remember { mutableStateOf<List<BrowserPage>>(listOf(BrowserPage.Home)) }
 
     val showError: (String) -> Unit = { msg -> error = msg; errorVersion++ }
 
@@ -268,6 +285,14 @@ fun MusicBrowser(
         }
     }
 
+    // Drill into an artist. Clears any active search first so the pushed detail page isn't
+    // hidden by the ≥2-char search override (also used by the "View artist" menu entry in
+    // Task 4, where a search is typically active). pushPage dedups a repeated drill.
+    val openArtist: (MaArtist) -> Unit = { artist ->
+        query = ""
+        pageStack = pushPage(pageStack, BrowserPage.ArtistDetail(artist))
+    }
+
     val content = browserContent(maState, query, shelves, results)
 
     Column(modifier) {
@@ -278,6 +303,18 @@ fun MusicBrowser(
             SearchField(query, { query = it }, enabled = isConnected, modifier = Modifier.weight(1f))
             QueueToggleButton(active = queueVisible) { queueVisible = !queueVisible }
         }
+        Spacer(Modifier.height(8.dp))
+        // Tab row: Home · Artists · Albums. Tapping a tab resets the stack to [Home,<tab>] (or
+        // [Home]) and closes the queue overlay so the picked page is visible; it does NOT clear
+        // an active search (clearing search then returns to the freshly-picked stack top).
+        BrowserTabs(
+            active = tabTarget(pageStack),
+            onSelect = { target ->
+                queueVisible = false
+                pageStack = if (target is BrowserPage.Home) listOf(BrowserPage.Home)
+                            else listOf(BrowserPage.Home, target)
+            },
+        )
         error?.let {
             Text(
                 it, color = Color(0xFFE08080), fontSize = 12.sp,
@@ -287,8 +324,9 @@ fun MusicBrowser(
         }
         Spacer(Modifier.height(8.dp))
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (queueVisible) {
-                QueuePane(
+            val searching = query.trim().length >= 2
+            when {
+                queueVisible -> QueuePane(
                     queue = queueState,
                     thumbs = thumbs,
                     onJump = { id ->
@@ -327,14 +365,45 @@ fun MusicBrowser(
                         queueVersion++
                     },
                 )
-            } else when (content) {
-                is BrowserContent.Notice -> EmptyHint(content.message)
-                BrowserContent.Loading ->
-                    // UI-level override, not a BrowserContent case: all shelves failing while
-                    // Connected would otherwise look like an endless load.
-                    EmptyHint(if (shelvesFailed) "Couldn't load the library — check Music Assistant." else "Loading…")
-                is BrowserContent.Shelves -> ShelvesPane(content.shelves, thumbs, playItem, startRadio)
-                is BrowserContent.Results -> ResultsPane(content.results, thumbs, playItem, startRadio)
+                // Not connected (disabled / auth-failed / offline / connecting): show the state notice.
+                maState !is MaLibraryState.Connected -> when (val c = content) {
+                    is BrowserContent.Notice -> EmptyHint(c.message)
+                    else -> EmptyHint("Loading…")
+                }
+                // Search overrides any page (existing behavior); the stack is preserved underneath.
+                searching -> when (val c = content) {
+                    is BrowserContent.Results -> ResultsPane(c.results, thumbs, playItem, startRadio)
+                    else -> EmptyHint("Loading…")
+                }
+                // Otherwise render the current page in the stack.
+                else -> when (val page = pageStack.last()) {
+                    BrowserPage.Home -> {
+                        val s = shelves
+                        if (s != null) ShelvesPane(s, thumbs, playItem, startRadio)
+                        else EmptyHint(
+                            if (shelvesFailed) "Couldn't load the library — check Music Assistant."
+                            else "Loading…",
+                        )
+                    }
+                    BrowserPage.Artists -> ArtistsPage(
+                        library = library, thumbs = thumbs, onOpenArtist = openArtist,
+                        onPlay = playItem, onStartRadio = startRadio, onError = showError,
+                    )
+                    BrowserPage.Albums -> AlbumsPage(
+                        library = library, thumbs = thumbs,
+                        onPlay = playItem, onStartRadio = startRadio, onError = showError,
+                    )
+                    is BrowserPage.ArtistDetail -> ArtistDetailPage(
+                        artist = page.artist, library = library, thumbs = thumbs,
+                        onBack = { pageStack = popPage(pageStack) },
+                        onPlay = playItem, onStartRadio = startRadio, onError = showError,
+                    )
+                    is BrowserPage.AlbumDetail -> AlbumDetailPage(
+                        album = page.album, library = library, thumbs = thumbs,
+                        onBack = { pageStack = popPage(pageStack) },
+                        onPlay = playItem, onStartRadio = startRadio, onError = showError,
+                    )
+                }
             }
         }
     }
@@ -402,6 +471,30 @@ private fun QueueToggleButton(active: Boolean, onClick: () -> Unit) {
             tint = Color.White, modifier = Modifier.size(20.dp),
         )
     }
+}
+
+@Composable
+private fun BrowserTabs(active: BrowserPage, onSelect: (BrowserPage) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TabChip("Home", active is BrowserPage.Home) { onSelect(BrowserPage.Home) }
+        TabChip("Artists", active is BrowserPage.Artists) { onSelect(BrowserPage.Artists) }
+        TabChip("Albums", active is BrowserPage.Albums) { onSelect(BrowserPage.Albums) }
+    }
+}
+
+/** A text tab chip styled like the queue "Clear" chip; the active tab's label uses the accent. */
+@Composable
+private fun TabChip(label: String, active: Boolean, onClick: () -> Unit) {
+    Text(
+        label,
+        color = if (active) Color(0xFF4FC3F7) else Color.White.copy(alpha = 0.8f),
+        fontSize = 13.sp,
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF2A2F3C))
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+    )
 }
 
 // ---- Shelves ----
@@ -575,6 +668,361 @@ private fun ResultRow(
             onPlayNext = { onPlay(item, EnqueueMode.NEXT) },
             onAdd = { onPlay(item, EnqueueMode.ADD) },
             onStartRadio = if (item.mediaType != MaMediaType.RADIO) ({ onStartRadio(item) }) else null,
+        )
+    }
+}
+
+// ---- A-Z library pages ----
+
+/**
+ * A paged A-Z LazyColumn: fetches page 0 on first composition, then appends the next offset when
+ * the list scrolls to its end and the previous page was full ([LIBRARY_PAGE_SIZE]). A trailing
+ * "Loading…" row shows while a page is in flight; a fetch failure stops paging and keeps what
+ * loaded (the caller's [onError] surfaces the toast). State is per-composition — leaving the page
+ * and returning refetches page 0, matching the shelves' fetch-on-composition behavior.
+ */
+@Composable
+private fun <T> PagedLibraryColumn(
+    fetch: suspend (offset: Int) -> Result<List<T>>,
+    key: (T) -> Any,
+    emptyText: String,
+    onError: (String) -> Unit,
+    row: @Composable (T) -> Unit,
+) {
+    var items by remember { mutableStateOf<List<T>>(emptyList()) }
+    var offset by remember { mutableIntStateOf(0) }
+    var exhausted by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(false) }
+    var loadVersion by remember { mutableIntStateOf(0) } // 0 = initial page; bumps request the next
+
+    LaunchedEffect(loadVersion) {
+        if (exhausted) return@LaunchedEffect
+        loading = true
+        fetch(offset)
+            .onSuccess { page ->
+                items = items + page
+                offset += page.size
+                if (page.size < LIBRARY_PAGE_SIZE) exhausted = true
+            }
+            .onFailure {
+                exhausted = true // stop paging on error; keep what loaded
+                onError(it.message ?: "Couldn't load")
+            }
+        loading = false
+    }
+
+    val listState = rememberLazyListState()
+    val atEnd by remember {
+        derivedStateOf {
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            items.isNotEmpty() && last >= items.size - 1
+        }
+    }
+    LaunchedEffect(atEnd) {
+        if (atEnd && !loading && !exhausted) loadVersion++
+    }
+
+    when {
+        items.isEmpty() && loading -> EmptyHint("Loading…")
+        items.isEmpty() -> EmptyHint(emptyText)
+        else -> LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            items(items, key = { key(it) }) { row(it) }
+            if (loading) item { LoadingRow() }
+        }
+    }
+}
+
+@Composable
+private fun ArtistsPage(
+    library: MaLibrary,
+    thumbs: MaThumbs,
+    onOpenArtist: (MaArtist) -> Unit,
+    onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
+    onStartRadio: (MaLibraryItem) -> Unit,
+    onError: (String) -> Unit,
+) {
+    PagedLibraryColumn(
+        fetch = { offset -> library.libraryArtists(offset) },
+        key = { it.id },
+        emptyText = "No artists in the library",
+        onError = onError,
+    ) { artist ->
+        LibraryRow(
+            item = artist,
+            thumbs = thumbs,
+            subtitle = null,
+            onClick = { onOpenArtist(artist) }, // artist tap drills in (primary)
+            onPlayNext = { onPlay(artist, EnqueueMode.NEXT) },
+            onAdd = { onPlay(artist, EnqueueMode.ADD) },
+            onStartRadio = { onStartRadio(artist) },
+        )
+    }
+}
+
+@Composable
+private fun AlbumsPage(
+    library: MaLibrary,
+    thumbs: MaThumbs,
+    onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
+    onStartRadio: (MaLibraryItem) -> Unit,
+    onError: (String) -> Unit,
+) {
+    PagedLibraryColumn(
+        fetch = { offset -> library.libraryAlbums(offset) },
+        key = { it.id },
+        emptyText = "No albums in the library",
+        onError = onError,
+    ) { album ->
+        LibraryRow(
+            item = album,
+            thumbs = thumbs,
+            subtitle = album.artist,
+            onClick = { onPlay(album, EnqueueMode.PLAY) }, // album tap plays the album
+            onPlayNext = { onPlay(album, EnqueueMode.NEXT) },
+            onAdd = { onPlay(album, EnqueueMode.ADD) },
+            onStartRadio = { onStartRadio(album) },
+        )
+    }
+}
+
+/**
+ * An A-Z list row: 44dp thumb, name, optional subtitle. [onClick] differs by type (artist drills,
+ * album plays). Long-press opens the enqueue menu. Task 4 adds optional "View album"/"View artist".
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LibraryRow(
+    item: MaLibraryItem,
+    thumbs: MaThumbs,
+    subtitle: String?,
+    onClick: () -> Unit,
+    onPlayNext: () -> Unit,
+    onAdd: () -> Unit,
+    onStartRadio: () -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .combinedClickable(onClick = onClick, onLongClick = { menuOpen = true })
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Thumb(item.imageUri, thumbs, 44.dp, corner = 6.dp)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    item.name, color = Color.White, fontSize = 14.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                if (!subtitle.isNullOrBlank()) {
+                    Text(
+                        subtitle, color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        EnqueueMenu(
+            expanded = menuOpen,
+            onDismiss = { menuOpen = false },
+            onPlayNext = onPlayNext,
+            onAdd = onAdd,
+            onStartRadio = onStartRadio,
+        )
+    }
+}
+
+/** A trailing "Loading…" row shown while the next A-Z page is in flight. */
+@Composable
+private fun LoadingRow() {
+    Text(
+        "Loading…", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp,
+        modifier = Modifier.fillMaxWidth().padding(8.dp),
+    )
+}
+
+// ---- Detail pages (drill-in) ----
+
+/**
+ * Artist → their albums, in an adaptive 128dp grid reusing [MediaCell] (cell tap plays the album).
+ * Task 4 adds a "View album" entry to those cells. Fetches on entry; a failure shows the toast and
+ * an empty grid the user can back out of.
+ */
+@Composable
+private fun ArtistDetailPage(
+    artist: MaArtist,
+    library: MaLibrary,
+    thumbs: MaThumbs,
+    onBack: () -> Unit,
+    onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
+    onStartRadio: (MaLibraryItem) -> Unit,
+    onError: (String) -> Unit,
+) {
+    var albums by remember { mutableStateOf<List<MaAlbum>?>(null) }
+    LaunchedEffect(artist.artistId, artist.provider) {
+        library.artistAlbums(artist)
+            .onSuccess { albums = it }
+            .onFailure { albums = emptyList(); onError(it.message ?: "Couldn't load albums") }
+    }
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        DetailHeader(onBack = onBack, title = artist.name, subtitle = null)
+        when (val a = albums) {
+            null -> EmptyHint("Loading…")
+            else -> if (a.isEmpty()) {
+                EmptyHint("No albums")
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(128.dp),
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    gridItems(a, key = { it.id }) { album ->
+                        MediaCell(album, thumbs, onPlay, onStartRadio)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Album → its tracklist (server-sorted by disc/track). Row tap plays that track; long-press offers
+ * Play next / Add to queue / Start radio. The leading number is the 1-based list ordinal (MaTrack
+ * carries no track_number and the parser is reused per the spec) — correct for single-disc albums
+ * and monotonic overall. Duration reuses [formatTrackTime] (ms; MaTrack.duration is seconds).
+ */
+@Composable
+private fun AlbumDetailPage(
+    album: MaAlbum,
+    library: MaLibrary,
+    thumbs: MaThumbs,
+    onBack: () -> Unit,
+    onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
+    onStartRadio: (MaLibraryItem) -> Unit,
+    onError: (String) -> Unit,
+) {
+    var tracks by remember { mutableStateOf<List<MaTrack>?>(null) }
+    LaunchedEffect(album.albumId, album.provider) {
+        library.albumTracks(album)
+            .onSuccess { tracks = it }
+            .onFailure { tracks = emptyList(); onError(it.message ?: "Couldn't load tracks") }
+    }
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        DetailHeader(onBack = onBack, title = album.name, subtitle = album.artist)
+        when (val t = tracks) {
+            null -> EmptyHint("Loading…")
+            else -> if (t.isEmpty()) {
+                EmptyHint("No tracks")
+            } else {
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    itemsIndexed(t, key = { _, track -> track.id }) { index, track ->
+                        TrackRow(
+                            number = index + 1,
+                            track = track,
+                            onClick = { onPlay(track, EnqueueMode.PLAY) },
+                            onPlayNext = { onPlay(track, EnqueueMode.NEXT) },
+                            onAdd = { onPlay(track, EnqueueMode.ADD) },
+                            onStartRadio = { onStartRadio(track) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Detail-page header: back chip + title (22sp) + optional subtitle. */
+@Composable
+private fun DetailHeader(onBack: () -> Unit, title: String, subtitle: String?) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        BackChip(onBack)
+        Column(Modifier.weight(1f)) {
+            Text(
+                title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    subtitle, color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** A 32dp round back chip (pops the page stack). */
+@Composable
+private fun BackChip(onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF2A2F3C))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back",
+            tint = Color.White, modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun TrackRow(
+    number: Int,
+    track: MaTrack,
+    onClick: () -> Unit,
+    onPlayNext: () -> Unit,
+    onAdd: () -> Unit,
+    onStartRadio: () -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .combinedClickable(onClick = onClick, onLongClick = { menuOpen = true })
+                .padding(vertical = 6.dp, horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "$number", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp,
+                modifier = Modifier.width(24.dp),
+            )
+            Text(
+                track.name, color = Color.White, fontSize = 14.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+            )
+            Text(
+                formatTrackTime((track.duration ?: 0L) * 1000),
+                color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp,
+            )
+        }
+        EnqueueMenu(
+            expanded = menuOpen,
+            onDismiss = { menuOpen = false },
+            onPlayNext = onPlayNext,
+            onAdd = onAdd,
+            onStartRadio = onStartRadio,
         )
     }
 }

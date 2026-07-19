@@ -13,7 +13,7 @@ class AndroidKioskDevice(
 ) : KioskDevice {
 
     interface WindowHooks {
-        /** 0-100 maps onto window brightness (floored at 0.01); negative restores system default. */
+        /** 0-100 maps onto window brightness (floored at 0.001); negative restores system default. */
         fun setWindowBrightness(percent: Int)
         fun setKeepScreenOn(on: Boolean)
     }

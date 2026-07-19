@@ -45,7 +45,10 @@ class MainActivity : ComponentActivity() {
                     screenBrightness = if (percent < 0) {
                         WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
                     } else {
-                        (percent.coerceIn(0, 100) / 100f).coerceAtLeast(0.01f)
+                        // Floor 0.001 (not 0.0 = BRIGHTNESS_OVERRIDE_OFF): percent 0 lands on
+                        // backlight step 1/255, the panel's dimmest still-lit state; percent 1
+                        // (0.01 ~ step 4) remains available as a brighter night floor.
+                        (percent.coerceIn(0, 100) / 100f).coerceAtLeast(0.001f)
                     }
                 }
             }

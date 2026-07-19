@@ -187,7 +187,7 @@ data class MediaSettings(
 data class NightSettings(
     val enabled: Boolean = false,
     val thresholdLux: Int = 10,
-    val brightness: Int = 0,      // 0 = minimum backlight (window-brightness floor 0.01)
+    val brightness: Int = 0,      // 0 = minimum backlight (window-brightness floor 0.001, ~1/255)
 ) {
     fun clamped(): NightSettings = copy(
         thresholdLux = thresholdLux.coerceIn(1, 1000),

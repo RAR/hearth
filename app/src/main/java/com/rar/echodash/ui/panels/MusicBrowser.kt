@@ -293,6 +293,13 @@ fun MusicBrowser(
         pageStack = pushPage(pageStack, BrowserPage.ArtistDetail(artist))
     }
 
+    // Drill into an album's tracklist (from "View album"). Clears any active search first, same
+    // as openArtist, so the pushed detail page isn't hidden by the search override.
+    val openAlbum: (MaAlbum) -> Unit = { album ->
+        query = ""
+        pageStack = pushPage(pageStack, BrowserPage.AlbumDetail(album))
+    }
+
     val content = browserContent(maState, query, shelves, results)
 
     Column(modifier) {
@@ -372,7 +379,8 @@ fun MusicBrowser(
                 }
                 // Search overrides any page (existing behavior); the stack is preserved underneath.
                 searching -> when (val c = content) {
-                    is BrowserContent.Results -> ResultsPane(c.results, thumbs, playItem, startRadio)
+                    is BrowserContent.Results ->
+                        ResultsPane(c.results, thumbs, playItem, startRadio, onViewAlbum = openAlbum, onViewArtist = openArtist)
                     else -> EmptyHint("Loading…")
                 }
                 // Otherwise render the current page in the stack.
@@ -390,13 +398,14 @@ fun MusicBrowser(
                         onPlay = playItem, onStartRadio = startRadio, onError = showError,
                     )
                     BrowserPage.Albums -> AlbumsPage(
-                        library = library, thumbs = thumbs,
+                        library = library, thumbs = thumbs, onOpenAlbum = openAlbum,
                         onPlay = playItem, onStartRadio = startRadio, onError = showError,
                     )
                     is BrowserPage.ArtistDetail -> ArtistDetailPage(
                         artist = page.artist, library = library, thumbs = thumbs,
                         onBack = { pageStack = popPage(pageStack) },
-                        onPlay = playItem, onStartRadio = startRadio, onError = showError,
+                        onPlay = playItem, onStartRadio = startRadio,
+                        onOpenAlbum = openAlbum, onError = showError,
                     )
                     is BrowserPage.AlbumDetail -> AlbumDetailPage(
                         album = page.album, library = library, thumbs = thumbs,
@@ -547,6 +556,8 @@ private fun MediaCell(
     thumbs: MaThumbs,
     onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
     onStartRadio: (MaLibraryItem) -> Unit,
+    onViewAlbum: (MaAlbum) -> Unit = {},
+    onViewArtist: (MaArtist) -> Unit = {},
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Box {
@@ -572,6 +583,8 @@ private fun MediaCell(
             onPlayNext = { onPlay(item, EnqueueMode.NEXT) },
             onAdd = { onPlay(item, EnqueueMode.ADD) },
             onStartRadio = if (item.mediaType != MaMediaType.RADIO) ({ onStartRadio(item) }) else null,
+            onViewAlbum = (item as? MaAlbum)?.let { al -> { onViewAlbum(al) } },
+            onViewArtist = (item as? MaArtist)?.let { ar -> { onViewArtist(ar) } },
         )
     }
 }
@@ -584,17 +597,19 @@ private fun ResultsPane(
     thumbs: MaThumbs,
     onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
     onStartRadio: (MaLibraryItem) -> Unit,
+    onViewAlbum: (MaAlbum) -> Unit,
+    onViewArtist: (MaArtist) -> Unit,
 ) {
     if (results.isEmpty()) {
         EmptyHint("No matches")
         return
     }
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        resultGroup("Tracks", results.tracks, thumbs, onPlay, onStartRadio)
-        resultGroup("Albums", results.albums, thumbs, onPlay, onStartRadio)
-        resultGroup("Artists", results.artists, thumbs, onPlay, onStartRadio)
-        resultGroup("Playlists", results.playlists, thumbs, onPlay, onStartRadio)
-        resultGroup("Radio", results.radios, thumbs, onPlay, onStartRadio)
+        resultGroup("Tracks", results.tracks, thumbs, onPlay, onStartRadio, onViewAlbum, onViewArtist)
+        resultGroup("Albums", results.albums, thumbs, onPlay, onStartRadio, onViewAlbum, onViewArtist)
+        resultGroup("Artists", results.artists, thumbs, onPlay, onStartRadio, onViewAlbum, onViewArtist)
+        resultGroup("Playlists", results.playlists, thumbs, onPlay, onStartRadio, onViewAlbum, onViewArtist)
+        resultGroup("Radio", results.radios, thumbs, onPlay, onStartRadio, onViewAlbum, onViewArtist)
     }
 }
 
@@ -604,6 +619,8 @@ private fun LazyListScope.resultGroup(
     thumbs: MaThumbs,
     onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
     onStartRadio: (MaLibraryItem) -> Unit,
+    onViewAlbum: (MaAlbum) -> Unit,
+    onViewArtist: (MaArtist) -> Unit,
 ) {
     if (items.isEmpty()) return
     // Keys are prefixed with the group title: a library item can appear in two groups
@@ -615,7 +632,7 @@ private fun LazyListScope.resultGroup(
         )
     }
     items(items, key = { "$title-${it.uri ?: it.id}" }) { item ->
-        ResultRow(item, thumbs, onPlay, onStartRadio)
+        ResultRow(item, thumbs, onPlay, onStartRadio, onViewAlbum, onViewArtist)
     }
 }
 
@@ -626,6 +643,8 @@ private fun ResultRow(
     thumbs: MaThumbs,
     onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
     onStartRadio: (MaLibraryItem) -> Unit,
+    onViewAlbum: (MaAlbum) -> Unit,
+    onViewArtist: (MaArtist) -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Box {
@@ -668,6 +687,8 @@ private fun ResultRow(
             onPlayNext = { onPlay(item, EnqueueMode.NEXT) },
             onAdd = { onPlay(item, EnqueueMode.ADD) },
             onStartRadio = if (item.mediaType != MaMediaType.RADIO) ({ onStartRadio(item) }) else null,
+            onViewAlbum = (item as? MaAlbum)?.let { al -> { onViewAlbum(al) } },
+            onViewArtist = (item as? MaArtist)?.let { ar -> { onViewArtist(ar) } },
         )
     }
 }
@@ -759,6 +780,7 @@ private fun ArtistsPage(
             onPlayNext = { onPlay(artist, EnqueueMode.NEXT) },
             onAdd = { onPlay(artist, EnqueueMode.ADD) },
             onStartRadio = { onStartRadio(artist) },
+            onViewArtist = { onOpenArtist(artist) },
         )
     }
 }
@@ -767,6 +789,7 @@ private fun ArtistsPage(
 private fun AlbumsPage(
     library: MaLibrary,
     thumbs: MaThumbs,
+    onOpenAlbum: (MaAlbum) -> Unit,
     onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
     onStartRadio: (MaLibraryItem) -> Unit,
     onError: (String) -> Unit,
@@ -785,6 +808,7 @@ private fun AlbumsPage(
             onPlayNext = { onPlay(album, EnqueueMode.NEXT) },
             onAdd = { onPlay(album, EnqueueMode.ADD) },
             onStartRadio = { onStartRadio(album) },
+            onViewAlbum = { onOpenAlbum(album) },
         )
     }
 }
@@ -803,6 +827,8 @@ private fun LibraryRow(
     onPlayNext: () -> Unit,
     onAdd: () -> Unit,
     onStartRadio: () -> Unit,
+    onViewAlbum: (() -> Unit)? = null,
+    onViewArtist: (() -> Unit)? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Box {
@@ -835,6 +861,8 @@ private fun LibraryRow(
             onPlayNext = onPlayNext,
             onAdd = onAdd,
             onStartRadio = onStartRadio,
+            onViewAlbum = onViewAlbum,
+            onViewArtist = onViewArtist,
         )
     }
 }
@@ -863,6 +891,7 @@ private fun ArtistDetailPage(
     onBack: () -> Unit,
     onPlay: (MaLibraryItem, EnqueueMode) -> Unit,
     onStartRadio: (MaLibraryItem) -> Unit,
+    onOpenAlbum: (MaAlbum) -> Unit,
     onError: (String) -> Unit,
 ) {
     var albums by remember { mutableStateOf<List<MaAlbum>?>(null) }
@@ -885,7 +914,7 @@ private fun ArtistDetailPage(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     gridItems(a, key = { it.id }) { album ->
-                        MediaCell(album, thumbs, onPlay, onStartRadio)
+                        MediaCell(album, thumbs, onPlay, onStartRadio, onViewAlbum = onOpenAlbum)
                     }
                 }
             }
@@ -1239,6 +1268,8 @@ private fun EnqueueMenu(
     onPlayNext: () -> Unit,
     onAdd: () -> Unit,
     onStartRadio: (() -> Unit)? = null,
+    onViewAlbum: (() -> Unit)? = null,
+    onViewArtist: (() -> Unit)? = null,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(text = { Text("Play next") }, onClick = { onDismiss(); onPlayNext() })
@@ -1246,6 +1277,13 @@ private fun EnqueueMenu(
         // Radio seeds from a real media item (track/artist/album/playlist) — never a station.
         if (onStartRadio != null) {
             DropdownMenuItem(text = { Text("Start radio") }, onClick = { onDismiss(); onStartRadio() })
+        }
+        // Drill-in: offered only where the concrete typed object (album/artist) is in scope.
+        if (onViewAlbum != null) {
+            DropdownMenuItem(text = { Text("View album") }, onClick = { onDismiss(); onViewAlbum() })
+        }
+        if (onViewArtist != null) {
+            DropdownMenuItem(text = { Text("View artist") }, onClick = { onDismiss(); onViewArtist() })
         }
     }
 }

@@ -1,10 +1,13 @@
 package com.rar.echodash.ui.panels
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -57,10 +61,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -79,12 +86,14 @@ import com.rar.echodash.sendspin.musicassistant.model.MaLibraryItem
 import com.rar.echodash.sendspin.musicassistant.model.MaMediaType
 import com.rar.echodash.ui.model.currentItemOf
 import com.rar.echodash.ui.model.nextRepeatMode
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 private const val TAG = "MusicBrowser"
+private const val SWIPE_DISMISS_FRACTION = 0.30f
 
 /** The three quick-pick shelves shown when no search is active. */
 data class BrowserShelves(
@@ -295,6 +304,17 @@ fun MusicBrowser(
                                 .onSuccess { queueVersion++ }
                                 .onFailure { showError(it.message ?: "Couldn't clear the queue") }
                         }
+                    },
+                    // Suspend, Boolean-returning: QueueRow already animated the row fully
+                    // off-screen before calling this, then awaits the result to decide whether
+                    // to animate it back (see QueueRow's onDragEnd) — so this runs inside
+                    // QueueRow's own coroutine, not scope.launch'd here like onJump/onClear.
+                    // queueVersion bumps only on success, never synchronously.
+                    onRemove = { item ->
+                        val result = library.removeQueueItem(item.queueItemId)
+                        result.onSuccess { queueVersion++ }
+                        result.onFailure { showError(it.message ?: "Couldn't remove item") }
+                        result.isSuccess
                     },
                     // Computed off the queue's OWN state (not local now-playing), so a tap
                     // always toggles what the chip is currently displaying — no cross-source
@@ -567,6 +587,7 @@ private fun QueuePane(
     thumbs: MaThumbs,
     onJump: (String) -> Unit,
     onClear: () -> Unit,
+    onRemove: suspend (MaQueueItem) -> Boolean,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
     onToggleFavorite: () -> Unit = {},
@@ -606,7 +627,7 @@ private fun QueuePane(
             queue.items.isEmpty() -> EmptyHint("Queue is empty")
             else -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 items(queue.items, key = { it.queueItemId }) { qi ->
-                    QueueRow(qi, thumbs, onJump)
+                    QueueRow(qi, thumbs, onJump, onRemove)
                 }
             }
         }
@@ -632,31 +653,108 @@ private fun QueueToggleChip(icon: ImageVector, on: Boolean, onClick: () -> Unit)
     }
 }
 
+/**
+ * A queue row: tap to jump (unchanged), swipe left to remove — mechanics copied from
+ * [NotificationArea.NotificationRow] (Animatable x-offset + detectHorizontalDragGestures,
+ * SWIPE_DISMISS_FRACTION threshold, snap back on cancel or a below-threshold release). The
+ * horizontal drag detector and the QueuePane's vertical LazyColumn scroll claim separate
+ * gesture axes, same coexistence as the notification stack.
+ *
+ * Unlike NotificationRow's fire-and-forget onDismiss, removal is a server round trip that can
+ * fail — so a completed swipe animates fully off-screen, *awaits* [onRemove]'s suspending
+ * Boolean result, and animates back into view if it returns false. This keeps the row's own
+ * animation state authoritative for both outcomes instead of relying on a later queue refetch
+ * to reconcile a stuck offset.
+ *
+ * The CURRENT item never receives the swipe (guard below) — the server silently ignores
+ * deletes of a buffered item anyway, so offering a gesture that can no-op is worse than not
+ * offering it (recon: player_queues/delete_item). The offset/onSizeChanged scaffolding stays
+ * in place for the current row too (harmless — it never moves without a drag detector), which
+ * keeps one row layout instead of two divergent ones.
+ */
 @Composable
-private fun QueueRow(item: MaQueueItem, thumbs: MaThumbs, onJump: (String) -> Unit) {
-    Row(
+private fun QueueRow(
+    item: MaQueueItem,
+    thumbs: MaThumbs,
+    onJump: (String) -> Unit,
+    onRemove: suspend (MaQueueItem) -> Boolean,
+) {
+    val offsetX = remember { Animatable(0f) }
+    var widthPx by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+
+    Box(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (item.isCurrentItem) Color(0xFF2A2F3C) else Color.Transparent)
-            .clickable { onJump(item.queueItemId) }
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .onSizeChanged { widthPx = it.width }
+            .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+            .then(
+                if (item.isCurrentItem) {
+                    Modifier
+                } else {
+                    Modifier.pointerInput(item.queueItemId) {
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                val threshold = widthPx * SWIPE_DISMISS_FRACTION
+                                if (widthPx > 0 && -offsetX.value >= threshold) {
+                                    scope.launch {
+                                        offsetX.animateTo(-widthPx.toFloat(), tween(200))
+                                        val removed = onRemove(item)
+                                        // Failed (or the server otherwise didn't actually drop
+                                        // it): bring the row back into view instead of leaving
+                                        // a blank slot around until the panel is closed and
+                                        // reopened — LazyColumn's key = { it.queueItemId }
+                                        // would otherwise keep this exact offset pinned to
+                                        // this row across every later recomposition.
+                                        if (!removed) {
+                                            offsetX.animateTo(0f, tween(200))
+                                        }
+                                    }
+                                } else {
+                                    scope.launch { offsetX.animateTo(0f, tween(200)) }
+                                }
+                            },
+                            // A cancelled drag (ancestor claims the gesture, extra pointer)
+                            // never reaches onDragEnd — snap back so the row can't be left
+                            // stranded mid-swipe.
+                            onDragCancel = {
+                                scope.launch { offsetX.animateTo(0f, tween(200)) }
+                            },
+                        ) { change, dragAmount ->
+                            change.consume()
+                            // Only left drags move the row; right drags clamp back to 0.
+                            scope.launch {
+                                offsetX.snapTo((offsetX.value + dragAmount).coerceAtMost(0f))
+                            }
+                        }
+                    }
+                }
+            ),
     ) {
-        Thumb(item.imageUri, thumbs, 36.dp, corner = 6.dp)
-        Column(Modifier.weight(1f)) {
-            Text(
-                item.name, color = Color.White, fontSize = 14.sp,
-                fontWeight = if (item.isCurrentItem) FontWeight.SemiBold else FontWeight.Normal,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-            val sub = listOfNotNull(item.artist, item.album).joinToString(" — ")
-            if (sub.isNotBlank()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(if (item.isCurrentItem) Color(0xFF2A2F3C) else Color.Transparent)
+                .clickable { onJump(item.queueItemId) }
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Thumb(item.imageUri, thumbs, 36.dp, corner = 6.dp)
+            Column(Modifier.weight(1f)) {
                 Text(
-                    sub, color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp,
+                    item.name, color = Color.White, fontSize = 14.sp,
+                    fontWeight = if (item.isCurrentItem) FontWeight.SemiBold else FontWeight.Normal,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
+                val sub = listOfNotNull(item.artist, item.album).joinToString(" — ")
+                if (sub.isNotBlank()) {
+                    Text(
+                        sub, color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }

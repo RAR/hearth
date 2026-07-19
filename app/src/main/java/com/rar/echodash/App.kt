@@ -55,7 +55,9 @@ import com.rar.echodash.ui.TimersTakeoverView
 import com.rar.echodash.ui.VoiceOverlay
 import com.rar.echodash.ui.WakeGlow
 import com.rar.echodash.ui.model.CalendarEvent
+import com.rar.echodash.ui.model.FavoriteAction
 import com.rar.echodash.ui.model.TimerTakeoverModel
+import com.rar.echodash.ui.model.favoriteToggleAction
 import com.rar.echodash.ui.model.nextRepeatMode
 import com.rar.echodash.ui.model.parseCalendarEvents
 import com.rar.echodash.ui.model.pushedNotificationItems
@@ -937,6 +939,18 @@ fun EchoDashApp(deps: AppDeps) {
                         // sendSpin?.setRepeatMode/setShuffle's own null-check is the real gate.
                         onMediaSetRepeat = { mode -> deps.sendspin.transportSetRepeat(mode) },
                         onMediaSetShuffle = { enabled -> deps.sendspin.transportSetShuffle(enabled) },
+                        // Favorite/un-favorite the current song. Shared by the takeover heart and
+                        // the queue-pane heart (each passes the item its own poll saw). The pure
+                        // decision picks add vs remove; the op runs on the app scope (MA-socket I/O).
+                        onFavoriteToggle = { favItem ->
+                            deps.mainScope.launch {
+                                when (val action = favoriteToggleAction(favItem)) {
+                                    FavoriteAction.Add -> deps.maLibrary.favoriteCurrentSong()
+                                    is FavoriteAction.Remove ->
+                                        deps.maLibrary.unfavorite(action.mediaType, action.libraryItemId)
+                                }
+                            }
+                        },
                         library = deps.maLibrary,
                         thumbs = deps.maThumbs,
                         // Takeover's browse button: land on the MEDIA view's library browser

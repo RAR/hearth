@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.automirrored.outlined.VolumeOff
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Pause
@@ -83,6 +85,9 @@ fun NowPlayingHome(
     onHome: () -> Unit = {},
     onCycleRepeat: () -> Unit = {},
     onToggleShuffle: () -> Unit = {},
+    favorite: Boolean? = null,
+    showFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {},
     upNext: MaQueueItem? = null,
     onUpNextTap: () -> Unit = {},
 ) {
@@ -209,11 +214,17 @@ fun NowPlayingHome(
                 }
                 val showShuffle = state.sendspin && state.shuffle != null && state.canShuffle
                 val showRepeat = state.sendspin && state.repeatMode != null && state.canRepeat
-                if (showShuffle || showRepeat) {
+                if (showFavorite || showShuffle || showRepeat) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        if (showFavorite) {
+                            // Heart first: favorite the current track. Lit when it's already a
+                            // library favorite; a null (unknown) favorite renders unlit.
+                            val heartIcon = if (favorite == true) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder
+                            NpToggleButton(heartIcon, on = favorite == true) { onToggleFavorite() }
+                        }
                         if (showShuffle) {
                             NpToggleButton(Icons.Outlined.Shuffle, on = state.shuffle == true) { onToggleShuffle() }
                         }

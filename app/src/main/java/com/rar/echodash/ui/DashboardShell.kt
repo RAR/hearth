@@ -54,6 +54,7 @@ import com.rar.echodash.ui.model.solarCard
 import com.rar.echodash.ui.model.solarFlowGraph
 import com.rar.echodash.ui.model.thermostats
 import com.rar.echodash.ui.model.rainPill
+import com.rar.echodash.ui.model.currentItemOf
 import com.rar.echodash.ui.model.upNextOf
 import com.rar.echodash.ui.model.weatherPill
 import com.rar.echodash.ui.panels.CalendarPanel
@@ -106,6 +107,7 @@ fun DashboardShell(
     onMediaToggleShuffle: () -> Unit = {},
     onMediaSetRepeat: (String) -> Unit = {},
     onMediaSetShuffle: (Boolean) -> Unit = {},
+    onFavoriteToggle: (MaQueueItem?) -> Unit = {},
     fetchForecast: suspend (String) -> JsonElement?,
     configUrl: String,
     configPin: String,
@@ -124,6 +126,10 @@ fun DashboardShell(
     // null-ness is fixed for this composition -- the guarded collect below is stable across
     // recompositions.
     var upNext by remember { mutableStateOf<MaQueueItem?>(null) }
+    // Current-track favorite state, from the same poll as upNext. favVersion bumps re-run the
+    // poll immediately after a heart tap so the lit state catches up in ~one round-trip.
+    var favState by remember { mutableStateOf<MaQueueItem?>(null) }
+    var favVersion by remember { mutableIntStateOf(0) }
     // Bumped when the takeover's up-next line is tapped; threaded to MusicBrowser to open the
     // queue overlay on first composition in the MEDIA view. Starts at 0 (never-requested).
     var openQueueSignal by remember { mutableIntStateOf(0) }
@@ -143,13 +149,16 @@ fun DashboardShell(
     // nowPlaying.title so a track advance restarts the poll and refreshes the line immediately;
     // any fetch failure (or a null next item) sets null -- the takeover is glanceable, not a
     // diagnostics surface. The gate going false clears the line.
-    LaunchedEffect(takeoverVisible, nowPlaying.sendspin, nowPlaying.title, maConnected) {
+    LaunchedEffect(takeoverVisible, nowPlaying.sendspin, nowPlaying.title, maConnected, favVersion) {
         if (!(takeoverVisible && nowPlaying.sendspin && library != null && maConnected)) {
             upNext = null
+            favState = null
             return@LaunchedEffect
         }
         while (true) {
-            upNext = library.queue().getOrNull()?.let { upNextOf(it) }
+            val q = library.queue().getOrNull()
+            upNext = q?.let { upNextOf(it) }
+            favState = q?.let { currentItemOf(it) }
             delay(10_000)
         }
     }
@@ -307,6 +316,11 @@ fun DashboardShell(
                         onTakeoverRestore = onTakeoverRestore,
                         onMediaCycleRepeat = onMediaCycleRepeat,
                         onMediaToggleShuffle = onMediaToggleShuffle,
+                        // Heart shows on a SendSpin source with a live MA socket (companion sources
+                        // can't be resolved by MA). favVersion bump = immediate refetch after a tap.
+                        favorite = favState?.favorite,
+                        showFavorite = nowPlaying.sendspin && maConnected,
+                        onToggleFavorite = { onFavoriteToggle(favState); favVersion++ },
                         upNext = upNext,
                         onUpNextTap = {
                             openQueueSignal++

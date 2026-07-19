@@ -11,6 +11,7 @@ import com.rar.echodash.sendspin.musicassistant.transport.optLong
 import com.rar.echodash.sendspin.musicassistant.transport.optString
 import com.rar.echodash.sendspin.shared.log.Log
 import com.rar.echodash.sendspin.shared.platform.Platform
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -370,6 +371,10 @@ class MaCommandClient {
             val artists = parseArtistsArray(array)
             Log.d(TAG, "Got ${artists.size} library artists")
             Result.success(artists)
+        } catch (e: CancellationException) {
+            // Cancellation must propagate — swallowing it as failure makes navigation-away flash
+            // a spurious error toast.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch library artists", e)
             Result.failure(e)
@@ -391,6 +396,8 @@ class MaCommandClient {
             val albums = parseAlbumsArray(array)
             Log.d(TAG, "Got ${albums.size} library albums")
             Result.success(albums)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch library albums", e)
             Result.failure(e)
@@ -411,6 +418,8 @@ class MaCommandClient {
             val array = response.optJsonArray("result")
                 ?: response.optJsonObject("result")?.optJsonArray("items")
             Result.success(parseAlbumsArray(array))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch artist albums: $artistId", e)
             Result.failure(e)
@@ -431,6 +440,8 @@ class MaCommandClient {
             val array = response.optJsonArray("result")
                 ?: response.optJsonObject("result")?.optJsonArray("items")
             Result.success(parseTracksArray(array))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch album tracks: $albumId", e)
             Result.failure(e)

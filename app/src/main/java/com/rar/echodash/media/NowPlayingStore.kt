@@ -32,6 +32,13 @@ data class NowPlayingState(
     val positionAtMs: Long = 0,
     /** Seek is offered (companion media_player with the SEEK feature + a known duration only). */
     val canSeek: Boolean = false,
+    /** Group repeat mode from SendSpin controller state: "off"|"one"|"all"; null = unknown. */
+    val repeatMode: String? = null,
+    /** Group shuffle from SendSpin controller state; null = unknown. */
+    val shuffle: Boolean? = null,
+    /** Repeat/shuffle commands the server advertises (gate the toggles' visibility). */
+    val canRepeat: Boolean = false,
+    val canShuffle: Boolean = false,
 ) {
     /**
      * Position to display at [nowMs], extrapolating past the last sample. While playing with a real
@@ -56,6 +63,8 @@ data class NowPlayingState(
             volume == other.volume && canSkip == other.canSkip && sendspin == other.sendspin &&
             muted == other.muted && durationMs == other.durationMs && positionMs == other.positionMs &&
             positionAtMs == other.positionAtMs && canSeek == other.canSeek &&
+            repeatMode == other.repeatMode && shuffle == other.shuffle &&
+            canRepeat == other.canRepeat && canShuffle == other.canShuffle &&
             (localArt?.contentEquals(other.localArt ?: ByteArray(0)) ?: (other.localArt == null))
     }
 
@@ -75,6 +84,10 @@ data class NowPlayingState(
         r = 31 * r + positionMs.hashCode()
         r = 31 * r + positionAtMs.hashCode()
         r = 31 * r + canSeek.hashCode()
+        r = 31 * r + (repeatMode?.hashCode() ?: 0)
+        r = 31 * r + (shuffle?.hashCode() ?: 0)
+        r = 31 * r + canRepeat.hashCode()
+        r = 31 * r + canShuffle.hashCode()
         return r
     }
 }
@@ -125,6 +138,10 @@ class NowPlayingStore {
     private var sendspinDurationMs = 0L
     private var sendspinPositionMs = 0L
     private var sendspinPositionAtMs = 0L
+    private var sendspinRepeatMode: String? = null
+    private var sendspinShuffle: Boolean? = null
+    private var sendspinCanRepeat = false
+    private var sendspinCanShuffle = false
 
     @Synchronized
     fun onEngine(active: Boolean, playing: Boolean, volume: Int) {
@@ -155,7 +172,11 @@ class NowPlayingStore {
                    muted: Boolean = false,
                    // Progress default to 0 so every existing deactivation call (onSendspin(false, ...))
                    // stays correct: a cleared takeover reports no progress.
-                   durationMs: Long = 0, positionMs: Long = 0, positionAtMs: Long = 0) {
+                   durationMs: Long = 0, positionMs: Long = 0, positionAtMs: Long = 0,
+                   // Toggle state from the SendSpin controller push. Defaults keep every existing
+                   // deactivation call (onSendspin(false, ...)) clearing them to unknown/hidden.
+                   repeatMode: String? = null, shuffle: Boolean? = null,
+                   canRepeat: Boolean = false, canShuffle: Boolean = false) {
         sendspinActive = active
         sendspinPlaying = playing
         sendspinTitle = title?.takeIf { it.isNotBlank() }
@@ -167,6 +188,10 @@ class NowPlayingStore {
         sendspinDurationMs = durationMs
         sendspinPositionMs = positionMs
         sendspinPositionAtMs = positionAtMs
+        sendspinRepeatMode = repeatMode
+        sendspinShuffle = shuffle
+        sendspinCanRepeat = canRepeat
+        sendspinCanShuffle = canShuffle
         recompute()
     }
 
@@ -185,6 +210,8 @@ class NowPlayingStore {
                 // SendSpin/MA has no seek command (supported_commands never carries one), so the bar
                 // is display-only here -- never draggable.
                 canSeek = false,
+                repeatMode = sendspinRepeatMode, shuffle = sendspinShuffle,
+                canRepeat = sendspinCanRepeat, canShuffle = sendspinCanShuffle,
             )
             return
         }

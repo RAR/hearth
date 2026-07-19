@@ -2,6 +2,8 @@ package com.rar.echodash.media
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -74,5 +76,62 @@ class NowPlayingSendspinTest {
         assertEquals(0L, s.durationMs)
         assertEquals(0L, s.positionMs)
         assertEquals(0L, s.positionAtMs)
+    }
+
+    @Test fun sendspinRepeatShuffleGatesFlowIntoState() {
+        val store = NowPlayingStore()
+        // Omitted new params default to unknown/false (companion + legacy deactivation calls).
+        store.onSendspin(true, true, "Song", "Artist", "Album", null, 55)
+        store.state.value.let {
+            assertNull(it.repeatMode); assertNull(it.shuffle)
+            assertFalse(it.canRepeat); assertFalse(it.canShuffle)
+        }
+        store.onSendspin(true, true, "Song", "Artist", "Album", null, 55,
+            repeatMode = "one", shuffle = true, canRepeat = true, canShuffle = true)
+        store.state.value.let {
+            assertEquals("one", it.repeatMode); assertEquals(true, it.shuffle)
+            assertTrue(it.canRepeat); assertTrue(it.canShuffle)
+        }
+    }
+
+    @Test fun deactivationDefaultsClearRepeatShuffleGates() {
+        val store = NowPlayingStore()
+        store.onSendspin(true, true, "Song", "Artist", "Album", null, 55,
+            repeatMode = "all", shuffle = true, canRepeat = true, canShuffle = true)
+        // The existing deactivation call passes none of the new params -> defaults clear them.
+        store.onSendspin(false, false, null, null, null, null, 55)
+        store.state.value.let {
+            assertFalse(it.active)
+            assertNull(it.repeatMode); assertNull(it.shuffle)
+            assertFalse(it.canRepeat); assertFalse(it.canShuffle)
+        }
+    }
+
+    @Test fun equalsAndHashCodeDependOnRepeatMode() {
+        val base = NowPlayingState(sendspin = true, repeatMode = "off")
+        val diff = base.copy(repeatMode = "all")
+        assertNotEquals(base, diff)
+        assertNotEquals(base.hashCode(), diff.hashCode())
+    }
+
+    @Test fun equalsAndHashCodeDependOnShuffle() {
+        val base = NowPlayingState(sendspin = true, shuffle = false)
+        val diff = base.copy(shuffle = true)
+        assertNotEquals(base, diff)
+        assertNotEquals(base.hashCode(), diff.hashCode())
+    }
+
+    @Test fun equalsAndHashCodeDependOnCanRepeat() {
+        val base = NowPlayingState(sendspin = true, canRepeat = false)
+        val diff = base.copy(canRepeat = true)
+        assertNotEquals(base, diff)
+        assertNotEquals(base.hashCode(), diff.hashCode())
+    }
+
+    @Test fun equalsAndHashCodeDependOnCanShuffle() {
+        val base = NowPlayingState(sendspin = true, canShuffle = false)
+        val diff = base.copy(canShuffle = true)
+        assertNotEquals(base, diff)
+        assertNotEquals(base.hashCode(), diff.hashCode())
     }
 }

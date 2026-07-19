@@ -14,6 +14,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -323,6 +324,61 @@ class MaLibraryTest {
             res.exceptionOrNull()!!.message,
         )
         assertTrue(h.loginCalls.isEmpty())
+        h.lib.stop()
+    }
+
+    // ---- favorite / radio ops ----
+
+    @Test
+    fun favoriteCurrentSongSendsPlayerId() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        assertTrue(h.lib.favoriteCurrentSong().isSuccess)
+        assertEquals(listOf("players/add_currently_playing_to_favorites"), h.commands.map { it.first })
+        assertEquals("player-1", h.commands[0].second["player_id"])
+        h.lib.stop()
+    }
+
+    @Test
+    fun unfavoriteSendsMediaTypeAndLibraryId() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        assertTrue(h.lib.unfavorite("track", "123").isSuccess)
+        assertEquals(listOf("music/favorites/remove_item"), h.commands.map { it.first })
+        assertEquals("track", h.commands[0].second["media_type"])
+        assertEquals("123", h.commands[0].second["library_item_id"])
+        h.lib.stop()
+    }
+
+    @Test
+    fun playRadioResolvesQueueAndSendsRadioMode() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        assertTrue(h.lib.playRadio("library://artist/9", "artist").isSuccess)
+        assertEquals(
+            listOf("player_queues/get_active_queue", "player_queues/play_media"),
+            h.commands.map { it.first },
+        )
+        val playArgs = h.commands[1].second
+        assertEquals("q-77", playArgs["queue_id"])
+        assertEquals("library://artist/9", playArgs["media"])
+        assertEquals("artist", playArgs["media_type"])
+        assertEquals(true, playArgs["radio_mode"])
+        assertNull(playArgs["option"]) // radio starts fresh (PLAY): option omitted
+        h.lib.stop()
+    }
+
+    @Test
+    fun playOmitsRadioModeByDefault() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        assertTrue(h.lib.play("library://track/1", "track", EnqueueMode.PLAY).isSuccess)
+        val playArgs = h.commands.first { it.first == "player_queues/play_media" }.second
+        assertNull(playArgs["radio_mode"]) // non-radio play must never send the flag
         h.lib.stop()
     }
 }

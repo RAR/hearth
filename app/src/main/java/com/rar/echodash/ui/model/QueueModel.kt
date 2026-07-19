@@ -25,3 +25,26 @@ fun upNextOf(q: MaQueueState): MaQueueItem? {
     if (idx < 0 || idx >= q.items.lastIndex) return null
     return q.items[idx + 1]
 }
+
+/** The queue's current item (the one flagged [MaQueueItem.isCurrentItem]), or null. */
+fun currentItemOf(q: MaQueueState): MaQueueItem? = q.items.firstOrNull { it.isCurrentItem }
+
+/** Whether a heart tap should add a favorite or remove an existing one. */
+sealed interface FavoriteAction {
+    /** Add the current item to favorites (the server resolves which item); idempotent. */
+    data object Add : FavoriteAction
+    /** Remove an already-favorited library item, targeted by type + library id. */
+    data class Remove(val mediaType: String, val libraryItemId: String) : FavoriteAction
+}
+
+/**
+ * Decide add-vs-remove for a heart tap on [item]. Remove only when the item is known-favorited
+ * AND carries a library id to target (favorite == true && mediaItemId != null), defaulting a
+ * missing media_type to "track". Every other case — unknown favorite, favorited-but-no-id, or a
+ * null item — falls back to [FavoriteAction.Add], which the server resolves and is idempotent.
+ */
+fun favoriteToggleAction(item: MaQueueItem?): FavoriteAction =
+    if (item?.favorite == true && item.mediaItemId != null)
+        FavoriteAction.Remove(item.mediaType ?: "track", item.mediaItemId)
+    else
+        FavoriteAction.Add

@@ -150,6 +150,28 @@ class MaLibrary(
     suspend fun clearQueue(): Result<Unit> =
         withQueue { client, queueId -> client.clearQueue(queueId) }
 
+    // ---- Favorite / radio ops ----
+
+    /**
+     * Add the current song to library favorites. Uses the device's own player id (not the
+     * effective queue) — the server resolves the active queue's current item itself, so this
+     * takes [withClient], not [withQueue].
+     */
+    suspend fun favoriteCurrentSong(): Result<Unit> =
+        withClient { it.addCurrentToFavorites(playerId) }
+
+    /** Remove an already-favorited library item (type + library id read off the queue item). */
+    suspend fun unfavorite(mediaType: String, libraryItemId: String): Result<Unit> =
+        withClient { it.removeFavorite(mediaType, libraryItemId) }
+
+    /**
+     * Start MA dynamic radio seeded from [uri]: replaces the queue and self-refills with similar
+     * tracks (radio_mode on play_media, native on MA 2.9.x). Mirrors [play]'s effective-queue
+     * resolve via [withQueue].
+     */
+    suspend fun playRadio(uri: String, mediaType: String?): Result<Unit> =
+        withQueue { client, queueId -> client.playMedia(uri, queueId, mediaType, EnqueueMode.PLAY, radioMode = true) }
+
     // ---- Connection loop ----
 
     private suspend fun runConnectLoop(token: String) {

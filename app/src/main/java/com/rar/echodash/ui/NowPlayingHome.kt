@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.automirrored.outlined.VolumeOff
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
@@ -79,6 +80,7 @@ fun NowPlayingHome(
     onVolume: (Int) -> Unit,
     onSeek: (Long) -> Unit = {},
     onBrowse: () -> Unit = {},
+    onHome: () -> Unit = {},
     onCycleRepeat: () -> Unit = {},
     onToggleShuffle: () -> Unit = {},
     upNext: MaQueueItem? = null,
@@ -95,13 +97,21 @@ fun NowPlayingHome(
         }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)))
 
-        // Browse the MA library (jumps to the MEDIA view). TopEnd: TopStart holds the compact
-        // clock HomeView draws above this layer. 48 dp (not the transport 64) so it clears the
-        // art card's top edge on the smallest canvas (787×394, art at its height-limited 360dp);
-        // taller screens only add clearance.
-        Box(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 16.dp)) {
+        // Top-right chips over the takeover: Browse (jumps to the MA library / MEDIA view) and
+        // Home (dismisses the takeover for the session — music keeps playing — returning to the
+        // dashboard). TopStart holds the compact clock HomeView draws above this layer. Home sits
+        // in the outermost corner (exit lives in the corner); Browse is to its left. Both 48 dp
+        // (not the transport 64) so they clear the art card's top edge on the smallest canvas
+        // (787×394, art at its height-limited 360dp); the row grows leftward along the empty top edge.
+        Row(
+            Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             NpTransportButton(Icons.AutoMirrored.Outlined.QueueMusic, size = 48.dp, iconSize = 24.dp) {
                 onBrowse()
+            }
+            NpTransportButton(Icons.Outlined.Home, size = 48.dp, iconSize = 24.dp) {
+                onHome()
             }
         }
 

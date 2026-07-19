@@ -60,6 +60,7 @@ import com.rar.echodash.ui.model.nextRepeatMode
 import com.rar.echodash.ui.model.parseCalendarEvents
 import com.rar.echodash.ui.model.pushedNotificationItems
 import com.rar.echodash.ui.model.quickButtonService
+import com.rar.echodash.ui.model.takeoverVisibleOf
 import com.rar.echodash.ui.theme.EchoTheme
 import com.rar.echodash.vaca.AndroidKioskDevice
 import com.rar.echodash.vaca.AnnouncePlayer
@@ -757,7 +758,14 @@ fun EchoDashApp(deps: AppDeps) {
                             pausedTimedOut = false
                         }
                     }
-                    val takeoverVisible = nowPlayingState.active && !pausedTimedOut
+                    // The user can dismiss the takeover from its home button; the dismissal sticks
+                    // for the whole listening session (track changes never resurrect it). Session
+                    // end (active -> false) clears it so the NEXT session takes over again.
+                    var manualDismissed by remember { mutableStateOf(false) }
+                    LaunchedEffect(nowPlayingState.active) {
+                        if (!nowPlayingState.active) manualDismissed = false
+                    }
+                    val takeoverVisible = takeoverVisibleOf(nowPlayingState.active, pausedTimedOut, manualDismissed)
 
                     // Hold the screen awake while music is actively playing (not while paused, so a
                     // paused player still lets the backlight sleep). Only wakes the screen; the
@@ -937,6 +945,12 @@ fun EchoDashApp(deps: AppDeps) {
                             deps.currentView.value = DashView.MEDIA
                             deps.kiosk.onUserInteraction()
                         },
+                        // Takeover home button hides the takeover for the rest of the session
+                        // (music keeps playing); the pinned now-playing row's tap restores it.
+                        // Restore also clears the paused-timeout dismissal, so the row is the way
+                        // back from that path too (which otherwise has no on-device re-entry).
+                        onTakeoverDismiss = { manualDismissed = true },
+                        onTakeoverRestore = { manualDismissed = false; pausedTimedOut = false },
                         fetchForecast = { id -> deps.entityHub.getForecasts(id) },
                         configUrl = configUrl,
                         configPin = configPinValue,

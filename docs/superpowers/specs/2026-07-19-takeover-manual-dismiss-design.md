@@ -104,8 +104,10 @@ gate widens to `notifications.isNotEmpty() || showNowPlayingRow`, wrap a
 `showNowPlayingRow`) above the existing `NotificationArea`. The width cap
 (`caps.notifMaxWidthDp`) applies to the Column; the height cap + `clipToBounds` move to
 the `NotificationArea` inside it so real notifications scroll while the pinned row never
-clips. The row consumes ~42dp of vertical space below the pill row; the notif height cap
-already protects the clock beneath.
+clips. The row consumes 62dp above the stack (34dp thumb + 2×10dp padding + 8dp Column
+gap); since `homeOverlayCaps` sizes `notifMaxHeightDp` so the stack ends exactly
+`NOTIF_CLOCK_GAP` above the clock block, the stack's height cap shrinks by the same 62dp
+while the row shows (floor 60dp) — otherwise a full stack would overlap the clock.
 
 `showNowPlayingRow = nowPlaying.active && !takeoverVisible` — computed in HomeView from
 params it already has. This intentionally covers BOTH dismissal paths (manual and

@@ -179,6 +179,31 @@ class MessageParserTest {
     }
 
     @Test
+    fun parsesFloatProgressAndDurationFromMusicAssistant() {
+        // Music Assistant has emitted progress numbers as JSON floats since
+        // ~2026-07 (e.g. track_duration: 189293.0). longOrNull rejects those,
+        // so duration silently fell back to 0 and the takeover's progress bar
+        // (gated on durationMs > 0) disappeared.
+        val payload = buildJsonObject {
+            put("metadata", buildJsonObject {
+                put("title", "Right Here Right Now")
+                put("artist", "Jesus Jones")
+                put("progress", buildJsonObject {
+                    put("track_progress", 1337.0)
+                    put("track_duration", 189293.0)
+                    put("playback_speed", 1000)
+                })
+            })
+        }
+
+        val (metadata, _) = MessageParser.parseServerState(payload)
+
+        assertNotNull(metadata)
+        assertEquals(1337L, metadata!!.progress.trackProgress)
+        assertEquals(189293L, metadata.progress.trackDuration)
+    }
+
+    @Test
     fun parseServerState_legacyFlatStructure_parsesAsFallback() {
         val payload = buildJsonObject {
             put("metadata", buildJsonObject {

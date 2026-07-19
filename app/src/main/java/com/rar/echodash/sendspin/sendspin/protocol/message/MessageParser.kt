@@ -227,8 +227,10 @@ object MessageParser {
     private fun JsonObject.stringOrDefault(key: String, default: String): String =
         this[key]?.jsonPrimitive?.contentOrNull ?: default
 
+    // Music Assistant sends track_duration (and can send track_progress) as
+    // JSON floats; longOrNull rejects "189293.0", so fall back through double.
     private fun JsonObject.longOrDefault(key: String, default: Long): Long =
-        this[key]?.jsonPrimitive?.longOrNull ?: default
+        this[key]?.jsonPrimitive?.let { it.longOrNull ?: it.doubleOrNull?.toLong() } ?: default
 
     private fun JsonObject.intOrDefault(key: String, default: Int): Int =
         this[key]?.jsonPrimitive?.intOrNull ?: default

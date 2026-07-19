@@ -139,10 +139,17 @@ class SatelliteSession(
             // Legacy/fallback: HA reports the wake word. In localWake HA never sends this.
             suppressRun = false
             watchdogAtMs = nowMs + WATCHDOG_MS
-            listOf(
+            val base = mutableListOf<SatelliteAction>(
                 SatelliteAction.Earcon(EarconKind.WAKE),
                 overlayAction(VoiceOverlayState(VoiceOverlayPhase.LISTENING)),
             )
+            // Same wake-during-ring silencing as onWakeDetected, for HA-side wake devices.
+            if (alert != null) {
+                alert = null
+                alertSilenceAtMs = null
+                base += SatelliteAction.Timers(timersState(nowMs))
+            }
+            base
         }
         "transcript" -> {
             watchdogAtMs = nowMs + WATCHDOG_MS
@@ -222,13 +229,24 @@ class SatelliteSession(
         micTimestampMs = 0L
         suppressRun = false
         watchdogAtMs = nowMs + WATCHDOG_MS
-        return listOf(
+        val actions = mutableListOf<SatelliteAction>(
             SatelliteAction.Send(detectionEvent(name)),
             SatelliteAction.Send(runPipelineLocalEvent()),
             SatelliteAction.Send(WyomingEvent("streaming-started")),
             SatelliteAction.Earcon(EarconKind.WAKE),
             overlayAction(VoiceOverlayState(VoiceOverlayPhase.LISTENING)),
         )
+        // Wake during a ringing timer alert: the user is engaging the device over the blaring
+        // alarm — the "OK Ember, stop" instinct. Silence the ring like a tap: once streaming
+        // starts the detector is no longer fed, so the bare-"stop" head can't help, and without
+        // this the alarm blares over the whole HA session (observed live 2026-07-18). The
+        // trailing utterance still runs as a normal command.
+        if (alert != null) {
+            alert = null
+            alertSilenceAtMs = null
+            actions += SatelliteAction.Timers(timersState(nowMs))
+        }
+        return actions
     }
 
     fun onMicChunk(pcm: ByteArray): List<SatelliteAction> {

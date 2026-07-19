@@ -268,6 +268,7 @@ class SatelliteServer(
         detectorQueue.clear()
         detectorThread = thread(name = "WakeDetector", isDaemon = true) {
             var windowMax = 0f
+            var windowStopMax = 0f
             var windowStart = System.currentTimeMillis()
             var windowMaxRms = 0L
             var windowChunks = 0
@@ -292,11 +293,16 @@ class SatelliteServer(
                     val fired = det.process(item)
                     val score = det.lastScore
                     if (score > windowMax) windowMax = score
+                    // Track the stop head's window max too — it only logs on FIRE otherwise,
+                    // which makes threshold tuning blind when "stop" scores under the bar.
+                    val stopScore = det.lastScoreOf(STOP_HEAD)
+                    if (stopScore > windowStopMax) windowStopMax = stopScore
                     val nowW = System.currentTimeMillis()
                     if (nowW - windowStart >= 5_000L) {
-                        Log.d(TAG, "wake max score=%.2f rms=%d chunks=%d dropped=%d (5s)"
-                            .format(windowMax, windowMaxRms, windowChunks, droppedChunks.getAndSet(0)))
+                        Log.d(TAG, "wake max score=%.2f stop=%.2f rms=%d chunks=%d dropped=%d (5s)"
+                            .format(windowMax, windowStopMax, windowMaxRms, windowChunks, droppedChunks.getAndSet(0)))
                         windowMax = 0f
+                        windowStopMax = 0f
                         windowMaxRms = 0L
                         windowChunks = 0
                         windowStart = nowW

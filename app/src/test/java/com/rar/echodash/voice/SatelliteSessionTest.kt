@@ -235,6 +235,37 @@ class SatelliteSessionTest {
     }
 
     @Test
+    fun wakeDuringRingSilencesAlarmAndStillStartsThePipeline() {
+        // "OK Ember, stop" instinct: the wake head fires first and hands the mic to HA, so the
+        // bare-"stop" head can never see the utterance — the wake itself must silence the ring
+        // (observed live 2026-07-18: alarm blared over the whole session).
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"))
+        s.onEvent(event("timer-started", """{"id":"t1","total_seconds":10,"name":"X"}"""), nowMs = 0)
+        s.onEvent(event("timer-finished", """{"id":"t1"}"""), nowMs = 10_000)
+        val a = s.onWakeDetected("ok_ember", nowMs = 11_000)
+        assertNull(timers(a).alert)                                    // ring silenced
+        assertTrue(sends(a).map { it.type }.contains("run-pipeline"))  // session still runs
+    }
+
+    @Test
+    fun wakeWithNoRingEmitsNoTimersAction() {
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"))
+        assertTrue(s.onWakeDetected("ok_ember", nowMs = 0).filterIsInstance<SatelliteAction.Timers>().isEmpty())
+    }
+
+    @Test
+    fun legacyDetectionEventDuringRingSilencesAlarm() {
+        // HA-side wake devices get the same behavior via the legacy detection event.
+        val s = session()
+        s.onEvent(event("timer-started", """{"id":"t1","total_seconds":10,"name":"X"}"""), nowMs = 0)
+        s.onEvent(event("timer-finished", """{"id":"t1"}"""), nowMs = 10_000)
+        val a = s.onEvent(event("detection"), nowMs = 11_000)
+        assertNull(timers(a).alert)
+    }
+
+    @Test
     fun stopNeverStartsAPipeline() {
         val s = session()
         s.onEvent(event("timer-started", """{"id":"t1","total_seconds":10,"name":"X"}"""), nowMs = 0)

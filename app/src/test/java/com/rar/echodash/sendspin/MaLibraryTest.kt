@@ -298,6 +298,23 @@ class MaLibraryTest {
         h.lib.stop()
     }
 
+    @Test
+    fun removeQueueItemResolvesEffectiveQueueThenSendsDeleteItem() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        val res = h.lib.removeQueueItem("qi-42")
+        assertTrue(res.isSuccess)
+        assertEquals(
+            listOf("player_queues/get_active_queue", "player_queues/delete_item"),
+            h.commands.map { it.first },
+        )
+        val deleteArgs = h.commands[1].second
+        assertEquals("q-77", deleteArgs["queue_id"])
+        assertEquals("qi-42", deleteArgs["item_id_or_index"])
+        h.lib.stop()
+    }
+
     // ---- signIn ----
 
     @Test

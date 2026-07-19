@@ -274,6 +274,28 @@ class MaCommandClient {
         }
     }
 
+    /**
+     * Remove a single item from the queue by its queue_item_id. Server-side: if the target is
+     * already loaded into the player's playback buffer, the delete is silently ignored (with a
+     * server warning log) rather than erroring — protects the currently-streaming item from
+     * being pulled out from under playback. Callers should avoid offering this on the current
+     * row (see MusicBrowser's QueueRow isCurrentItem guard) even though it's not load-bearing
+     * for correctness here.
+     */
+    suspend fun deleteQueueItem(queueId: String, queueItemId: String): Result<Unit> {
+        return try {
+            sendCommand(
+                "player_queues/delete_item",
+                mapOf("queue_id" to queueId, "item_id_or_index" to queueItemId)
+            )
+            Log.i(TAG, "Removed queue item: $queueItemId")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to remove queue item: $queueItemId", e)
+            Result.failure(e)
+        }
+    }
+
     // ========================================================================
     // Library Commands
     // ========================================================================

@@ -150,6 +150,9 @@ class MaLibrary(
     suspend fun clearQueue(): Result<Unit> =
         withQueue { client, queueId -> client.clearQueue(queueId) }
 
+    suspend fun removeQueueItem(queueItemId: String): Result<Unit> =
+        withQueue { client, queueId -> client.deleteQueueItem(queueId, queueItemId) }
+
     // ---- Favorite / radio ops ----
 
     /**

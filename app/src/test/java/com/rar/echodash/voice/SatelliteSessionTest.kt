@@ -215,6 +215,36 @@ class SatelliteSessionTest {
     }
 
     @Test
+    fun stopDuringRingSilencesAlarmExactlyLikeADismiss() {
+        val s = session()
+        s.onEvent(event("timer-started", """{"id":"t1","total_seconds":10,"name":"X"}"""), nowMs = 0)
+        s.onEvent(event("timer-finished", """{"id":"t1"}"""), nowMs = 10_000)
+        val a = s.onStopDetected(nowMs = 11_000)
+        assertNull(timers(a).alert)                                   // alert cleared
+        assertEquals(1, a.filterIsInstance<SatelliteAction.Timers>().size)  // Timers emitted
+    }
+
+    @Test
+    fun stopWithNoRingIsIgnored() {
+        // No alarm ringing: a stray "stop" detection is harmless (scoped activation).
+        assertTrue(session().onStopDetected(nowMs = 0).isEmpty())
+        // A live but not-yet-finished timer is not a ring either.
+        val s = session()
+        s.onEvent(event("timer-started", """{"id":"t1","total_seconds":10}"""), nowMs = 0)
+        assertTrue(s.onStopDetected(nowMs = 1_000).isEmpty())
+    }
+
+    @Test
+    fun stopNeverStartsAPipeline() {
+        val s = session()
+        s.onEvent(event("timer-started", """{"id":"t1","total_seconds":10,"name":"X"}"""), nowMs = 0)
+        s.onEvent(event("timer-finished", """{"id":"t1"}"""), nowMs = 10_000)
+        val a = s.onStopDetected(nowMs = 11_000)
+        assertFalse(sends(a).map { it.type }.contains("run-pipeline"))
+        assertFalse(sends(a).map { it.type }.contains("detection"))
+    }
+
+    @Test
     fun multipleConcurrentTimers() {
         val s = session()
         s.onEvent(event("timer-started", """{"id":"a","total_seconds":120}"""), nowMs = 0)

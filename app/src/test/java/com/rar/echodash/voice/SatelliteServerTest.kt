@@ -155,8 +155,7 @@ class SatelliteServerTest {
         val det = WakeDetector(
             melspec = WakeDetector.TfGraph { FloatArray(256) },
             embedding = WakeDetector.TfGraph { FloatArray(96) },
-            head = WakeDetector.TfGraph { floatArrayOf(0.9f) },
-            thresholdPct = 50,
+            heads = listOf(WakeDetector.Head("alexa", WakeDetector.TfGraph { floatArrayOf(0.9f) }, thresholdPct = 50)),
             nowMs = { 0L },
         )
         server = SatelliteServer(scope, port = 0, appVersion = "0.3", name = { "Test Sat" }, out = out)
@@ -174,5 +173,49 @@ class SatelliteServerTest {
             assertEquals("run-pipeline", c.read()!!.type)
             assertEquals("streaming-started", c.read()!!.type)
         }
+    }
+
+    @Test fun stopHeadSilencesRingingTimerAlarm() {
+        server.stop()
+        // Two heads: the primary never fires (score 0); the "stop" head fires past warm-up.
+        val det = WakeDetector(
+            melspec = WakeDetector.TfGraph { FloatArray(256) },
+            embedding = WakeDetector.TfGraph { FloatArray(96) },
+            heads = listOf(
+                WakeDetector.Head("okay_nabu", WakeDetector.TfGraph { floatArrayOf(0f) }, thresholdPct = 50),
+                WakeDetector.Head(SatelliteServer.STOP_HEAD, WakeDetector.TfGraph { floatArrayOf(0.9f) },
+                    SatelliteServer.STOP_THRESHOLD_PCT),
+            ),
+            nowMs = { 0L },
+        )
+        server = SatelliteServer(scope, port = 0, appVersion = "0.3", name = { "Test Sat" }, out = out)
+        server.start(localWake = true, detector = det, wakeWord = "okay_nabu")
+        awaitBind()
+        TestClient(server.boundPort).use { c ->
+            c.send(WyomingEvent("run-satellite"))   // arm mic (DETECTING) so chunks feed the detector
+            assertEquals("streaming-stopped", c.read()!!.type)
+            assertEquals("start-mic", out.next())
+            // Ring an alarm.
+            c.send(WyomingEvent("timer-started", jsonOf("""{"id":"t1","total_seconds":1,"name":"Tea"}""")))
+            c.send(WyomingEvent("timer-finished", jsonOf("""{"id":"t1"}""")))
+            assertTrue("alarm never rang", out.awaitTimers { it.alert != null })
+            // Say "stop" (no wake word): the stop head fires and the alert clears. Had the stop
+            // routed through the wake path instead, onStopDetected would never run, the alert would
+            // stay up (ticks keep re-emitting it), and this await would time out.
+            server.submitMicChunk(ByteArray(17 * 1280 * 2) { 1 })
+            assertTrue("alarm was not silenced", out.awaitTimers { it.alert == null })
+        }
+    }
+
+    private fun jsonOf(s: String) = Json.parseToJsonElement(s).jsonObject
+
+    /** Drain [RecordingOut] until a Timers state matches [pred] (or 5 s elapses). */
+    private fun RecordingOut.awaitTimers(pred: (TimersUiState) -> Boolean): Boolean {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (System.currentTimeMillis() < deadline) {
+            val item = calls.poll(200, TimeUnit.MILLISECONDS) ?: continue
+            if (item is TimersUiState && pred(item)) return true
+        }
+        return false
     }
 }

@@ -487,7 +487,15 @@ class AppDeps(context: Context) {
                         MixerGuard.apply()
                         val graphs = TfliteWakeGraphs.load(appContext.assets, wakeWord)
                         val detector = if (graphs != null) {
-                            WakeDetector(graphs.first, graphs.second, graphs.third, threshold) {
+                            // Primary head = the configured wake word at the user's threshold.
+                            val heads = mutableListOf(WakeDetector.Head(wakeWord, graphs.third, threshold))
+                            // Optional second head: an always-on "stop" that silences a ringing timer
+                            // alarm with no wake word. Loaded separately so a missing/corrupt stop
+                            // asset can never break the primary wake word (feature just stays absent).
+                            TfliteWakeGraphs.loadHead(appContext.assets, SatelliteServer.STOP_HEAD)?.let { stop ->
+                                heads += WakeDetector.Head(SatelliteServer.STOP_HEAD, stop, SatelliteServer.STOP_THRESHOLD_PCT)
+                            }
+                            WakeDetector(graphs.first, graphs.second, heads) {
                                 System.currentTimeMillis()
                             }
                         } else {

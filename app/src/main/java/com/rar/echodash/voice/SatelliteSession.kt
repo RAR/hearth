@@ -300,6 +300,16 @@ class SatelliteSession(
         return listOf(SatelliteAction.Timers(timersState(nowMs)))
     }
 
+    /**
+     * The on-device "stop" head fired (see WakeDetector's second head). Only meaningful while the
+     * timer alert is ringing — it silences it exactly like a tap on the alert. Ignored otherwise:
+     * this is scoped activation (mirrors ESPHome Voice PE), so a stray "stop" detection outside a
+     * ring is harmless by construction — it can never do anything but silence a ringing alarm.
+     * No earcon: the ring stopping IS the feedback (the App layer stops the chime when alert -> null).
+     */
+    fun onStopDetected(nowMs: Long): List<SatelliteAction> =
+        if (alert == null) emptyList() else onTimerAlertDismissed(nowMs)
+
     fun onTick(nowMs: Long): List<SatelliteAction> {
         val actions = mutableListOf<SatelliteAction>()
         // Watchdog: a stalled pipeline (no transcript, or answer text but no playback) must not

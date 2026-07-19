@@ -56,6 +56,18 @@ class SatelliteServer(
         private const val TICK_MS = 500L
         private const val DETECTOR_QUEUE_MAX = 8
         private val RESET_MARKER = Any()
+
+        /** Name of the optional second wake head that silences a ringing timer alarm. This is
+         *  INTERNAL — it is deliberately NOT advertised in the info event's HA-selectable wake
+         *  model list; it only ever silences a ringing alert (see SatelliteSession.onStopDetected). */
+        const val STOP_HEAD = "stop"
+
+        /** Fire threshold for the "stop" head, intentionally LOWER than the wake threshold: while a
+         *  timer alarm rings, the speaker is blaring that alarm straight at the mic (poor SNR
+         *  depresses scores). A miss means the alarm keeps blaring at the user; a false fire outside
+         *  a ring is discarded by the session (onStopDetected is a no-op with no alert up). So we
+         *  bias hard toward catching the "stop". */
+        const val STOP_THRESHOLD_PCT = 30
     }
 
     private class Connection(val socket: Socket, val out: OutputStream)
@@ -289,12 +301,22 @@ class SatelliteServer(
                         windowChunks = 0
                         windowStart = nowW
                     }
-                    if (fired) {
+                    if (fired.isNotEmpty()) {
                         synchronized(lock) {
                             val conn = active
+                            // Mic is only armed while connected, so requiring conn holds for stop too.
                             if (conn != null) {
-                                Log.i(TAG, "wake '$wakeWord' score=%.2f".format(score))
-                                dispatch(conn, session.onWakeDetected(wakeWord, System.currentTimeMillis()))
+                                val now = System.currentTimeMillis()
+                                for (name in fired) {
+                                    if (name == STOP_HEAD) {
+                                        // Scoped: acts only while a timer alarm rings, else a no-op.
+                                        Log.i(TAG, "stop score=%.2f".format(det.lastScoreOf(STOP_HEAD)))
+                                        dispatch(conn, session.onStopDetected(now))
+                                    } else {
+                                        Log.i(TAG, "wake '$wakeWord' score=%.2f".format(score))
+                                        dispatch(conn, session.onWakeDetected(wakeWord, now))
+                                    }
+                                }
                             }
                         }
                     }

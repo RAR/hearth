@@ -52,6 +52,21 @@ object TfliteWakeGraphs {
         }
     }
 
+    /**
+     * Load a single EXTRA head graph (same 16x96 -> 1 head format), or null if the asset is
+     * missing/corrupt. Deliberately separate from [load] and self-contained: an optional head
+     * (e.g. the "stop" alarm-silencer) must NEVER be able to break the primary wake word, so its
+     * failure is swallowed here and the feature is simply absent. Caller passes the bare model id.
+     */
+    fun loadHead(assets: AssetManager, name: String): WakeDetector.TfGraph? {
+        return try {
+            graph(Interpreter(loadModel(assets, "$name.tflite")), HEAD_IN, HEAD_OUT)
+        } catch (e: Exception) {
+            Log.w(TAG, "extra head '$name' unavailable; feature disabled", e)
+            null
+        }
+    }
+
     private fun loadModel(assets: AssetManager, name: String): ByteBuffer {
         val bytes = assets.open("wake/$name").use { it.readBytes() }
         return ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {

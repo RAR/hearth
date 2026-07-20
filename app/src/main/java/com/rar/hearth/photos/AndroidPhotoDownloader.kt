@@ -2,11 +2,10 @@ package com.rar.hearth.photos
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.ImageDecoder
+import android.os.Build
 import com.rar.hearth.ha.HaClient
 import java.io.File
 import java.io.FileOutputStream
-import java.nio.ByteBuffer
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -66,25 +65,14 @@ class AndroidPhotoDownloader(
      * iPhone HEICs carry — so photos came out sideways/upside-down and got baked that way into the
      * JPEG cache. ImageDecoder applies both forms during decode. Falls back to the
      * orientation-blind BitmapFactory path only if ImageDecoder rejects the bytes outright.
+     *
+     * ImageDecoder is API 28+, so its usage lives in [ImageDecoderPhotos] (isolated so it never
+     * loads on API 27, e.g. the Shelly Wall Display); pre-P devices use the BitmapFactory path.
      */
     private fun decodeOriented(bytes: ByteArray): Bitmap? =
-        runCatching {
-            ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { decoder, info, _ ->
-                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE // hardware bitmaps can't be compressed
-                val w = info.size.width
-                val h = info.size.height
-                val scale = maxOf(
-                    target.width.toFloat() / w,
-                    target.height.toFloat() / h,
-                )
-                if (scale < 1f) {
-                    decoder.setTargetSize(
-                        (w * scale).roundToInt().coerceAtLeast(1),
-                        (h * scale).roundToInt().coerceAtLeast(1),
-                    )
-                }
-            }
-        }.getOrNull()?.let(::centerCropToScreen) ?: decodeDownsampled(bytes)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+            ImageDecoderPhotos.decode(bytes, target)?.let(::centerCropToScreen) ?: decodeDownsampled(bytes)
+        else decodeDownsampled(bytes)
 
     /** Decode [bytes] downsampled by a power-of-2 inSampleSize, fill-scaled to cover [target], cropped. */
     private fun decodeDownsampled(bytes: ByteArray): Bitmap? {

@@ -10,7 +10,7 @@ android {
     compileSdk = 34
     defaultConfig {
         applicationId = "com.rar.echodash"
-        minSdk = 28
+        minSdk = 27
         targetSdk = 34
         versionCode = 1
         versionName = "0.2"

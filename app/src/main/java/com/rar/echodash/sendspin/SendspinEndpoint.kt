@@ -1,8 +1,12 @@
 package com.rar.echodash.sendspin
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioManager
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.rar.echodash.config.DashConfig
 import com.rar.echodash.media.NowPlayingStore
 import com.rar.echodash.sendspin.coordinator.TransportState
@@ -75,6 +79,37 @@ class SendspinEndpoint(
     init {
         // Persist the SendSpin player id across app restarts. First call wins.
         UserSettings.initialize(context)
+    }
+
+    init {
+        // Follow system-media (STREAM_MUSIC) volume changes made outside the takeover -- hardware
+        // buttons, other apps -- so the takeover slider tracks them. The SendSpin AudioTrack is
+        // USAGE_MEDIA, so those changes already move the loudness; without this observer the on-screen
+        // slider stays at its stale seeded value while the volume shifts underneath it. Mirrors
+        // ExoPlayerEngine's receiver. The endpoint is constructed once by the launcher and lives for
+        // the app's whole life, so the receiver is never unregistered.
+        ContextCompat.registerReceiver(
+            context,
+            object : BroadcastReceiver() {
+                override fun onReceive(c: Context?, intent: Intent?) {
+                    if (intent?.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1)
+                        != AudioManager.STREAM_MUSIC
+                    ) {
+                        return
+                    }
+                    npVolume = currentDeviceVolumePercent()
+                    // Surface it only while a SendSpin takeover is up (publishNowPlaying keys active
+                    // off hasTrack) and reconcile MA as PLAYER state -- the same non-clobbering report
+                    // start()/Ready make -- so MA's slider matches too. Not a group command.
+                    if (hasTrack) {
+                        publishNowPlaying()
+                        sendSpin?.setVolume(npVolume / 100.0)
+                    }
+                }
+            },
+            IntentFilter("android.media.VOLUME_CHANGED_ACTION"),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
     }
 
     // ---- Public status ----

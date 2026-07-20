@@ -4,7 +4,7 @@
      platform's designated place for it — so "Hearth" is present from the first frame, matching the
      baked-in wordmark the Echo (API 30) gets from windowBackground/ic_splash_lockup. -->
 <resources>
-    <style name="Theme.EchoDash" parent="@android:style/Theme.Material.NoActionBar">
+    <style name="Theme.Hearth" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:windowBackground">@drawable/splash_background</item>
         <item name="android:windowSplashScreenBackground">#FF000000</item>
         <item name="android:windowSplashScreenBrandingImage">@drawable/ic_wordmark</item>

@@ -6,10 +6,10 @@ import androidx.compose.runtime.Composable
 
 /** App-wide dark theme with Nunito typography. */
 @Composable
-fun EchoTheme(content: @Composable () -> Unit) {
+fun HearthTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(),
-        typography = EchoTypography,
+        typography = HearthTypography,
         content = content,
     )
 }

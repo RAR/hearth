@@ -2,7 +2,7 @@ package com.rar.hearth
 
 import android.app.Application
 
-class EchoDashApplication : Application() {
+class HearthApplication : Application() {
     lateinit var deps: AppDeps
         private set
 

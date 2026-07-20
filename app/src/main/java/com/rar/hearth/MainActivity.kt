@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
             systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
-        deps = (application as EchoDashApplication).deps
+        deps = (application as HearthApplication).deps
         if (deps.configStore.config.value.voice.enabled &&
             checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) !=
                 android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
         attachedHooks = hooks
         deps.kioskDevice.attach(hooks)
         deps.kiosk.pushToDevice()
-        setContent { EchoDashApp(deps) }
+        setContent { HearthApp(deps) }
     }
 
     override fun onDestroy() {

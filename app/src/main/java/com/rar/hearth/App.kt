@@ -63,7 +63,7 @@ import com.rar.hearth.ui.model.parseCalendarEvents
 import com.rar.hearth.ui.model.pushedNotificationItems
 import com.rar.hearth.ui.model.quickButtonService
 import com.rar.hearth.ui.model.takeoverVisibleOf
-import com.rar.hearth.ui.theme.EchoTheme
+import com.rar.hearth.ui.theme.HearthTheme
 import com.rar.hearth.vaca.AndroidKioskDevice
 import com.rar.hearth.vaca.AnnouncePlayer
 import com.rar.hearth.vaca.AndroidPcmSink
@@ -121,7 +121,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import okhttp3.OkHttpClient
 
-/** Process-wide dependencies; owned by EchoDashApplication, created on the main thread. */
+/** Process-wide dependencies; owned by HearthApplication, created on the main thread. */
 class AppDeps(context: Context) {
     private val appContext = context.applicationContext
 
@@ -633,7 +633,7 @@ fun initialScreen(settings: SettingsStore): Screen =
     if (settings.refreshToken == null) Screen.Setup else Screen.Dashboard
 
 @Composable
-fun EchoDashApp(deps: AppDeps) {
+fun HearthApp(deps: AppDeps) {
     var screen by remember { mutableStateOf(initialScreen(deps.settings)) }
     val connState by deps.ws.connectionState.collectAsStateWithLifecycle()
 
@@ -665,7 +665,7 @@ fun EchoDashApp(deps: AppDeps) {
         showSplash = false
     }
 
-    EchoTheme {
+    HearthTheme {
         Box(Modifier.fillMaxSize()) {
             when (screen) {
                 Screen.Setup -> SetupScreen(

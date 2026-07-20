@@ -23,7 +23,7 @@ val NunitoFamily = FontFamily(
 private val base = Typography()
 
 /** Material3 typography with every style switched to Nunito. */
-val EchoTypography = base.copy(
+val HearthTypography = base.copy(
     displayLarge = base.displayLarge.copy(fontFamily = NunitoFamily),
     displayMedium = base.displayMedium.copy(fontFamily = NunitoFamily),
     displaySmall = base.displaySmall.copy(fontFamily = NunitoFamily),

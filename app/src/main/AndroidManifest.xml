@@ -9,12 +9,12 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <application
-        android:name=".EchoDashApplication"
+        android:name=".HearthApplication"
         android:label="Hearth"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"
-        android:theme="@style/Theme.EchoDash">
+        android:theme="@style/Theme.Hearth">
         <activity
             android:name=".MainActivity"
             android:exported="true"

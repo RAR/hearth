@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Splash: dark branded window background instead of the stock grey/white flash. -->
-    <style name="Theme.EchoDash" parent="@android:style/Theme.Material.NoActionBar">
+    <style name="Theme.Hearth" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:windowBackground">@drawable/splash_background</item>
     </style>
 </resources>

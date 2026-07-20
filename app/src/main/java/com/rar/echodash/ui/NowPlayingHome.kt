@@ -102,24 +102,6 @@ fun NowPlayingHome(
         }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)))
 
-        // Top-right chips over the takeover: Browse (jumps to the MA library / MEDIA view) and
-        // Home (dismisses the takeover for the session — music keeps playing — returning to the
-        // dashboard). TopStart holds the compact clock HomeView draws above this layer. Home sits
-        // in the outermost corner (exit lives in the corner); Browse is to its left. Both 48 dp
-        // (not the transport 64) so they clear the art card's top edge on the smallest canvas
-        // (787×394, art at its height-limited 360dp); the row grows leftward along the empty top edge.
-        Row(
-            Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            NpTransportButton(Icons.AutoMirrored.Outlined.QueueMusic, size = 48.dp, iconSize = 24.dp) {
-                onBrowse()
-            }
-            NpTransportButton(Icons.Outlined.Home, size = 48.dp, iconSize = 24.dp) {
-                onHome()
-            }
-        }
-
         // Sharp art card, right side, clear of the pills row.
         Box(
             Modifier
@@ -139,6 +121,25 @@ fun NowPlayingHome(
             }
         }
 
+        // Top-right chips: Browse (jumps to the MA library / MEDIA view) and Home (dismisses the
+        // takeover for the session — music keeps playing). Composed AFTER the art card so they
+        // draw ON TOP of it: on the smallest canvas (787×394, art at its height-limited 360dp)
+        // the art's top edge reaches this zone, and composing the chips first painted them
+        // underneath — user-reported on the Show 5. The opaque 48dp circles (not the transport
+        // 64) read fine over the art's corner; Home takes the outermost corner (exit lives in
+        // the corner), Browse to its left. TopStart holds the compact clock HomeView draws above.
+        Row(
+            Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            NpTransportButton(Icons.AutoMirrored.Outlined.QueueMusic, size = 48.dp, iconSize = 24.dp) {
+                onBrowse()
+            }
+            NpTransportButton(Icons.Outlined.Home, size = 48.dp, iconSize = 24.dp) {
+                onHome()
+            }
+        }
+
         // Left-center: metadata + progress + transport + volume, held clear of the art card.
         Column(
             Modifier
@@ -147,7 +148,12 @@ fun NowPlayingHome(
                 // fixed-width column can't reach the art card at any screen size (Show 5:
                 // 787 − 360 − 128 = 299). width() (not widthIn) fills the whole gap so the transport
                 // group can center in it rather than hug the wrapped text.
-                .padding(start = 48.dp)
+                // Top pad 56 reserves the compact clock's strip (36sp at top=8 → bottom ≈53dp):
+                // the column has grown (progress bar, up-next, toggle chips) and pure CenterStart
+                // centering pushed the title into the clock on the 394dp-tall Show 5 — with the
+                // pad, a taller-than-fits column pins its title at y=56 instead of the clock zone,
+                // while roomy screens only gain a 28dp downward centering bias.
+                .padding(start = 48.dp, top = 56.dp)
                 .width(layout.metaMaxWidthDp.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {

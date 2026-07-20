@@ -1,6 +1,5 @@
 package com.rar.echodash.sendspin
 
-import com.rar.echodash.sendspin.sendspin.PlaybackState
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -8,10 +7,10 @@ import org.junit.Test
 /**
  * Unit tests for the pure loading predicate that drives the now-playing takeover's
  * play/pause spinner ring. Loading spans two phases: (a) a genuine new-track metadata
- * swap while the OLD stream is still PLAYING ([awaitingStreamStart]), and (b) the new
- * stream started but is still buffering (INITIALIZING/WAITING_FOR_START). It is off in
- * steady playback and while paused. Pure so it is JVM-testable without the device-bound
- * endpoint.
+ * swap while the OLD stream is still playing ([awaitingStreamStart]), and (b) a FRESH
+ * stream buffering to first playback ([startingStream], a latch cleared on first flowing
+ * audio). It is off in steady playback and while paused. Pure so it is JVM-testable
+ * without the device-bound endpoint.
  */
 class SendspinLoadingTest {
 
@@ -20,8 +19,8 @@ class SendspinLoadingTest {
         // No track -> no spinner, regardless of the other inputs.
         assertFalse(
             sendspinLoading(
-                hasTrack = false, playWhenReady = true, awaitingStreamStart = true,
-                playbackState = PlaybackState.INITIALIZING,
+                hasTrack = false, playWhenReady = true,
+                awaitingStreamStart = true, startingStream = true,
             ),
         )
     }
@@ -31,73 +30,54 @@ class SendspinLoadingTest {
         // Paused (playWhenReady=false) -> no spinner, even mid-swap or mid-buffer.
         assertFalse(
             sendspinLoading(
-                hasTrack = true, playWhenReady = false, awaitingStreamStart = true,
-                playbackState = PlaybackState.WAITING_FOR_START,
+                hasTrack = true, playWhenReady = false,
+                awaitingStreamStart = true, startingStream = true,
             ),
         )
     }
 
     @Test
-    fun phase_a_awaiting_stream_start_is_loading_even_over_playing_state() {
-        // New metadata shown while the OLD stream is still PLAYING: the flag wins over the
-        // stale PLAYING state.
+    fun phase_a_awaiting_stream_start_is_loading() {
+        // New metadata shown while the OLD stream is still playing (phase a), no fresh-stream
+        // buffering latch yet.
         assertTrue(
             sendspinLoading(
-                hasTrack = true, playWhenReady = true, awaitingStreamStart = true,
-                playbackState = PlaybackState.PLAYING,
+                hasTrack = true, playWhenReady = true,
+                awaitingStreamStart = true, startingStream = false,
             ),
         )
     }
 
     @Test
-    fun phase_a_awaiting_stream_start_before_any_audio_state_is_loading() {
-        // Metadata swap before the audio-state callback has fired at all (null state).
+    fun phase_b_starting_stream_is_loading() {
+        // A brand-new stream buffering to first playback (phase b), metadata phase already cleared.
         assertTrue(
             sendspinLoading(
-                hasTrack = true, playWhenReady = true, awaitingStreamStart = true,
-                playbackState = null,
+                hasTrack = true, playWhenReady = true,
+                awaitingStreamStart = false, startingStream = true,
             ),
         )
     }
 
     @Test
-    fun phase_b_initializing_is_loading() {
+    fun both_phases_flagged_is_loading() {
         assertTrue(
             sendspinLoading(
-                hasTrack = true, playWhenReady = true, awaitingStreamStart = false,
-                playbackState = PlaybackState.INITIALIZING,
+                hasTrack = true, playWhenReady = true,
+                awaitingStreamStart = true, startingStream = true,
             ),
         )
     }
 
     @Test
-    fun phase_b_waiting_for_start_is_loading() {
-        assertTrue(
-            sendspinLoading(
-                hasTrack = true, playWhenReady = true, awaitingStreamStart = false,
-                playbackState = PlaybackState.WAITING_FOR_START,
-            ),
-        )
-    }
-
-    @Test
-    fun steady_playing_is_not_loading() {
-        // Audio flowing, no pending swap -> no ring.
+    fun steady_playback_is_not_loading() {
+        // Audio flowing, no pending swap and the fresh-stream latch cleared -> no ring. This is the
+        // steady state a mid-stream re-anchor dip must NOT disturb: the latch (not a live buffering
+        // read) stays false, so the ring never reappears once playback settled.
         assertFalse(
             sendspinLoading(
-                hasTrack = true, playWhenReady = true, awaitingStreamStart = false,
-                playbackState = PlaybackState.PLAYING,
-            ),
-        )
-    }
-
-    @Test
-    fun draining_is_not_loading() {
-        // Reconnect buffer-play (DRAINING) is not a fresh-track load -> no ring.
-        assertFalse(
-            sendspinLoading(
-                hasTrack = true, playWhenReady = true, awaitingStreamStart = false,
-                playbackState = PlaybackState.DRAINING,
+                hasTrack = true, playWhenReady = true,
+                awaitingStreamStart = false, startingStream = false,
             ),
         )
     }

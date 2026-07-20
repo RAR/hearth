@@ -40,6 +40,7 @@ Full identity rename **including** the `vaca` subpackage.
   - class in `EchoDashApplication.kt` → file renamed `HearthApplication.kt`
   - manifest `android:name=".EchoDashApplication"` → `".HearthApplication"`
   - caller `EchoDashApplication.kt:12` `deps.startVaca()` (see §5 for `startVaca`)
+- `EchoDashApp` → `HearthApp` — the app's root `@Composable` (`fun EchoDashApp(deps: AppDeps)` in `App.kt`, called from `MainActivity.kt`). NOTE: `EchoDashApp` is a prefix of `EchoDashApplication`, so rename the Application class first.
 - `EchoTheme` → `HearthTheme` — `fun` in `ui/theme/Theme.kt` (3 refs: decl + call sites)
 - `EchoTypography` → `HearthTypography` — `val` in `ui/theme/Type.kt` (2 refs: decl + use in `Theme.kt`)
 

@@ -43,20 +43,19 @@ fun sendspinStatus(state: TransportState, streaming: Boolean): SendspinStatus = 
     else -> SendspinStatus.Disconnected // Idle, Failed
 }
 
-/** True while a SendSpin track is loading: we intend to play and there IS a track, but the new
- *  audio is not flowing yet -- either the new metadata arrived and its stream has not started
- *  ([awaitingStreamStart]), or a FRESH stream is buffering to first playback ([startingStream], a
- *  latch cleared once the player first reports a flowing state). Mirrors Music Assistant's spinner
- *  around the play/pause control. [startingStream] is a latch, not a live read of the engine's
- *  buffering states, so the engine's mid-stream re-anchor dips back into INITIALIZING never re-arm
- *  the spinner during steady playback. */
+/** True while a SendSpin stream is buffering to first playback: we intend to play, there IS a track,
+ *  and a fresh stream has started ([startingStream]) but the engine has not yet reported a flowing
+ *  state. Mirrors Music Assistant's spinner around the play/pause control. Keyed on the engine's
+ *  STREAM lifecycle, deliberately NOT on metadata: MA pre-announces the next track's title/art many
+ *  seconds before the current track ends (while it is still playing), so a metadata-driven ring
+ *  would sit stuck through steady playback. [startingStream] is armed at onStreamStart and cleared
+ *  the first time the player reports a flowing state, so it never lingers into steady playback. */
 fun sendspinLoading(
     hasTrack: Boolean,
     playWhenReady: Boolean,
-    awaitingStreamStart: Boolean,
     startingStream: Boolean,
 ): Boolean =
-    hasTrack && playWhenReady && (awaitingStreamStart || startingStream)
+    hasTrack && playWhenReady && startingStream
 
 /**
  * Long-lived glue that makes Hearth act as a SendSpin (Music Assistant) multi-room
@@ -298,14 +297,10 @@ class SendspinEndpoint(
     // the takeover is for active playback and appears only once a stream starts.
     @Volatile private var hasTrack: Boolean = false
 
-    // Loading window, phase a: set on a genuine new-track metadata swap, cleared when that track's
-    // stream starts (onStreamStart) -- [startingStream] then carries the spinner the rest of the way.
-    @Volatile private var awaitingStreamStart: Boolean = false
-    // Loading window, phase b: a FRESH stream is buffering to first playback. Set in onStreamStart
-    // when a brand-new player is created (a reused DAC-warm player keeps flowing, so it stays false),
-    // and cleared the first time the audio-state callback reports a flowing state. A LATCH, not a
-    // live read of the buffering states, so the engine's mid-stream re-anchor dips back into
-    // INITIALIZING/WAITING_FOR_START never re-arm the spinner during steady playback.
+    // Loading latch: a fresh stream is buffering to first playback. Armed at every onStreamStart and
+    // cleared the first time the audio-state callback reports a flowing state (PLAYING/DRAINING). A
+    // latch on the STREAM lifecycle -- NOT on metadata (MA pre-announces the next track's title/art
+    // seconds before the current track ends, so a metadata trigger would stick through steady play).
     @Volatile private var startingStream: Boolean = false
 
     /** Publish the current merged now-playing snapshot to [NowPlayingStore]. */
@@ -313,7 +308,7 @@ class SendspinEndpoint(
         val active = hasTrack
         val playing = playWhenReady
         val mutedNow = muted
-        val loadingNow = sendspinLoading(hasTrack, playWhenReady, awaitingStreamStart, startingStream)
+        val loadingNow = sendspinLoading(hasTrack, playWhenReady, startingStream)
         Log.d(TAG, "publish active=$active playing=$playing muted=$mutedNow title='$npTitle' art=${npArtwork?.size ?: 0} vol=$npVolume")
         mainScope.launch {
             nowPlaying.onSendspin(
@@ -383,15 +378,10 @@ class SendspinEndpoint(
         override fun onPlaybackStateChanged(state: PlaybackState) {
             val flowing = state == PlaybackState.PLAYING || state == PlaybackState.DRAINING
             if (flowing) {
-                // Audio is flowing -> nothing is loading. Clear BOTH flags: the fresh-stream buffering
-                // latch AND the metadata-swap flag. awaitingStreamStart is otherwise only cleared by
-                // onStreamStart, but on an auto-advance MA delivers the next track's metadata AFTER its
-                // stream already started (the reused player rolls straight into it with no paired
-                // onStreamStart), which would leave the flag -- and the spinner -- stuck on. Neither
-                // flag is re-armed by a later mid-stream re-init to INITIALIZING, so the ring leaves
-                // for good once real audio is playing.
+                // Audio is flowing -> the fresh-stream buffering window is over; drop the spinner
+                // latch. Not re-armed by a later mid-stream re-init to INITIALIZING, so once real
+                // audio is playing the ring stays gone until the next onStreamStart.
                 startingStream = false
-                awaitingStreamStart = false
                 if (!playWhenReady) playWhenReady = true
             }
             publishNowPlaying()
@@ -544,7 +534,7 @@ class SendspinEndpoint(
                     hasTrack = false
                     playWhenReady = false
                     // Clear the loading window too so a torn-down session never leaves a stuck spinner.
-                    awaitingStreamStart = false; startingStream = false
+                    startingStream = false
                     // Clear progress too so a later reactivation can't flash this track's stale
                     // position before MA's first progress update lands.
                     npDurationMs = 0; npPositionMs = 0; npPositionAtMs = 0
@@ -650,7 +640,7 @@ class SendspinEndpoint(
         hasTrack = false
         playWhenReady = false
         // Clear the loading window so a torn-down session never leaves a stuck spinner.
-        awaitingStreamStart = false; startingStream = false
+        startingStream = false
         muted = false // MA mute is per-session; a fresh start() begins unmuted (duckGain persists)
         // Clear progress so a later start() -> reactivation can't flash the old track's position.
         npDurationMs = 0; npPositionMs = 0; npPositionAtMs = 0
@@ -725,14 +715,14 @@ class SendspinEndpoint(
                 // the takeover shows playing immediately. The playback_state broadcast + the
                 // audio-state callback then confirm it.
                 playWhenReady = true
-                // The stream is starting -- the loading window's metadata phase is over.
-                awaitingStreamStart = false
+                // A fresh stream is starting -> arm the spinner latch; the flowing audio-state
+                // callback clears it once first playback is reached (INITIALIZING/WAITING_FOR_START
+                // -> PLAYING). Both the reused DAC-warm path and a brand-new player go through that
+                // buffer, so arm it either way; the latch is keyed on the stream lifecycle, never on
+                // metadata (which MA pre-announces well ahead of the actual track boundary).
+                startingStream = true
                 val existing = syncAudioPlayer
-                // Phase b: a brand-new player must buffer to first playback -> arm the spinner latch;
-                // a reused DAC-warm player keeps flowing, so leave it off (the metadata phase already
-                // covered the visible gap). The flowing audio-state callback clears the latch then.
                 val reusing = existing != null && existing.matchesFormat(sampleRate, channels, bitDepth)
-                startingStream = !reusing
                 // Do NOT clear metadata here. Music Assistant sends the next track's metadata +
                 // artwork BEFORE it starts the audio stream, so by the time onStreamStart fires
                 // npTitle/npArtwork already hold the NEW track -- clearing them would wipe the art
@@ -788,7 +778,7 @@ class SendspinEndpoint(
         override fun onStreamClear() {
             Log.i(TAG, "onStreamClear -> flush + clearBuffer")
             streaming = false
-            awaitingStreamStart = false; startingStream = false
+            startingStream = false
             // Sent synchronously (see onStreamStart) to preserve FIFO order.
             if (decodeChannel.trySend(DecodeTask.Flush).isFailure) {
                 Log.w(TAG, "decodeChannel closed, dropped Flush task")
@@ -800,7 +790,7 @@ class SendspinEndpoint(
         override fun onStreamEnd() {
             Log.i(TAG, "onStreamEnd -> enterIdle (keep DAC warm)")
             streaming = false
-            awaitingStreamStart = false; startingStream = false
+            startingStream = false
             // MA fires stream/end on pause/stop AND at every track boundary (the ~10s transcode gap
             // on "next"). Enter idle -- keep the AudioTrack alive writing silence so the DAC stays
             // warm for the next stream -- but do NOT clear the takeover here: the server's
@@ -854,11 +844,6 @@ class SendspinEndpoint(
                 publishNowPlaying()
                 return
             }
-            // A real track change (title differs from the current one -- including the first real
-            // title after null): mark the loading window until this track's stream starts. The new
-            // metadata/art shows now while the OLD stream is still PLAYING, so the buffering states
-            // alone don't cover this phase (see sendspinLoading).
-            if (title != npTitle) awaitingStreamStart = true
             npTitle = title
             npArtist = artist
             npAlbum = album

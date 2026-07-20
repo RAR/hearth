@@ -69,6 +69,10 @@ const ICONS = {
   ev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v-4l2-4.5A2 2 0 0 1 7.8 7.3h6.4A2 2 0 0 1 16 8.5L18 13v4"/><path d="M4 17h2M18 17h2"/><circle cx="7.5" cy="17" r="1.5"/><circle cx="16.5" cy="17" r="1.5"/><path d="M12 8.5 11 11.5h2L11.8 14.5"/></svg>',
 };
 
+// Eye glyphs for the login PIN reveal toggle (currentColor, same stroke style as ICONS).
+const EYE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 6.2A9.7 9.7 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3.2 3.7M6.2 6.2A17 17 0 0 0 2 12s3.5 6 10 6a9.6 9.6 0 0 0 4-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3 3l18 18"/></svg>';
+
 // ---------- tiny DOM helpers ----------
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -134,6 +138,33 @@ async function tryLoad() {
 function showLogin() {
   document.getElementById("login").hidden = false;
   document.getElementById("app").hidden = true;
+  loadHello();
+}
+
+// Pre-auth device name for the login card + password-manager username field. Fails soft:
+// on any error the login shows without a name and never blocks sign-in.
+async function loadHello() {
+  try {
+    const r = await api("GET", "/api/hello");
+    if (!r.ok) return;
+    const b = await r.json();
+    const name = (b && b.name) || "";
+    const row = document.getElementById("login-device-row");
+    const field = document.getElementById("login-device");
+    if (name) { field.value = name; row.hidden = false; }
+    else { row.hidden = true; }
+  } catch (e) { /* fail soft: show login without the device name */ }
+}
+
+// Reveal/hide the PIN. type=button so it never submits the login form.
+function togglePinVisibility() {
+  const pin = document.getElementById("pin");
+  const btn = document.getElementById("pin-toggle");
+  const reveal = pin.type === "password";
+  pin.type = reveal ? "text" : "password";
+  btn.setAttribute("aria-label", reveal ? "Hide PIN" : "Show PIN");
+  btn.setAttribute("aria-pressed", reveal ? "true" : "false");
+  btn.innerHTML = reveal ? EYE_OFF_ICON : EYE_ICON;
 }
 function showApp() {
   document.getElementById("login").hidden = true;
@@ -341,6 +372,7 @@ function showPage(key) {
 function render() {
   renderHa();
   renderDevice();
+  renderPin();
   renderBackup();
   renderPanels();
   renderHome();
@@ -464,6 +496,97 @@ async function renameDevice(input) {
     }
   } catch (e) {
     setStatus("Can't reach the device — not renamed.", "err");
+  }
+}
+
+function renderPin() {
+  const host = document.getElementById("pin-card");
+  clear(host);
+
+  const cur = el("input");
+  cur.readOnly = true;
+  cur.value = (lastStatus && lastStatus.pin) || "";
+  cur.setAttribute("aria-label", "Current config PIN");
+  cur.addEventListener("focus", () => cur.select());   // select-on-focus, read-only
+  host.appendChild(labeledRow("Current PIN", cur));
+
+  const next = el("input");
+  next.type = "text";
+  next.inputMode = "numeric";
+  next.maxLength = 8;
+  next.placeholder = "4–8 digits";
+  next.setAttribute("autocomplete", "off");
+  next.setAttribute("aria-label", "New PIN");
+  host.appendChild(labeledRow("Change PIN", next));
+
+  const err = el("div", "error");
+
+  const row = el("div", "row");
+  const saveBtn = el("button", "ghost", "Save PIN");
+  saveBtn.type = "button";
+  saveBtn.addEventListener("click", () => changePin(next, cur, err));
+  row.appendChild(saveBtn);
+
+  const resetBtn = el("button", "ghost", "Reset to random");
+  resetBtn.type = "button";
+  resetBtn.addEventListener("click", () => resetPinToRandom(cur, next, err));
+  row.appendChild(resetBtn);
+  host.appendChild(row);
+
+  host.appendChild(err);
+
+  host.appendChild(el("div", "muted",
+    "This PIN protects the configuration page and is shown on the device screen. Choose 4 to 8 " +
+    "digits, or reset to a new random 6-digit PIN. Changes take effect immediately — you stay " +
+    "signed in on this browser, but the new PIN is required next time."));
+}
+
+async function changePin(input, currentEl, err) {
+  err.textContent = "";
+  const pin = input.value.trim();
+  if (!/^\d{4,8}$/.test(pin)) {
+    err.textContent = "PIN must be 4 to 8 digits.";
+    return;
+  }
+  setStatus("Saving PIN…", "busy");
+  try {
+    const r = await api("PUT", "/api/pin", { pin });
+    if (r.status === 401) { showLogin(); return; }
+    const b = await r.json().catch(() => ({}));
+    if (r.ok && b.pin) {
+      currentEl.value = b.pin;
+      if (lastStatus) lastStatus.pin = b.pin;
+      input.value = "";
+      setStatus("PIN changed", "ok");
+    } else {
+      err.textContent = b.error === "invalid pin"
+        ? "PIN must be 4 to 8 digits."
+        : ("Error: " + (b.error || r.status));
+      setStatus("PIN not changed", "err");
+    }
+  } catch (e) {
+    setStatus("Can't reach the device — PIN not changed.", "err");
+  }
+}
+
+async function resetPinToRandom(currentEl, changeEl, err) {
+  err.textContent = "";
+  if (!confirm("Reset the config PIN to a new random 6-digit PIN?")) return;
+  setStatus("Resetting PIN…", "busy");
+  try {
+    const r = await api("POST", "/api/pin/reset");
+    if (r.status === 401) { showLogin(); return; }
+    const b = await r.json().catch(() => ({}));
+    if (r.ok && b.pin) {
+      currentEl.value = b.pin;
+      if (lastStatus) lastStatus.pin = b.pin;
+      changeEl.value = "";
+      setStatus("PIN reset", "ok");
+    } else {
+      setStatus("PIN not reset", "err");
+    }
+  } catch (e) {
+    setStatus("Can't reach the device — PIN not reset.", "err");
   }
 }
 
@@ -1259,6 +1382,8 @@ function startStatusPoll() {
 
 // ---------- boot ----------
 document.getElementById("login-form").addEventListener("submit", doLogin);
+document.getElementById("pin-toggle").innerHTML = EYE_ICON;
+document.getElementById("pin-toggle").addEventListener("click", togglePinVisibility);
 document.getElementById("save").addEventListener("click", save);
 document.getElementById("setup-form").addEventListener("submit", beginSetup);
 window.addEventListener("hashchange", () => showPage(currentPage()));

@@ -92,6 +92,37 @@ h1, h2, h3 { margin: 0; }
 }
 #pin::placeholder { letter-spacing: .35em; color: #45536e; }
 
+/* Device-name (username) heading — a real, submittable form field styled as a heading so
+   password managers key the saved PIN to this device. */
+.login-device-row {
+  display: flex; flex-direction: column; align-items: center; gap: .05rem;
+  margin-top: -.35rem;
+}
+.login-caption {
+  font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--text-dim);
+}
+.login-device {
+  width: 100%; text-align: center;
+  background: transparent; border: 0; padding: .05rem .2rem;
+  color: var(--text); font-weight: 800; font-size: 1.05rem; font-family: inherit;
+}
+.login-device:hover { border: 0; }
+.login-device:focus, .login-device:focus-visible { outline: none; box-shadow: none; border: 0; }
+
+/* PIN input + reveal (eye) toggle */
+.pin-field { position: relative; display: flex; }
+.pin-field #pin { flex: 1; width: 100%; padding-left: 3rem; padding-right: 3rem; }
+.pin-eye {
+  position: absolute; top: 50%; right: .45rem; transform: translateY(-50%);
+  width: 2.1rem; height: 2.1rem; padding: 0;
+  display: grid; place-items: center;
+  background: transparent; color: var(--text-dim);
+  border: 0; border-radius: 8px;
+}
+.pin-eye:hover { color: var(--text); background: rgba(255,255,255,.06); }
+.pin-eye svg { width: 1.25rem; height: 1.25rem; }
+
 /* =========================================================
    App shell
    ========================================================= */

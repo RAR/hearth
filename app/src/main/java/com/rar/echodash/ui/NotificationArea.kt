@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -50,6 +49,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -107,14 +107,14 @@ fun NotificationArea(
  * Mini-player card for the home notification stack — shown while a session is active, playing
  * (or within the post-pause grace window, see [miniPlayerVisible]), and neither the takeover nor
  * a swipe has claimed it. Chrome matches [NotificationRow] (RoundedCornerShape(14) on Black-0.35).
- * Layout is a full-height Row: a square album-art panel on the left ([artThumb] = art.sharp, or a
- * MusicNote fallback) sized to the card height (fillMaxHeight + aspectRatio, so the whole card's
- * height drives the art edge), then a right column with the title/artist lines ([artist] omitted
- * when null/blank) above four 36dp transport chips (back/play-pause/next/stop). Tapping the art or
- * the title/artist column runs [onTap] (restores the takeover); the transport chips consume their
- * own taps. The whole card is wrapped in the exact swipe-to-dismiss mechanics [NotificationRow]
- * uses below — fire-and-forget, local state only, no server op and so no failure path (unlike the
- * MA queue rows' suspend variant elsewhere).
+ * Layout is a Row whose height is driven by the right column (title/artist lines, [artist] omitted
+ * when null/blank, above four 36dp transport chips: back/play-pause/next/stop). A square album-art
+ * panel on the left ([artThumb] = art.sharp, or a MusicNote fallback) is sized to that column's
+ * measured height (onSizeChanged → dp), so the art spans the whole card. Tapping the art or the
+ * title/artist column runs [onTap] (restores the takeover); the transport chips consume their own
+ * taps. The whole card is wrapped in the exact swipe-to-dismiss mechanics [NotificationRow] uses
+ * below — fire-and-forget, local state only, no server op and so no failure path (unlike the MA
+ * queue rows' suspend variant elsewhere).
  */
 @Composable
 fun MiniPlayerCard(
@@ -163,43 +163,50 @@ fun MiniPlayerCard(
                 }
             },
     ) {
-        // Full-height Row: the right column's content (title/artist + transport) drives the card
-        // height via IntrinsicSize.Min, and the art panel fills that height as a square.
+        // The right column (title/artist + transport chips) drives the card height; the square
+        // album-art panel on the left is sized to that measured height so it spans the whole card.
+        // We measure (onSizeChanged) instead of fillMaxHeight+aspectRatio because that intrinsic
+        // combo mis-measured the Row to the full available height. contentHeightPx is 0 on the
+        // first frame (art skipped, Row wraps the column) and settles to the column height next.
+        val density = LocalDensity.current
+        var contentHeightPx by remember { mutableIntStateOf(0) }
         Row(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color.Black.copy(alpha = 0.35f))
-                .height(IntrinsicSize.Min),
+                .background(Color.Black.copy(alpha = 0.35f)),
         ) {
             // Album art spans the whole card height. Tapping it (like the title/artist column)
             // restores the takeover; the transport chips consume their own taps -- normal Compose
             // click handling wins over the swipe detector for a tap below the swipe threshold.
-            Box(
-                Modifier
-                    .fillMaxHeight()
-                    .aspectRatio(1f, matchHeightConstraintsFirst = true)
-                    .background(Color.Black.copy(alpha = 0.25f))
-                    .clickable { onTap() },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (artThumb != null) {
-                    Image(
-                        artThumb, contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                    )
-                } else {
-                    Icon(
-                        Icons.Outlined.MusicNote, contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.5f),
-                        modifier = Modifier.size(32.dp),
-                    )
+            if (contentHeightPx > 0) {
+                val artSide = with(density) { contentHeightPx.toDp() }
+                Box(
+                    Modifier
+                        .size(artSide)
+                        .background(Color.Black.copy(alpha = 0.25f))
+                        .clickable { onTap() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (artThumb != null) {
+                        Image(
+                            artThumb, contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        Icon(
+                            Icons.Outlined.MusicNote, contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.5f),
+                            modifier = Modifier.size(32.dp),
+                        )
+                    }
                 }
             }
             Column(
                 Modifier
                     .weight(1f)
+                    .onSizeChanged { contentHeightPx = it.height }
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {

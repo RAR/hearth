@@ -6,6 +6,7 @@ import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -47,6 +48,18 @@ class EntityHub(
     private var watched: List<String> = emptyList()
     private var started = false
 
+    private companion object {
+        // Registry-list retries on a CONNECTED transition. The device can connect before HA is fully
+        // ready (co-restart), and the first config/entity_registry/list then errors; retrying with
+        // backoff lets it self-heal in seconds instead of sitting CONNECTED-but-empty until a manual
+        // restart. Bounded, then we open the entity subscription anyway (best-effort) -- entity data
+        // must not depend on the registry, which only supplies names/the web picker.
+        const val RESYNC_MAX_RETRIES = 5
+    }
+
+    // 500, 1000, 2000, 4000, 8000 ms, capped.
+    private fun resyncBackoffMs(retry: Int): Long = (500L * (1L shl retry.coerceAtMost(4))).coerceAtMost(8_000L)
+
     fun start() {
         if (started) return
         started = true
@@ -71,18 +84,35 @@ class EntityHub(
     }
 
     private suspend fun resync() = mutex.withLock {
-        val reg = listRegistry() ?: return@withLock
-        _registry.value = reg
         watched = config.value.referencedEntityIds()
         _entities.value = emptyMap()
+        // Probe HA readiness via the registry list, retrying transient early failures while we stay
+        // CONNECTED. Success also gives the names/picker registry.
+        var reg: RegistryIndex? = null
+        var retry = 0
+        while (client.connectionState.value == ConnState.CONNECTED) {
+            reg = listRegistry()
+            if (reg != null) break
+            if (retry >= RESYNC_MAX_RETRIES) {
+                android.util.Log.w("EntityHub", "registry list still failing after ${retry + 1} tries; subscribing without it")
+                break
+            }
+            android.util.Log.w("EntityHub", "registry list failed (try ${retry + 1}); retrying in ${resyncBackoffMs(retry)}ms")
+            delay(resyncBackoffMs(retry))
+            retry++
+        }
+        // The link may have dropped during the retries; if so, bail and let the next CONNECTED resync
+        // start clean (avoids racing a second subscribe onto the reconnect).
+        if (client.connectionState.value != ConnState.CONNECTED) return@withLock
+        reg?.let { _registry.value = it }
         try {
             openEntitiesSubscription()
             client.subscribe("subscribe_events", buildJsonObject { put("event_type", "entity_registry_updated") }) {
                 scope.launch { onRegistryUpdated() }
             }
         } catch (e: IOException) {
-            // socket dropped mid-resync; the next CONNECTED transition retries from scratch
-            android.util.Log.w("EntityHub", "resync failed", e)
+            // socket dropped mid-subscribe; the next CONNECTED transition retries from scratch
+            android.util.Log.w("EntityHub", "entity subscription failed; next CONNECTED retries", e)
         }
     }
 

@@ -7,6 +7,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -167,6 +168,63 @@ class EntityHubTest {
         val afterReconnect = fake.subscribed.count { it.first == "subscribe_entities" }
         assertEquals(1, afterReconnect - beforeReconnect)
         assertEquals(listOf("light.kitchen", "climate.hall"), fake.entityIdsOf(afterReconnect - 1))
+    }
+
+    // The hub's connectionState collector runs in backgroundScope. Under the StandardTestDispatcher,
+    // backgroundScope delays are advanced by advanceTimeBy (not by advanceUntilIdle, which only drains
+    // the foreground), so the resync backoff loop is driven with runCurrent + advanceTimeBy. 20s clears
+    // the full 500+1000+2000+4000+8000ms backoff schedule.
+    @Test
+    fun resyncRetriesRegistryThenSubscribesOnceHaBecomesReady() = runTest {
+        val fake = FakeHaClient()
+        // HA not ready for the first two registry lists (device connected before HA fully came up on a
+        // co-restart), then it comes up and the third list succeeds.
+        fake.results.add(null)
+        fake.results.add(null)
+        fake.results.add(Json.parseToJsonElement(registryJson))
+        val hub = EntityHub(fake, backgroundScope, config("light.kitchen")) { 0L }
+        hub.start()
+        fake.state.value = ConnState.CONNECTED
+        runCurrent()
+        advanceTimeBy(20_000) // drive virtual time through the backoff delays
+        runCurrent()
+
+        assertTrue(fake.requests.count { it.first == "config/entity_registry/list" } >= 3)
+        assertEquals(1, fake.subscribed.count { it.first == "subscribe_entities" })
+        assertTrue(hub.registry.value.registryNames.containsKey("light.kitchen"))
+    }
+
+    @Test
+    fun resyncSubscribesBestEffortWhenRegistryNeverLoads() = runTest {
+        val fake = FakeHaClient()
+        // Nothing preloaded: every config/entity_registry/list returns null (HA never becomes ready).
+        val hub = EntityHub(fake, backgroundScope, config("light.kitchen")) { 0L }
+        hub.start()
+        fake.state.value = ConnState.CONNECTED
+        runCurrent()
+        advanceTimeBy(20_000)
+        runCurrent()
+
+        // Entity data path still comes up despite the registry never loading (best-effort degrade).
+        assertEquals(1, fake.subscribed.count { it.first == "subscribe_entities" })
+        // Initial try + RESYNC_MAX_RETRIES (5) retries == 6 total registry-list requests.
+        assertEquals(6, fake.requests.count { it.first == "config/entity_registry/list" })
+    }
+
+    @Test
+    fun resyncStopsRetryingWhenLinkDropsMidRetry() = runTest {
+        val fake = FakeHaClient()
+        // Nothing preloaded: the registry list keeps failing.
+        val hub = EntityHub(fake, backgroundScope, config("light.kitchen")) { 0L }
+        hub.start()
+        fake.state.value = ConnState.CONNECTED
+        runCurrent()                          // first failed attempt runs; loop parks in the backoff delay
+        fake.state.value = ConnState.OFFLINE  // link drops before the retry fires
+        advanceTimeBy(20_000)                 // delays elapse, loop sees OFFLINE and bails before subscribing
+        runCurrent()
+
+        // The loop deferred to the next CONNECTED transition instead of subscribing onto a dead/reconnecting link.
+        assertEquals(0, fake.subscribed.count { it.first == "subscribe_entities" })
     }
 
     @Test

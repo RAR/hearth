@@ -252,7 +252,10 @@ fun MusicBrowser(
     // Open the queue overlay when DashboardShell bumps the signal (up-next line tapped). 0 is the
     // never-requested value; a nonzero value opens the queue on (re)composition.
     LaunchedEffect(openQueueSignal) {
-        if (openQueueSignal > 0) queueVisible = true
+        // Also close Speakers: the overlays are mutually exclusive at every other open site, and
+        // the content branch renders Speakers first — without this the requested queue would
+        // silently not appear if the signal ever fired while Speakers was open.
+        if (openQueueSignal > 0) { queueVisible = true; speakersVisible = false }
     }
 
     // Queue: poll every 5 s while the overlay is visible; queueVersion bumps restart the

@@ -383,10 +383,15 @@ class SendspinEndpoint(
         override fun onPlaybackStateChanged(state: PlaybackState) {
             val flowing = state == PlaybackState.PLAYING || state == PlaybackState.DRAINING
             if (flowing) {
-                // Audio is flowing -> the fresh-stream buffering window is over. Cleared here (and
-                // never re-armed by a later mid-stream re-init to INITIALIZING) so the spinner leaves
-                // for good.
+                // Audio is flowing -> nothing is loading. Clear BOTH flags: the fresh-stream buffering
+                // latch AND the metadata-swap flag. awaitingStreamStart is otherwise only cleared by
+                // onStreamStart, but on an auto-advance MA delivers the next track's metadata AFTER its
+                // stream already started (the reused player rolls straight into it with no paired
+                // onStreamStart), which would leave the flag -- and the spinner -- stuck on. Neither
+                // flag is re-armed by a later mid-stream re-init to INITIALIZING, so the ring leaves
+                // for good once real audio is playing.
                 startingStream = false
+                awaitingStreamStart = false
                 if (!playWhenReady) playWhenReady = true
             }
             publishNowPlaying()

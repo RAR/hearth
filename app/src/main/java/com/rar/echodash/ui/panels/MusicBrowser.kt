@@ -45,15 +45,18 @@ import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.RepeatOne
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Shuffle
+import androidx.compose.material.icons.outlined.SpeakerGroup
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -85,6 +88,7 @@ import com.rar.echodash.sendspin.MaLibraryState
 import com.rar.echodash.sendspin.musicassistant.EnqueueMode
 import com.rar.echodash.sendspin.musicassistant.MaAlbum
 import com.rar.echodash.sendspin.musicassistant.MaArtist
+import com.rar.echodash.sendspin.musicassistant.MaPlayer
 import com.rar.echodash.sendspin.musicassistant.MaPlaylist
 import com.rar.echodash.sendspin.musicassistant.MaQueueItem
 import com.rar.echodash.sendspin.musicassistant.MaQueueState
@@ -94,10 +98,13 @@ import com.rar.echodash.sendspin.musicassistant.SearchResults
 import com.rar.echodash.sendspin.musicassistant.model.MaLibraryItem
 import com.rar.echodash.sendspin.musicassistant.model.MaMediaType
 import com.rar.echodash.ui.model.BrowserPage
+import com.rar.echodash.ui.model.canOfferGroup
 import com.rar.echodash.ui.model.currentItemOf
+import com.rar.echodash.ui.model.inGroupWithSelf
 import com.rar.echodash.ui.model.nextRepeatMode
 import com.rar.echodash.ui.model.popPage
 import com.rar.echodash.ui.model.pushPage
+import com.rar.echodash.ui.model.speakerRows
 import com.rar.echodash.ui.model.tabTarget
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -174,6 +181,9 @@ fun MusicBrowser(
     var queueVisible by remember { mutableStateOf(false) }
     var queueState by remember { mutableStateOf<MaQueueState?>(null) }
     var queueVersion by remember { mutableIntStateOf(0) }
+    var speakersVisible by remember { mutableStateOf(false) }
+    var speakers by remember { mutableStateOf<List<MaPlayer>?>(null) }
+    var speakersVersion by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
     var errorVersion by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
@@ -257,6 +267,18 @@ fun MusicBrowser(
         }
     }
 
+    // Speakers: poll every 5 s while the overlay is visible; speakersVersion bumps restart the
+    // effect for an immediate refetch after a group/ungroup/transfer mutation.
+    LaunchedEffect(speakersVisible, speakersVersion) {
+        if (!speakersVisible) return@LaunchedEffect
+        while (true) {
+            library.players()
+                .onSuccess { speakers = it }
+                .onFailure { showError(it.message ?: "Speakers unavailable") }
+            delay(5_000)
+        }
+    }
+
     val playItem: (MaLibraryItem, EnqueueMode) -> Unit = { item, mode ->
         val uri = item.uri
         if (uri == null) {
@@ -308,7 +330,15 @@ fun MusicBrowser(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             SearchField(query, { query = it }, enabled = isConnected, modifier = Modifier.weight(1f))
-            QueueToggleButton(active = queueVisible) { queueVisible = !queueVisible }
+            // Speakers + Queue overlays are mutually exclusive: opening one closes the other.
+            SpeakersToggleButton(active = speakersVisible) {
+                speakersVisible = !speakersVisible
+                if (speakersVisible) queueVisible = false
+            }
+            QueueToggleButton(active = queueVisible) {
+                queueVisible = !queueVisible
+                if (queueVisible) speakersVisible = false
+            }
         }
         Spacer(Modifier.height(8.dp))
         // Tab row: Home · Artists · Albums. Tapping a tab resets the stack to [Home,<tab>] (or
@@ -318,6 +348,7 @@ fun MusicBrowser(
             active = tabTarget(pageStack),
             onSelect = { target ->
                 queueVisible = false
+                speakersVisible = false
                 pageStack = if (target is BrowserPage.Home) listOf(BrowserPage.Home)
                             else listOf(BrowserPage.Home, target)
             },
@@ -333,6 +364,39 @@ fun MusicBrowser(
         Box(Modifier.weight(1f).fillMaxWidth()) {
             val searching = query.trim().length >= 2
             when {
+                speakersVisible -> SpeakersPane(
+                    players = speakers,
+                    selfId = library.selfPlayerId,
+                    // Volume: fire-and-forget; the 5 s poll reconciles the shown level, so we do
+                    // NOT bump speakersVersion here (an immediate refetch would fight the drag).
+                    onSetVolume = { id, v ->
+                        scope.launch {
+                            library.setPlayerVolume(id, v)
+                                .onFailure { showError(it.message ?: "Couldn't set volume") }
+                        }
+                    },
+                    onGroup = { id ->
+                        scope.launch {
+                            library.groupWithMe(id)
+                                .onSuccess { speakersVersion++ }
+                                .onFailure { showError(it.message ?: "Couldn't group speaker") }
+                        }
+                    },
+                    onUngroup = { id ->
+                        scope.launch {
+                            library.ungroupPlayer(id)
+                                .onSuccess { speakersVersion++ }
+                                .onFailure { showError(it.message ?: "Couldn't ungroup speaker") }
+                        }
+                    },
+                    onSendQueue = { id ->
+                        scope.launch {
+                            library.transferMyQueueTo(id)
+                                .onSuccess { speakersVersion++; speakersVisible = false } // music left this device
+                                .onFailure { showError(it.message ?: "Couldn't send the queue") }
+                        }
+                    },
+                )
                 queueVisible -> QueuePane(
                     queue = queueState,
                     thumbs = thumbs,
@@ -477,6 +541,23 @@ private fun QueueToggleButton(active: Boolean, onClick: () -> Unit) {
     ) {
         Icon(
             Icons.AutoMirrored.Outlined.QueueMusic, contentDescription = "Queue",
+            tint = Color.White, modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+@Composable
+private fun SpeakersToggleButton(active: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(if (active) Color(0xFF3A4152) else Color(0xFF2A2F3C))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Outlined.SpeakerGroup, contentDescription = "Speakers",
             tint = Color.White, modifier = Modifier.size(20.dp),
         )
     }
@@ -1128,6 +1209,143 @@ private fun QueueToggleChip(icon: ImageVector, on: Boolean, onClick: () -> Unit)
             modifier = Modifier.size(16.dp),
         )
     }
+}
+
+// ---- Speakers overlay ----
+
+/**
+ * Speakers overlay: every MA player with a volume slider + group / send-queue actions. Same
+ * panel chrome as [QueuePane]; closed via the top-bar Speakers chip. Rows come from
+ * [speakerRows] (self pinned first). [players] == null renders "Loading…" on first open.
+ */
+@Composable
+private fun SpeakersPane(
+    players: List<MaPlayer>?,
+    selfId: String,
+    onSetVolume: (String, Int) -> Unit,
+    onGroup: (String) -> Unit,
+    onUngroup: (String) -> Unit,
+    onSendQueue: (String) -> Unit,
+) {
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            "Speakers", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        when {
+            players == null -> EmptyHint("Loading…")
+            players.isEmpty() -> EmptyHint("No speakers found")
+            else -> {
+                val rows = speakerRows(players, selfId)
+                val self = rows.firstOrNull { it.playerId == selfId }
+                // The set of listed ids lets canOfferGroup tell a provider-instance grant (not a
+                // listed id => permissive) from a pure foreign player-id allowlist.
+                val allIds = rows.map { it.playerId }.toSet()
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    items(rows, key = { it.playerId }) { p ->
+                        SpeakerRow(
+                            player = p,
+                            self = self,
+                            isSelf = p.playerId == selfId,
+                            // Resolve the sync leader's display name for the "Grouped with …" line.
+                            leaderName = p.syncedTo?.let { id ->
+                                rows.firstOrNull { it.playerId == id }?.name ?: id
+                            },
+                            allPlayerIds = allIds,
+                            onSetVolume = onSetVolume,
+                            onGroup = onGroup,
+                            onUngroup = onUngroup,
+                            onSendQueue = onSendQueue,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeakerRow(
+    player: MaPlayer,
+    self: MaPlayer?,
+    isSelf: Boolean,
+    leaderName: String?,
+    allPlayerIds: Set<String>,
+    onSetVolume: (String, Int) -> Unit,
+    onGroup: (String) -> Unit,
+    onUngroup: (String) -> Unit,
+    onSendQueue: (String) -> Unit,
+) {
+    val nameAlpha = if (player.available) 1f else 0.4f
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isSelf) Color(0xFF2A2F3C) else Color.Transparent)
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                player.name + if (isSelf) " · this device" else "",
+                color = Color.White.copy(alpha = nameAlpha), fontSize = 14.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+            )
+            // Self row shows no action chips (volume only).
+            if (!isSelf && canOfferGroup(player, self, allPlayerIds)) {
+                SpeakerActionChip("Group") { onGroup(player.playerId) }
+            }
+            if (!isSelf && inGroupWithSelf(player, self)) {
+                SpeakerActionChip("Ungroup") { onUngroup(player.playerId) }
+            }
+            if (!isSelf && player.available) {
+                SpeakerActionChip("Send queue") { onSendQueue(player.playerId) }
+            }
+        }
+        val status = when {
+            player.playbackState == "playing" ->
+                "Playing" + (player.nowPlayingText?.let { " — $it" } ?: "")
+            player.syncedTo != null -> "Grouped with ${leaderName ?: player.syncedTo}"
+            else -> "Idle"
+        }
+        Text(
+            status, color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+        // Slider hidden when the player reports no volume or is unavailable. The remember key is
+        // the polled level, so a fresh poll re-seeds the handle (drag-guard: same as the takeover
+        // volume slider); on release we push once via onSetVolume.
+        val level = player.volumeLevel
+        if (player.available && level != null) {
+            var vol by remember(level) { mutableFloatStateOf(level.toFloat()) }
+            Slider(
+                value = vol,
+                onValueChange = { vol = it },
+                onValueChangeFinished = { onSetVolume(player.playerId, vol.toInt()) },
+                valueRange = 0f..100f,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+/** A neutral text chip for a speaker-row action (styled like the queue "Clear" chip). */
+@Composable
+private fun SpeakerActionChip(label: String, onClick: () -> Unit) {
+    Text(
+        label, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp,
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF2A2F3C))
+            .clickable { onClick() }
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
 }
 
 /**

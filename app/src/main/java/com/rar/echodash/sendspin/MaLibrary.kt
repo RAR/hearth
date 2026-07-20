@@ -6,6 +6,7 @@ import com.rar.echodash.sendspin.musicassistant.MaAlbum
 import com.rar.echodash.sendspin.musicassistant.MaArtist
 import com.rar.echodash.sendspin.musicassistant.MaAuthHelper
 import com.rar.echodash.sendspin.musicassistant.MaCommandClient
+import com.rar.echodash.sendspin.musicassistant.MaPlayer
 import com.rar.echodash.sendspin.musicassistant.MaPlaylist
 import com.rar.echodash.sendspin.musicassistant.MaQueueState
 import com.rar.echodash.sendspin.musicassistant.MaRadio
@@ -194,6 +195,47 @@ class MaLibrary(
      */
     suspend fun playRadio(uri: String, mediaType: String?): Result<Unit> =
         withQueue { client, queueId -> client.playMedia(uri, queueId, mediaType, EnqueueMode.PLAY, radioMode = true) }
+
+    // ---- Multi-room / speaker ops ----
+
+    /** This device's MA player id — the pane pins its own row first and marks it "this device". */
+    val selfPlayerId: String get() = playerId
+
+    /**
+     * All MA players. Our own Echo is a SendSpin protocol player, hidden by the default
+     * players/all (return_protocol_players=false). So if OUR [playerId] is absent from the first
+     * result, refetch ONCE with includeProtocol = true and use that — the pane needs the self
+     * row to pin it and gate self-only actions. A first-call failure is returned as-is; a list
+     * that still lacks self after the retry is returned anyway (the pane degrades gracefully).
+     */
+    suspend fun players(): Result<List<MaPlayer>> = withClient { client ->
+        val first = client.getPlayers()
+        val list = first.getOrNull()
+        if (list != null && list.none { it.playerId == playerId }) {
+            client.getPlayers(includeProtocol = true)
+        } else {
+            first
+        }
+    }
+
+    /** Set one player's volume (0..100). */
+    suspend fun setPlayerVolume(playerId: String, volume: Int): Result<Unit> =
+        withClient { it.setPlayerVolume(playerId, volume) }
+
+    /** Join [playerId] onto THIS device's sync group (target_player = our own id). */
+    suspend fun groupWithMe(playerId: String): Result<Unit> =
+        withClient { it.groupPlayer(playerId, targetPlayer = selfPlayerId) }
+
+    /** Remove [playerId] from whatever group/sync it's in. */
+    suspend fun ungroupPlayer(playerId: String): Result<Unit> =
+        withClient { it.ungroupPlayer(playerId) }
+
+    /**
+     * Move THIS device's queue to [targetPlayerId]: source = our effective queue id (the same
+     * withQueue seam play/queue use), target = the row's player id (MA queue ids equal player ids).
+     */
+    suspend fun transferMyQueueTo(targetPlayerId: String): Result<Unit> =
+        withQueue { client, queueId -> client.transferQueue(queueId, targetPlayerId) }
 
     // ---- Connection loop ----
 

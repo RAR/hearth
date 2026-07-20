@@ -4,6 +4,7 @@ import com.rar.echodash.sendspin.musicassistant.EnqueueMode
 import com.rar.echodash.sendspin.musicassistant.MaAlbum
 import com.rar.echodash.sendspin.musicassistant.MaArtist
 import com.rar.echodash.sendspin.musicassistant.MaAuthHelper
+import com.rar.echodash.sendspin.musicassistant.MaPlayer
 import com.rar.echodash.sendspin.musicassistant.transport.MaApiTransport
 import com.rar.echodash.sendspin.musicassistant.transport.MaTransportException
 import kotlinx.coroutines.CoroutineScope
@@ -463,6 +464,121 @@ class MaLibraryTest {
         val args = h.commands[0].second
         assertEquals("alb-9", args["item_id"])
         assertEquals("library", args["provider_instance_id_or_domain"])
+        h.lib.stop()
+    }
+
+    // ---- multi-room / speaker ops ----
+
+    @Test
+    fun playersSendsPlayersAllAndDoesNotRetryWhenSelfPresent() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        h.transports[0].respond = { cmd ->
+            if (cmd == "players/all")
+                json("""{"result":[{"player_id":"player-1","name":"This","available":true}]}""")
+            else json("{}")
+        }
+        val res = h.lib.players()
+        assertTrue(res.isSuccess)
+        assertEquals(1, res.getOrThrow().size)
+        // Self present on the first fetch: exactly one call, no protocol arg.
+        assertEquals(listOf("players/all"), h.commands.map { it.first })
+        assertNull(h.commands[0].second["return_protocol_players"])
+        h.lib.stop()
+    }
+
+    @Test
+    fun playersRetriesWithProtocolWhenSelfMissing() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        var calls = 0
+        h.transports[0].respond = { cmd ->
+            if (cmd == "players/all") {
+                calls++
+                if (calls == 1) json("""{"result":[{"player_id":"kitchen","name":"Kitchen","available":true}]}""")
+                else json("""{"result":[{"player_id":"player-1","name":"This","available":true},{"player_id":"kitchen","name":"Kitchen","available":true}]}""")
+            } else json("{}")
+        }
+        val res = h.lib.players()
+        assertTrue(res.isSuccess)
+        // The self-inclusive second fetch is what we return.
+        assertEquals(2, res.getOrThrow().size)
+        assertEquals(listOf("players/all", "players/all"), h.commands.map { it.first })
+        assertNull(h.commands[0].second["return_protocol_players"]) // first: default
+        assertEquals(true, h.commands[1].second["return_protocol_players"]) // retry: protocol on
+        h.lib.stop()
+    }
+
+    @Test
+    fun playersRetriesOnceThenReturnsListEvenIfSelfStillAbsent() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        // Self never appears (e.g. this device isn't a known MA player) — never fail for it.
+        h.transports[0].respond = { cmd ->
+            if (cmd == "players/all")
+                json("""{"result":[{"player_id":"kitchen","name":"Kitchen","available":true}]}""")
+            else json("{}")
+        }
+        val res = h.lib.players()
+        assertTrue(res.isSuccess)
+        assertEquals(1, res.getOrThrow().size)
+        // Retried exactly once; no third attempt.
+        assertEquals(listOf("players/all", "players/all"), h.commands.map { it.first })
+        h.lib.stop()
+    }
+
+    @Test
+    fun setPlayerVolumeSendsPlayerIdAndLevel() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        assertTrue(h.lib.setPlayerVolume("kitchen", 42).isSuccess)
+        assertEquals(listOf("players/cmd/volume_set"), h.commands.map { it.first })
+        assertEquals("kitchen", h.commands[0].second["player_id"])
+        assertEquals(42, h.commands[0].second["volume_level"])
+        h.lib.stop()
+    }
+
+    @Test
+    fun groupWithMeSendsTargetPlayerOwnId() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        assertTrue(h.lib.groupWithMe("kitchen").isSuccess)
+        assertEquals(listOf("players/cmd/group"), h.commands.map { it.first })
+        assertEquals("kitchen", h.commands[0].second["player_id"])
+        assertEquals("player-1", h.commands[0].second["target_player"]) // our own id
+        h.lib.stop()
+    }
+
+    @Test
+    fun ungroupPlayerSendsPlayerId() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        assertTrue(h.lib.ungroupPlayer("kitchen").isSuccess)
+        assertEquals(listOf("players/cmd/ungroup"), h.commands.map { it.first })
+        assertEquals("kitchen", h.commands[0].second["player_id"])
+        h.lib.stop()
+    }
+
+    @Test
+    fun transferMyQueueToResolvesQueueThenTransfers() = runTest {
+        val h = Harness(this)
+        h.lib.configure(enabled = true, token = "tok")
+        runCurrent()
+        assertTrue(h.lib.transferMyQueueTo("kitchen").isSuccess)
+        assertEquals(
+            listOf("player_queues/get_active_queue", "player_queues/transfer"),
+            h.commands.map { it.first },
+        )
+        val args = h.commands[1].second
+        assertEquals("q-77", args["source_queue_id"]) // our effective queue id
+        assertEquals("kitchen", args["target_queue_id"])
+        assertNull(args["auto_play"]) // deliberately omitted
         h.lib.stop()
     }
 }

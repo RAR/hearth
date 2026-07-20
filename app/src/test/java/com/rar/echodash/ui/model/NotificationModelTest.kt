@@ -474,7 +474,7 @@ class NotificationModelTest {
     fun miniPlayerVisibleWhilePlayingAndAllGatesOpen() {
         assertTrue(
             miniPlayerVisible(
-                active = true, playing = true, takeoverVisible = false, dismissed = false,
+                active = true, playing = true, takeoverVisible = false,
                 pausedSinceMs = 0L, nowMs = 1_000L,
             ),
         )
@@ -485,19 +485,13 @@ class NotificationModelTest {
         // Each gate individually hides the card even while actively playing.
         assertFalse(
             miniPlayerVisible(
-                active = false, playing = true, takeoverVisible = false, dismissed = false,
+                active = false, playing = true, takeoverVisible = false,
                 pausedSinceMs = 0L, nowMs = 1_000L,
             ),
         )
         assertFalse(
             miniPlayerVisible(
-                active = true, playing = true, takeoverVisible = true, dismissed = false,
-                pausedSinceMs = 0L, nowMs = 1_000L,
-            ),
-        )
-        assertFalse(
-            miniPlayerVisible(
-                active = true, playing = true, takeoverVisible = false, dismissed = true,
+                active = true, playing = true, takeoverVisible = true,
                 pausedSinceMs = 0L, nowMs = 1_000L,
             ),
         )
@@ -509,7 +503,7 @@ class NotificationModelTest {
         val pausedAt = 100_000L
         assertTrue(
             miniPlayerVisible(
-                active = true, playing = false, takeoverVisible = false, dismissed = false,
+                active = true, playing = false, takeoverVisible = false,
                 pausedSinceMs = pausedAt, nowMs = pausedAt + 60_000L,
             ),
         )
@@ -521,13 +515,13 @@ class NotificationModelTest {
         // Exactly at the boundary (comparison is strict "<") and past it both hide the card.
         assertFalse(
             miniPlayerVisible(
-                active = true, playing = false, takeoverVisible = false, dismissed = false,
+                active = true, playing = false, takeoverVisible = false,
                 pausedSinceMs = pausedAt, nowMs = pausedAt + MINIPLAYER_GRACE_MS,
             ),
         )
         assertFalse(
             miniPlayerVisible(
-                active = true, playing = false, takeoverVisible = false, dismissed = false,
+                active = true, playing = false, takeoverVisible = false,
                 pausedSinceMs = pausedAt, nowMs = pausedAt + MINIPLAYER_GRACE_MS + 1,
             ),
         )
@@ -539,25 +533,8 @@ class NotificationModelTest {
         // regardless of how much time has passed.
         assertFalse(
             miniPlayerVisible(
-                active = true, playing = false, takeoverVisible = false, dismissed = false,
+                active = true, playing = false, takeoverVisible = false,
                 pausedSinceMs = 0L, nowMs = 999_999L,
-            ),
-        )
-    }
-
-    @Test
-    fun miniPlayerHiddenWhenDismissedRegardlessOfPauseState() {
-        val pausedAt = 100_000L
-        assertFalse(
-            miniPlayerVisible(
-                active = true, playing = false, takeoverVisible = false, dismissed = true,
-                pausedSinceMs = pausedAt, nowMs = pausedAt + 60_000L,
-            ),
-        )
-        assertFalse(
-            miniPlayerVisible(
-                active = true, playing = true, takeoverVisible = false, dismissed = true,
-                pausedSinceMs = 0L, nowMs = pausedAt,
             ),
         )
     }
@@ -567,13 +544,13 @@ class NotificationModelTest {
         val pausedAt = 100_000L
         assertFalse(
             miniPlayerVisible(
-                active = false, playing = false, takeoverVisible = false, dismissed = false,
+                active = false, playing = false, takeoverVisible = false,
                 pausedSinceMs = pausedAt, nowMs = pausedAt + 60_000L,
             ),
         )
         assertFalse(
             miniPlayerVisible(
-                active = false, playing = true, takeoverVisible = false, dismissed = false,
+                active = false, playing = true, takeoverVisible = false,
                 pausedSinceMs = 0L, nowMs = pausedAt,
             ),
         )

@@ -2,7 +2,6 @@ package com.rar.echodash.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -12,25 +11,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.MusicNote
-import androidx.compose.material.icons.outlined.Pause
-import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.SkipNext
-import androidx.compose.material.icons.outlined.SkipPrevious
-import androidx.compose.material.icons.outlined.Stop
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -44,12 +32,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -100,164 +84,6 @@ fun NotificationArea(
                 )
             }
         }
-    }
-}
-
-/**
- * Mini-player card for the home notification stack — shown while a session is active, playing
- * (or within the post-pause grace window, see [miniPlayerVisible]), and neither the takeover nor
- * a swipe has claimed it. Chrome matches [NotificationRow] (RoundedCornerShape(14) on Black-0.35).
- * Layout is a Row whose height is driven by the right column (title/artist lines, [artist] omitted
- * when null/blank, above four 36dp transport chips: back/play-pause/next/stop). A square album-art
- * panel on the left ([artThumb] = art.sharp, or a MusicNote fallback) is sized to that column's
- * measured height (onSizeChanged → dp), so the art spans the whole card. Tapping the art or the
- * title/artist column runs [onTap] (restores the takeover); the transport chips consume their own
- * taps. The whole card is wrapped in the exact swipe-to-dismiss mechanics [NotificationRow] uses
- * below — fire-and-forget, local state only, no server op and so no failure path (unlike the MA
- * queue rows' suspend variant elsewhere).
- */
-@Composable
-fun MiniPlayerCard(
-    title: String,
-    artist: String?,
-    artThumb: ImageBitmap?,
-    playing: Boolean,
-    onPrev: () -> Unit,
-    onPlayPause: () -> Unit,
-    onNext: () -> Unit,
-    onStop: () -> Unit,
-    onTap: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val offsetX = remember { Animatable(0f) }
-    var widthPx by remember { mutableIntStateOf(0) }
-    val scope = rememberCoroutineScope()
-
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .onSizeChanged { widthPx = it.width }
-            .offset { IntOffset(offsetX.value.roundToInt(), 0) }
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        val threshold = widthPx * SWIPE_DISMISS_FRACTION
-                        if (widthPx > 0 && -offsetX.value >= threshold) {
-                            scope.launch {
-                                offsetX.animateTo(-widthPx.toFloat(), tween(200))
-                                onDismiss()
-                            }
-                        } else {
-                            scope.launch { offsetX.animateTo(0f, tween(200)) }
-                        }
-                    },
-                    // A cancelled drag (ancestor claims the gesture, extra pointer) never reaches
-                    // onDragEnd — snap back so the card can't be left stranded mid-swipe.
-                    onDragCancel = {
-                        scope.launch { offsetX.animateTo(0f, tween(200)) }
-                    },
-                ) { change, dragAmount ->
-                    change.consume()
-                    // Only left drags move the card; right drags clamp back to 0.
-                    scope.launch { offsetX.snapTo((offsetX.value + dragAmount).coerceAtMost(0f)) }
-                }
-            },
-    ) {
-        // The right column (title/artist + transport chips) drives the card height; the square
-        // album-art panel on the left is sized to that measured height so it spans the whole card.
-        // We measure (onSizeChanged) instead of fillMaxHeight+aspectRatio because that intrinsic
-        // combo mis-measured the Row to the full available height. contentHeightPx is 0 on the
-        // first frame (art skipped, Row wraps the column) and settles to the column height next.
-        val density = LocalDensity.current
-        var contentHeightPx by remember { mutableIntStateOf(0) }
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color.Black.copy(alpha = 0.35f)),
-        ) {
-            // Album art spans the whole card height. Tapping it (like the title/artist column)
-            // restores the takeover; the transport chips consume their own taps -- normal Compose
-            // click handling wins over the swipe detector for a tap below the swipe threshold.
-            if (contentHeightPx > 0) {
-                val artSide = with(density) { contentHeightPx.toDp() }
-                Box(
-                    Modifier
-                        .size(artSide)
-                        .background(Color.Black.copy(alpha = 0.25f))
-                        .clickable { onTap() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (artThumb != null) {
-                        Image(
-                            artThumb, contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                        )
-                    } else {
-                        Icon(
-                            Icons.Outlined.MusicNote, contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.5f),
-                            modifier = Modifier.size(32.dp),
-                        )
-                    }
-                }
-            }
-            Column(
-                Modifier
-                    .weight(1f)
-                    .onSizeChanged { contentHeightPx = it.height }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Column(Modifier.fillMaxWidth().clickable { onTap() }) {
-                    Text(
-                        title,
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (!artist.isNullOrBlank()) {
-                        Text(
-                            artist,
-                            color = Color.White.copy(alpha = 0.6f),
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    MiniTransportButton(Icons.Outlined.SkipPrevious, onPrev)
-                    MiniTransportButton(if (playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, onPlayPause)
-                    MiniTransportButton(Icons.Outlined.SkipNext, onNext)
-                    MiniTransportButton(Icons.Outlined.Stop, onStop)
-                }
-            }
-        }
-    }
-}
-
-/** 36dp round transport chip (18dp icon), same #2A2F3C background as the takeover's transport
- *  button — a smaller clone local to this file (that one, `NpTransportButton`, is private to
- *  `NowPlayingHome.kt`). */
-@Composable
-private fun MiniTransportButton(icon: ImageVector, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .size(36.dp)
-            .clip(CircleShape)
-            .background(Color(0xFF2A2F3C))
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
     }
 }
 

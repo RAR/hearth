@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,13 +44,17 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.BatteryStd
 import androidx.compose.material.icons.outlined.ElectricMeter
+import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.EvStation
 import androidx.compose.material.icons.outlined.HorizontalRule
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Power
+import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SolarPower
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -205,13 +210,11 @@ fun HomeView(
     onBrowse: () -> Unit = {},
     onTakeoverDismiss: () -> Unit = {},
     onTakeoverRestore: () -> Unit = {},
-    // Mini-player dismiss + pause-grace state. Owned by App (NOT declared here) because the
-    // DashboardShell Crossfade disposes this whole composable on every view switch -- including the
-    // routine IdleReturnTimer auto-return to Home -- which would remount local state and restamp the
-    // pause instant / revive a swipe-dismissed card. See App.kt's comment beside manualDismissed.
-    miniDismissed: Boolean = false,
+    // Now-playing card pause-grace state. Owned by App (NOT declared here) because the DashboardShell
+    // Crossfade disposes this whole composable on every view switch -- including the routine
+    // IdleReturnTimer auto-return to Home -- which would remount local state and restamp the pause
+    // instant. See App.kt's comment beside manualDismissed.
     miniPausedSinceMs: Long = 0L,
-    onMiniPlayerDismiss: () -> Unit = {},
     onMediaCycleRepeat: () -> Unit = {},
     onMediaToggleShuffle: () -> Unit = {},
     favorite: Boolean? = null,
@@ -374,13 +377,35 @@ fun HomeView(
                 }
             }
 
+            // Now-playing card lives in this EV/solar column (was the notification stack). Shows
+            // while music is active and playing (or within the post-pause grace window) and the
+            // takeover is not up -- miniPlayerVisible owns that whole decision (see model file).
+            val showMiniPlayer = miniPlayerVisible(
+                active = nowPlaying.active,
+                playing = nowPlaying.playing,
+                takeoverVisible = takeoverVisible,
+                pausedSinceMs = miniPausedSinceMs,
+                nowMs = now,
+            )
             AnimatedVisibility(
-                visible = evs.isNotEmpty() || solar != null || quickButtons.isNotEmpty(),
+                visible = evs.isNotEmpty() || solar != null || quickButtons.isNotEmpty() || showMiniPlayer,
                 enter = fadeIn(tween(600)),
                 exit = fadeOut(tween(600)),
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 28.dp),
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Now-playing card sits above the EV/solar cards when a session is up.
+                    if (showMiniPlayer) {
+                        NowPlayingCardView(
+                            title = nowPlaying.title?.takeIf { it.isNotBlank() } ?: "Now playing",
+                            artist = nowPlaying.artist,
+                            playing = nowPlaying.playing,
+                            cardWidth = cardWidth,
+                            onPlayPause = { if (nowPlaying.playing) onMediaPause() else onMediaPlay() },
+                            onNext = onMediaNext,
+                            onOpenTakeover = onTakeoverRestore,
+                        )
+                    }
                     evs.forEach { EvCardView(it, cardWidth) }
                     // The 300dp+ tiers (Show 8 / Tab M9) show the animated flow diagram; the Show 5
                     // (248dp) fails solarFlowCard() and keeps the compact pill byte-for-byte.
@@ -396,72 +421,29 @@ fun HomeView(
                 }
             }
 
-            // Notification stack + mini-player card: just below the weather/AQI pill row
-            // (top = 70dp). The card shows while music is active, playing (or within the
-            // post-pause grace window), and neither the takeover nor a swipe has claimed it --
-            // miniPlayerVisible owns that whole decision (see model file). The width cap moves
-            // onto the Column so the card and notifications share one edge; the height cap +
-            // clipToBounds stay on NotificationArea so real notifications scroll under their cap
-            // while the card never clips.
-            val showMiniPlayer = miniPlayerVisible(
-                active = nowPlaying.active,
-                playing = nowPlaying.playing,
-                takeoverVisible = takeoverVisible,
-                dismissed = miniDismissed,
-                pausedSinceMs = miniPausedSinceMs,
-                nowMs = now,
-            )
-            // homeOverlayCaps sizes notifMaxHeightDp so the stack ends NOTIF_CLOCK_GAP above the
-            // clock block; the mini-player card is taller than the old single-line row -- 10+56+
-            // 8+36+10 = 120dp of card content (10 top pad + 56 art/title row + 8 Column gap + 36
-            // transport row + 10 bottom pad; NotificationArea.kt's Column padding is
-            // vertical=10.dp, not 12) plus this Column's own 8dp spacedBy gap above the stack ⇒
-            // 128 -- so shrink the stack's cap by that amount to keep the clock-clearance contract.
-            // 130 is kept as a safe round-up (2dp of extra shrink, clock clearance still preserved).
-            // Same coerceAtLeast(60) floor as before (keeps one notification row usable if a future
-            // tiny screen ever bottoms out the geometry floor).
-            val notifHeightCap =
-                if (showMiniPlayer) (caps.notifMaxHeightDp - 130).coerceAtLeast(60)
-                else caps.notifMaxHeightDp
+            // Notification stack: just below the weather/AQI pill row (top = 70dp). Rows beyond
+            // the height cap scroll under it (clipToBounds); the width cap keeps it clear of the
+            // card column on the opposite edge.
             AnimatedVisibility(
-                visible = notifications.isNotEmpty() || showMiniPlayer,
+                visible = notifications.isNotEmpty(),
                 enter = fadeIn(tween(600)),
                 exit = fadeOut(tween(600)),
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(start = 28.dp, top = 70.dp),
             ) {
-                Column(
-                    Modifier.widthIn(max = caps.notifMaxWidthDp.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (showMiniPlayer) {
-                        MiniPlayerCard(
-                            title = nowPlaying.title?.takeIf { it.isNotBlank() } ?: "Now playing",
-                            artist = nowPlaying.artist,
-                            artThumb = art?.sharp,
-                            playing = nowPlaying.playing,
-                            onPrev = onMediaPrev,
-                            onPlayPause = { if (nowPlaying.playing) onMediaPause() else onMediaPlay() },
-                            onNext = onMediaNext,
-                            onStop = onMediaStop,
-                            onTap = onTakeoverRestore,
-                            onDismiss = onMiniPlayerDismiss,
-                        )
-                    }
-                    // Guarded so NotificationArea's "empty lists should not be rendered by the
-                    // caller" contract holds when only the card is showing (no scroll container
-                    // spun up for zero rows).
-                    if (notifications.isNotEmpty()) {
-                        NotificationArea(
-                            notifications = notifications,
-                            nowMs = now,
-                            onDismiss = onDismiss,
-                            modifier = Modifier
-                                .heightIn(max = notifHeightCap.dp)
-                                .clipToBounds(),
-                        )
-                    }
+                // Guarded so NotificationArea's "empty lists should not be rendered by the caller"
+                // contract holds (visible can lag the list emptying by one exit animation).
+                if (notifications.isNotEmpty()) {
+                    NotificationArea(
+                        notifications = notifications,
+                        nowMs = now,
+                        onDismiss = onDismiss,
+                        modifier = Modifier
+                            .widthIn(max = caps.notifMaxWidthDp.dp)
+                            .heightIn(max = caps.notifMaxHeightDp.dp)
+                            .clipToBounds(),
+                    )
                 }
             }
 
@@ -532,6 +514,78 @@ fun HomeView(
                 onClick = { menuOpen = false; onLogout() },
             )
         }
+    }
+}
+
+/** Compact now-playing card for the home card column (sibling of the EV/solar cards). Shown while
+ *  a session is active and playing (or within the post-pause grace window) and the takeover is not
+ *  up. Header (music icon + title/artist, tap = return to takeover) over a control row: play/pause,
+ *  next, and a return-to-takeover button. Deliberately minimal -- no back/stop/dismiss; it simply
+ *  leaves the column when playback stops (grace), so there is nothing to dismiss. */
+@Composable
+private fun NowPlayingCardView(
+    title: String,
+    artist: String?,
+    playing: Boolean,
+    cardWidth: Dp,
+    onPlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onOpenTakeover: () -> Unit,
+) {
+    Column(
+        Modifier
+            .width(cardWidth)
+            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().clickable { onOpenTakeover() },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                Icons.Outlined.MusicNote, contentDescription = null,
+                tint = Color.White, modifier = Modifier.size(18.dp),
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                if (!artist.isNullOrBlank()) {
+                    Text(
+                        artist, color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NpCardButton(if (playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, onPlayPause)
+            NpCardButton(Icons.Outlined.SkipNext, onNext)
+            Spacer(Modifier.weight(1f))
+            NpCardButton(Icons.Outlined.Fullscreen, onOpenTakeover)
+        }
+    }
+}
+
+/** 36dp round transport chip (18dp icon) for [NowPlayingCardView], #2A2F3C bg. */
+@Composable
+private fun NpCardButton(icon: ImageVector, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF2A2F3C))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
     }
 }
 

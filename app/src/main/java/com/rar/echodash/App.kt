@@ -769,17 +769,13 @@ fun EchoDashApp(deps: AppDeps) {
                     }
                     val takeoverVisible = takeoverVisibleOf(nowPlayingState.active, pausedTimedOut, manualDismissed)
 
-                    // Mini-player dismiss + pause-grace state. Declared HERE (App scope), not inside
+                    // Now-playing card pause-grace state. Declared HERE (App scope), not inside
                     // HomeView, because DashboardShell renders views through a Crossfade that DISPOSES
                     // the outgoing view's subtree -- including on the routine IdleReturnTimer auto-
                     // return to Home. State living inside HomeView would remount on every such
                     // switch, restamping pausedSinceMs to "now" (breaking the 5-minute grace measured
-                    // from the real pause instant) and reviving a swipe-dismissed card. Same reasoning
-                    // as manualDismissed/pausedTimedOut above, which is why this lives right beside them.
-                    var miniDismissed by remember { mutableStateOf(false) }
-                    LaunchedEffect(nowPlayingState.active) {
-                        if (!nowPlayingState.active) miniDismissed = false
-                    }
+                    // from the real pause instant). Same reasoning as manualDismissed/pausedTimedOut
+                    // above, which is why this lives right beside them.
                     var miniPausedSinceMs by remember { mutableStateOf(0L) }
                     LaunchedEffect(nowPlayingState.active, nowPlayingState.playing) {
                         miniPausedSinceMs = if (nowPlayingState.active && !nowPlayingState.playing) {
@@ -985,9 +981,7 @@ fun EchoDashApp(deps: AppDeps) {
                         // back from that path too (which otherwise has no on-device re-entry).
                         onTakeoverDismiss = { manualDismissed = true },
                         onTakeoverRestore = { manualDismissed = false; pausedTimedOut = false },
-                        miniDismissed = miniDismissed,
                         miniPausedSinceMs = miniPausedSinceMs,
-                        onMiniPlayerDismiss = { miniDismissed = true },
                         fetchForecast = { id -> deps.entityHub.getForecasts(id) },
                         configUrl = configUrl,
                         configPin = configPinValue,

@@ -223,23 +223,21 @@ fun nowPlayingRowLabel(title: String?, artist: String?): String {
 const val MINIPLAYER_GRACE_MS = 5 * 60_000L
 
 /**
- * Mini-player card visibility. [active] and neither [takeoverVisible] nor a user's swipe
- * ([dismissed]) gate it off entirely. While [playing] it always shows; once paused it lingers until
- * [MINIPLAYER_GRACE_MS] has elapsed since [pausedSinceMs] (the device-clock instant `playing` last
- * went false this session -- 0 means "never observed paused", which hides the card since there is
- * nothing to resume). Callers must stamp [pausedSinceMs] at the actual pause instant, not at
- * whenever this composable happens to (re)mount, so the grace budget survives e.g. the takeover's
- * own hand-off.
+ * Mini-player card visibility. [active] and no [takeoverVisible] gate it off entirely. While
+ * [playing] it always shows; once paused it lingers until [MINIPLAYER_GRACE_MS] has elapsed since
+ * [pausedSinceMs] (the device-clock instant `playing` last went false this session -- 0 means
+ * "never observed paused", which hides the card since there is nothing to resume). Callers must
+ * stamp [pausedSinceMs] at the actual pause instant, not at whenever this composable happens to
+ * (re)mount, so the grace budget survives e.g. the takeover's own hand-off.
  */
 fun miniPlayerVisible(
     active: Boolean,
     playing: Boolean,
     takeoverVisible: Boolean,
-    dismissed: Boolean,
     pausedSinceMs: Long,
     nowMs: Long,
 ): Boolean {
-    if (!active || takeoverVisible || dismissed) return false
+    if (!active || takeoverVisible) return false
     if (playing) return true
     if (pausedSinceMs <= 0) return false
     return nowMs - pausedSinceMs < MINIPLAYER_GRACE_MS

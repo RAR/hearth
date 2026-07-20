@@ -97,11 +97,19 @@ fun speakerRows(players: List<MaPlayer>, selfId: String): List<MaPlayer>
 /** True when [player] is in the same sync group as self (either direction of leadership). */
 fun inGroupWithSelf(player: MaPlayer, self: MaPlayer?): Boolean
 
-/** True when the Group-with-me action may be offered (not self, available, not already
- *  grouped with self, and self or self's provider appears in player.canGroupWith —
- *  an EMPTY canGroupWith list is treated as permissive: MA omits the field for players
- *  with no restrictions). */
-fun canOfferGroup(player: MaPlayer, self: MaPlayer?): Boolean
+/** True when the Group-with-me action may be offered. Exclusions first: not self, available,
+ *  not already grouped with self. Then a PERMISSIVE heuristic over player.canGroupWith — the
+ *  server enforces the real rule, so we err toward showing the chip and let an illegal join
+ *  surface as the error toast:
+ *   - EMPTY canGroupWith -> true (MA omits the field for unrestricted players);
+ *   - self.playerId listed -> true (explicit allow);
+ *   - any entry that is NOT one of allPlayerIds (the currently-listed players) -> true — such an
+ *     entry is a provider-instance grant covering that provider's players, which is commonly how
+ *     MA expresses "groupable" rather than an individual player id;
+ *   - otherwise -> false (a pure allowlist of other players' ids that excludes us).
+ *  allPlayerIds = the ids the pane is currently showing (SpeakersPane passes them). This needs no
+ *  new MaPlayer field. */
+fun canOfferGroup(player: MaPlayer, self: MaPlayer?, allPlayerIds: Set<String>): Boolean
 ```
 
 `selfId` = `MaLibrary.playerId`, exposed via a small `val selfPlayerId: String get() = playerId`
@@ -137,7 +145,7 @@ on MaLibrary (the UI needs it to mark "This device").
 | MA socket down | Speakers chip still renders; pane shows the standard error toast on fetch |
 | Our player absent from players/all | One-shot includeProtocol retry; if still absent, list renders without the self pin (actions that need self hidden) |
 | Unavailable player | Dimmed row, no slider/actions |
-| canGroupWith excludes us | No Group chip |
+| canGroupWith is a pure player-id allowlist excluding us | No Group chip (an empty list, or a provider-instance grant, keeps the chip — permissive heuristic; the server rejects an illegal join into the error toast) |
 | Transfer target refuses / fails | Error toast, pane stays open, refetch reconciles |
 | Volume slider on a just-removed player | Command fails → toast; next poll drops the row |
 
@@ -159,8 +167,9 @@ on MaLibrary (the UI needs it to mark "This device").
   effective queue then sends transfer with target_queue_id = target player id;
   `setPlayerVolume` arg pin.
 - `SpeakersModel` pins: ordering (self first, availability tiers, A-Z), `inGroupWithSelf`
-  both leadership directions, `canOfferGroup` (self excluded, empty-canGroupWith
-  permissive, explicit allow, explicit absence).
+  both leadership directions, `canOfferGroup` (self excluded, empty-canGroupWith permissive,
+  explicit self-allow, provider-instance grant permissive, pure foreign player-id allowlist
+  excluded, mixed list containing self allowed, unavailable, already-grouped, self-null).
 
 ## Live-verify checklist
 

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.outlined.RepeatOne
 import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SkipPrevious
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -191,8 +193,21 @@ fun NowPlayingHome(
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (state.canSkip) NpTransportButton(Icons.Outlined.SkipPrevious) { onPrev() }
-                    NpTransportButton(if (state.playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow) {
-                        if (state.playing) onPause() else onPlay()
+                    // Play/pause, ringed by a loading spinner while a newly-selected SendSpin track
+                    // buffers (MA-style). The Box is pinned to the 64 dp button footprint and the
+                    // ring is drawn with requiredSize so it overflows CENTERED without growing the
+                    // cell -- the three controls stay evenly spaced whether or not it's spinning.
+                    Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
+                        if (state.loading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.requiredSize(76.dp), // rings the 64dp button
+                                color = Color.White,
+                                strokeWidth = 3.dp,
+                            )
+                        }
+                        NpTransportButton(if (state.playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow) {
+                            if (state.playing) onPause() else onPlay()
+                        }
                     }
                     if (state.canSkip) NpTransportButton(Icons.Outlined.SkipNext) { onNext() }
                 }

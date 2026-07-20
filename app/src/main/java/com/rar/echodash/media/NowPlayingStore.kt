@@ -24,6 +24,8 @@ data class NowPlayingState(
     val sendspin: Boolean = false,
     /** Music Assistant muted this player (SendSpin source only; the engine path never mutes). */
     val muted: Boolean = false,
+    /** SendSpin track is loading (new metadata shown, audio not flowing yet) -- rings the play/pause control. */
+    val loading: Boolean = false,
     /** Track length in ms; 0 = unknown (radio/ICY) -> the takeover draws no progress bar. */
     val durationMs: Long = 0,
     /** Last sampled playback position in ms. */
@@ -61,7 +63,8 @@ data class NowPlayingState(
         return active == other.active && playing == other.playing && title == other.title &&
             artist == other.artist && album == other.album && artUrl == other.artUrl &&
             volume == other.volume && canSkip == other.canSkip && sendspin == other.sendspin &&
-            muted == other.muted && durationMs == other.durationMs && positionMs == other.positionMs &&
+            muted == other.muted && loading == other.loading &&
+            durationMs == other.durationMs && positionMs == other.positionMs &&
             positionAtMs == other.positionAtMs && canSeek == other.canSeek &&
             repeatMode == other.repeatMode && shuffle == other.shuffle &&
             canRepeat == other.canRepeat && canShuffle == other.canShuffle &&
@@ -80,6 +83,7 @@ data class NowPlayingState(
         r = 31 * r + canSkip.hashCode()
         r = 31 * r + sendspin.hashCode()
         r = 31 * r + muted.hashCode()
+        r = 31 * r + loading.hashCode()
         r = 31 * r + durationMs.hashCode()
         r = 31 * r + positionMs.hashCode()
         r = 31 * r + positionAtMs.hashCode()
@@ -135,6 +139,7 @@ class NowPlayingStore {
     private var sendspinArt: ByteArray? = null
     private var sendspinVolume = 90
     private var sendspinMuted = false // display only; the endpoint handles the audio-side mute
+    private var sendspinLoading = false // display only; rings the play/pause control while loading
     private var sendspinDurationMs = 0L
     private var sendspinPositionMs = 0L
     private var sendspinPositionAtMs = 0L
@@ -170,6 +175,9 @@ class NowPlayingStore {
     fun onSendspin(active: Boolean, playing: Boolean, title: String?, artist: String?,
                    album: String?, artworkData: ByteArray?, volume: Int,
                    muted: Boolean = false,
+                   // Defaulted so every existing deactivation call (onSendspin(false, ...)) stays
+                   // correct: a cleared takeover shows no spinner.
+                   loading: Boolean = false,
                    // Progress default to 0 so every existing deactivation call (onSendspin(false, ...))
                    // stays correct: a cleared takeover reports no progress.
                    durationMs: Long = 0, positionMs: Long = 0, positionAtMs: Long = 0,
@@ -185,6 +193,7 @@ class NowPlayingStore {
         sendspinArt = artworkData
         sendspinVolume = volume
         sendspinMuted = muted
+        sendspinLoading = loading
         sendspinDurationMs = durationMs
         sendspinPositionMs = positionMs
         sendspinPositionAtMs = positionAtMs
@@ -205,6 +214,7 @@ class NowPlayingStore {
                 // controls would hit the wrong player, so transport controls are out of scope.
                 artUrl = null, localArt = sendspinArt, volume = sendspinVolume, canSkip = true, sendspin = true,
                 muted = sendspinMuted,
+                loading = sendspinLoading,
                 durationMs = sendspinDurationMs, positionMs = sendspinPositionMs,
                 positionAtMs = sendspinPositionAtMs,
                 // SendSpin/MA has no seek command (supported_commands never carries one), so the bar

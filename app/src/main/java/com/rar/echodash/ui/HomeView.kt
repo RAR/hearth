@@ -104,8 +104,8 @@ import com.rar.echodash.ui.model.WeatherPill
 import com.rar.echodash.ui.model.eventTimeLabel
 import com.rar.echodash.ui.model.homeCardWidthDp
 import com.rar.echodash.ui.model.homeOverlayCaps
+import com.rar.echodash.ui.model.miniPlayerVisible
 import com.rar.echodash.ui.model.nextEventCard
-import com.rar.echodash.ui.model.nowPlayingRowLabel
 import com.rar.echodash.ui.model.solarFlowCard
 import com.rar.echodash.ui.model.solarStatsCompact
 import com.rar.echodash.ui.model.weatherPillText
@@ -197,6 +197,7 @@ fun HomeView(
     takeoverVisible: Boolean,
     onMediaPlay: () -> Unit,
     onMediaPause: () -> Unit,
+    onMediaStop: () -> Unit = {},
     onMediaNext: () -> Unit,
     onMediaPrev: () -> Unit,
     onMediaVolume: (Int) -> Unit,
@@ -218,6 +219,22 @@ fun HomeView(
     val context = LocalContext.current
     var menuOpen by remember { mutableStateOf(false) }
     val now by rememberMinuteTicker()
+
+    // Mini-player dismiss + pause-grace state. Declared here — NOT inside the
+    // `if (takeoverVisible) {...} else {...}` split further down — because that branch unmounts
+    // while the takeover is up; pausedSinceMs must survive that hand-off holding the ACTUAL pause
+    // instant (the takeover's own ~60s paused-timeout hides it well before the mini-player's own
+    // 5-minute grace closes, and the card needs to know the pause started ~60s ago, not "now", to
+    // honor the shared budget). BoxWithConstraints below is composed unconditionally every
+    // recomposition, so state declared here (its ancestor) is unaffected by that inner branch swap.
+    var miniDismissed by remember { mutableStateOf(false) }
+    LaunchedEffect(nowPlaying.active) {
+        if (!nowPlaying.active) miniDismissed = false
+    }
+    var pausedSinceMs by remember { mutableStateOf(0L) }
+    LaunchedEffect(nowPlaying.playing, nowPlaying.active) {
+        pausedSinceMs = if (nowPlaying.active && !nowPlaying.playing) System.currentTimeMillis() else 0L
+    }
 
     val order = remember(photos) { photos.shuffled() }
     var photoIndex by remember(order) { mutableIntStateOf(0) }
@@ -388,25 +405,33 @@ fun HomeView(
                 }
             }
 
-            // Notification stack + pinned now-playing row: just below the weather/AQI pill row
-            // (top = 70dp). The row shows whenever music is active but the takeover is dismissed
-            // (manual home-button OR the paused-timeout); tapping it restores the takeover. The
-            // width cap moves onto the Column so the row and notifications share one edge; the
-            // height cap + clipToBounds stay on NotificationArea so real notifications scroll
-            // under their cap while the pinned row never clips. `!takeoverVisible` is always true
-            // in this else-branch — kept defensively per the design spec (which covers BOTH
-            // dismissal paths through this one formula).
-            val showNowPlayingRow = nowPlaying.active && !takeoverVisible
+            // Notification stack + mini-player card: just below the weather/AQI pill row
+            // (top = 70dp). The card shows while music is active, playing (or within the
+            // post-pause grace window), and neither the takeover nor a swipe has claimed it --
+            // miniPlayerVisible owns that whole decision (see model file). The width cap moves
+            // onto the Column so the card and notifications share one edge; the height cap +
+            // clipToBounds stay on NotificationArea so real notifications scroll under their cap
+            // while the card never clips.
+            val showMiniPlayer = miniPlayerVisible(
+                active = nowPlaying.active,
+                playing = nowPlaying.playing,
+                takeoverVisible = takeoverVisible,
+                dismissed = miniDismissed,
+                pausedSinceMs = pausedSinceMs,
+                nowMs = now,
+            )
             // homeOverlayCaps sizes notifMaxHeightDp so the stack ends NOTIF_CLOCK_GAP above the
-            // clock block; the pinned row adds 62dp above the stack (34dp thumb + 2×10dp pad +
-            // 8dp Column gap), so shrink the stack's cap by the same amount to keep that contract
-            // (Show 5: 200 → 138, still ~3 scrollable rows). Floor of 60 keeps one row usable if
-            // a future tiny screen ever bottoms out the geometry floor.
+            // clock block; the mini-player card is taller than the old single-line row -- 12+56+
+            // 8+36+10 ≈ 122dp of card content (12 top pad + 56 art/title row + 8 Column gap + 36
+            // transport row + 10 bottom pad) plus this Column's own 8dp spacedBy gap above the
+            // stack ⇒ 130 -- so shrink the stack's cap by that amount to keep the clock-clearance
+            // contract. Same coerceAtLeast(60) floor as before (keeps one notification row usable
+            // if a future tiny screen ever bottoms out the geometry floor).
             val notifHeightCap =
-                if (showNowPlayingRow) (caps.notifMaxHeightDp - 62).coerceAtLeast(60)
+                if (showMiniPlayer) (caps.notifMaxHeightDp - 130).coerceAtLeast(60)
                 else caps.notifMaxHeightDp
             AnimatedVisibility(
-                visible = notifications.isNotEmpty() || showNowPlayingRow,
+                visible = notifications.isNotEmpty() || showMiniPlayer,
                 enter = fadeIn(tween(600)),
                 exit = fadeOut(tween(600)),
                 modifier = Modifier
@@ -417,16 +442,23 @@ fun HomeView(
                     Modifier.widthIn(max = caps.notifMaxWidthDp.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (showNowPlayingRow) {
-                        NowPlayingRow(
-                            label = nowPlayingRowLabel(nowPlaying.title, nowPlaying.artist),
+                    if (showMiniPlayer) {
+                        MiniPlayerCard(
+                            title = nowPlaying.title?.takeIf { it.isNotBlank() } ?: "Now playing",
+                            artist = nowPlaying.artist,
                             artThumb = art?.sharp,
+                            playing = nowPlaying.playing,
+                            onPrev = onMediaPrev,
+                            onPlayPause = { if (nowPlaying.playing) onMediaPause() else onMediaPlay() },
+                            onNext = onMediaNext,
+                            onStop = onMediaStop,
                             onTap = onTakeoverRestore,
+                            onDismiss = { miniDismissed = true },
                         )
                     }
                     // Guarded so NotificationArea's "empty lists should not be rendered by the
-                    // caller" contract holds when only the row is showing (no scroll container spun
-                    // up for zero rows).
+                    // caller" contract holds when only the card is showing (no scroll container
+                    // spun up for zero rows).
                     if (notifications.isNotEmpty()) {
                         NotificationArea(
                             notifications = notifications,

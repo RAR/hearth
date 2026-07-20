@@ -307,6 +307,7 @@ fun DashboardShell(
                         takeoverVisible = takeoverVisible,
                         onMediaPlay = onMediaPlay,
                         onMediaPause = onMediaPause,
+                        onMediaStop = onMediaStop,
                         onMediaNext = onMediaNext,
                         onMediaPrev = onMediaPrev,
                         onMediaVolume = onMediaVolume,

@@ -20,10 +20,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.SkipNext
+import androidx.compose.material.icons.outlined.SkipPrevious
+import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -96,55 +103,147 @@ fun NotificationArea(
 }
 
 /**
- * Pinned now-playing row for the home notification stack — shown while music is active but the
- * takeover is dismissed (manual home-button OR the paused-timeout path). Mirrors [NotificationRow]'s
- * chrome (RoundedCornerShape(14) on Black-0.35, 18sp white medium text) but is a single tappable
- * line: a 34dp art thumbnail ([artThumb] = the already-decoded art.sharp) or a MusicNote fallback,
- * then [label]. Tapping restores the takeover. No swipe-dismiss, no timestamp, no severity accent
- * bar — it isn't a notification.
+ * Mini-player card for the home notification stack — shown while a session is active, playing
+ * (or within the post-pause grace window, see [miniPlayerVisible]), and neither the takeover nor
+ * a swipe has claimed it. Chrome matches [NotificationRow] (RoundedCornerShape(14) on Black-0.35).
+ * Row 1 (tap = [onTap], restores the takeover): a 56dp art thumbnail ([artThumb] = art.sharp, or a
+ * MusicNote fallback) + a title/artist two-line column ([artist] omitted when null/blank). Row 2:
+ * four 36dp transport chips (back/play-pause/next/stop). The whole card is wrapped in the exact
+ * swipe-to-dismiss mechanics [NotificationRow] uses below — fire-and-forget, local state only, no
+ * server op and so no failure path (unlike the MA queue rows' suspend variant elsewhere).
  */
 @Composable
-fun NowPlayingRow(label: String, artThumb: ImageBitmap?, onTap: () -> Unit) {
-    Row(
+fun MiniPlayerCard(
+    title: String,
+    artist: String?,
+    artThumb: ImageBitmap?,
+    playing: Boolean,
+    onPrev: () -> Unit,
+    onPlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onStop: () -> Unit,
+    onTap: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val offsetX = remember { Animatable(0f) }
+    var widthPx by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+
+    Box(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color.Black.copy(alpha = 0.35f))
-            .clickable { onTap() }
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .onSizeChanged { widthPx = it.width }
+            .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        val threshold = widthPx * SWIPE_DISMISS_FRACTION
+                        if (widthPx > 0 && -offsetX.value >= threshold) {
+                            scope.launch {
+                                offsetX.animateTo(-widthPx.toFloat(), tween(200))
+                                onDismiss()
+                            }
+                        } else {
+                            scope.launch { offsetX.animateTo(0f, tween(200)) }
+                        }
+                    },
+                    // A cancelled drag (ancestor claims the gesture, extra pointer) never reaches
+                    // onDragEnd — snap back so the card can't be left stranded mid-swipe.
+                    onDragCancel = {
+                        scope.launch { offsetX.animateTo(0f, tween(200)) }
+                    },
+                ) { change, dragAmount ->
+                    change.consume()
+                    // Only left drags move the card; right drags clamp back to 0.
+                    scope.launch { offsetX.snapTo((offsetX.value + dragAmount).coerceAtMost(0f)) }
+                }
+            },
     ) {
-        Box(
+        Column(
             Modifier
-                .size(34.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color.Black.copy(alpha = 0.25f)),
-            contentAlignment = Alignment.Center,
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color.Black.copy(alpha = 0.35f))
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (artThumb != null) {
-                Image(
-                    artThumb, contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            } else {
-                Icon(
-                    Icons.Outlined.MusicNote, contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.5f),
-                    modifier = Modifier.size(20.dp),
-                )
+            // Body tap restores the takeover. The transport row below sits inside this same swipe
+            // area but consumes its own taps -- normal Compose click handling already wins over
+            // the drag detector for a tap that doesn't cross the swipe threshold.
+            Row(
+                Modifier.fillMaxWidth().clickable { onTap() },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(
+                    Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.25f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (artThumb != null) {
+                        Image(
+                            artThumb, contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        Icon(
+                            Icons.Outlined.MusicNote, contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.5f),
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        title,
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (!artist.isNullOrBlank()) {
+                        Text(
+                            artist,
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                MiniTransportButton(Icons.Outlined.SkipPrevious, onPrev)
+                MiniTransportButton(if (playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, onPlayPause)
+                MiniTransportButton(Icons.Outlined.SkipNext, onNext)
+                MiniTransportButton(Icons.Outlined.Stop, onStop)
             }
         }
-        Text(
-            label,
-            color = Color.White,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
+    }
+}
+
+/** 36dp round transport chip (18dp icon), same #2A2F3C background as the takeover's transport
+ *  button — a smaller clone local to this file (that one, `NpTransportButton`, is private to
+ *  `NowPlayingHome.kt`). */
+@Composable
+private fun MiniTransportButton(icon: ImageVector, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF2A2F3C))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
     }
 }
 

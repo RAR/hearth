@@ -148,6 +148,94 @@ class MaCommandClient {
     }
 
     // ========================================================================
+    // Player / Multi-room Commands
+    // ========================================================================
+
+    /**
+     * List all players (players/all). Our own SendSpin protocol player is hidden by the
+     * server default (return_protocol_players=false); [includeProtocol] flips it true so
+     * MaLibrary can retry when the self row is missing.
+     */
+    suspend fun getPlayers(includeProtocol: Boolean = false): Result<List<MaPlayer>> {
+        return try {
+            val response = if (includeProtocol)
+                sendCommand("players/all", mapOf("return_protocol_players" to true))
+            else
+                sendCommand("players/all")
+            Result.success(parsePlayers(response))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch players (includeProtocol=$includeProtocol)", e)
+            Result.failure(e)
+        }
+    }
+
+    /** Set a single player's volume (0..100). */
+    suspend fun setPlayerVolume(playerId: String, volume: Int): Result<Unit> {
+        return try {
+            sendCommand(
+                "players/cmd/volume_set",
+                mapOf("player_id" to playerId, "volume_level" to volume),
+            )
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set volume on player: $playerId", e)
+            Result.failure(e)
+        }
+    }
+
+    /** Join [playerId] onto [targetPlayer]'s sync group. */
+    suspend fun groupPlayer(playerId: String, targetPlayer: String): Result<Unit> {
+        return try {
+            sendCommand(
+                "players/cmd/group",
+                mapOf("player_id" to playerId, "target_player" to targetPlayer),
+            )
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to group $playerId onto $targetPlayer", e)
+            Result.failure(e)
+        }
+    }
+
+    /** Remove [playerId] from whatever group/sync it's in (server no-op if ungrouped). */
+    suspend fun ungroupPlayer(playerId: String): Result<Unit> {
+        return try {
+            sendCommand("players/cmd/ungroup", mapOf("player_id" to playerId))
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to ungroup player: $playerId", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Move a queue to another player. auto_play is deliberately omitted so the server keeps
+     * the source queue's play state (recon §5). The server ungroups the target first if needed.
+     */
+    suspend fun transferQueue(sourceQueueId: String, targetQueueId: String): Result<Unit> {
+        return try {
+            sendCommand(
+                "player_queues/transfer",
+                mapOf("source_queue_id" to sourceQueueId, "target_queue_id" to targetQueueId),
+            )
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to transfer queue $sourceQueueId -> $targetQueueId", e)
+            Result.failure(e)
+        }
+    }
+
+    // ========================================================================
     // Playback Commands
     // ========================================================================
 
@@ -1041,6 +1129,67 @@ class MaCommandClient {
         }
 
         return null
+    }
+
+    // ========================================================================
+    // JSON Parsing — Players
+    // ========================================================================
+
+    /**
+     * Parse a players/all response. Reads name (or display_name alias), group_members (or
+     * group_childs alias), playback_state (or state alias), and the current_media title.
+     * volume_level is nullable — an absent/null level maps to null, but an explicit 0 is kept.
+     * Unavailable players are returned (the pane dims them); rows with no player_id are skipped.
+     */
+    internal fun parsePlayers(response: JsonObject): List<MaPlayer> {
+        val array = response.optJsonArray("result")
+            ?: response.optJsonObject("result")?.optJsonArray("items")
+            ?: return emptyList()
+        val players = mutableListOf<MaPlayer>()
+        for (i in 0 until array.size) {
+            val item = (array[i] as? JsonObject) ?: continue
+            val playerId = item.optString("player_id")
+            if (playerId.isEmpty()) continue
+
+            val name = item.optString("name")
+                .ifEmpty { item.optString("display_name") }
+                .ifEmpty { playerId }
+            // optInt returns the sentinel for missing/null/non-numeric; >= 0 keeps a real 0.
+            val volumeLevel = item.optInt("volume_level", -1).takeIf { it >= 0 }
+            val groupMembers = parseStringArray(
+                item.optJsonArray("group_members") ?: item.optJsonArray("group_childs"),
+            )
+            val playbackState = item.optString("playback_state")
+                .ifEmpty { item.optString("state") }
+                .ifEmpty { null }
+            val nowPlayingText = item.optJsonObject("current_media")
+                ?.optString("title")?.ifEmpty { null }
+
+            players.add(MaPlayer(
+                playerId = playerId,
+                name = name,
+                available = item.optBoolean("available", false),
+                volumeLevel = volumeLevel,
+                muted = item.optBoolean("volume_muted", false),
+                syncedTo = item.optString("synced_to").ifEmpty { null },
+                groupMembers = groupMembers,
+                canGroupWith = parseStringArray(item.optJsonArray("can_group_with")),
+                playbackState = playbackState,
+                nowPlayingText = nowPlayingText,
+            ))
+        }
+        return players
+    }
+
+    /** Collect the non-empty string elements of a JSON string array (skips non-primitives). */
+    private fun parseStringArray(array: JsonArray?): List<String> {
+        if (array == null) return emptyList()
+        val out = mutableListOf<String>()
+        for (i in 0 until array.size) {
+            val s = (array[i] as? JsonPrimitive)?.contentOrNull
+            if (!s.isNullOrEmpty()) out.add(s)
+        }
+        return out
     }
 
     // ========================================================================

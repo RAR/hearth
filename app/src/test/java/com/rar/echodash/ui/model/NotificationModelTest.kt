@@ -462,4 +462,120 @@ class NotificationModelTest {
         assertEquals("Now playing", nowPlayingRowLabel("   ", "Artist")) // blank title, artist ignored
         assertEquals("Now playing", nowPlayingRowLabel(null, "Artist"))  // artist without title
     }
+
+    // ---- miniPlayerVisible ----
+
+    @Test
+    fun miniPlayerGraceConstantIsFiveMinutes() {
+        assertEquals(5 * 60_000L, MINIPLAYER_GRACE_MS)
+    }
+
+    @Test
+    fun miniPlayerVisibleWhilePlayingAndAllGatesOpen() {
+        assertTrue(
+            miniPlayerVisible(
+                active = true, playing = true, takeoverVisible = false, dismissed = false,
+                pausedSinceMs = 0L, nowMs = 1_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun miniPlayerHiddenByAnyGateWhilePlaying() {
+        // Each gate individually hides the card even while actively playing.
+        assertFalse(
+            miniPlayerVisible(
+                active = false, playing = true, takeoverVisible = false, dismissed = false,
+                pausedSinceMs = 0L, nowMs = 1_000L,
+            ),
+        )
+        assertFalse(
+            miniPlayerVisible(
+                active = true, playing = true, takeoverVisible = true, dismissed = false,
+                pausedSinceMs = 0L, nowMs = 1_000L,
+            ),
+        )
+        assertFalse(
+            miniPlayerVisible(
+                active = true, playing = true, takeoverVisible = false, dismissed = true,
+                pausedSinceMs = 0L, nowMs = 1_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun miniPlayerVisibleWithinGraceAfterPause() {
+        // Paused 1 minute ago, well inside the 5-minute grace window.
+        val pausedAt = 100_000L
+        assertTrue(
+            miniPlayerVisible(
+                active = true, playing = false, takeoverVisible = false, dismissed = false,
+                pausedSinceMs = pausedAt, nowMs = pausedAt + 60_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun miniPlayerHiddenAtOrAfterGraceExpiry() {
+        val pausedAt = 100_000L
+        // Exactly at the boundary (comparison is strict "<") and past it both hide the card.
+        assertFalse(
+            miniPlayerVisible(
+                active = true, playing = false, takeoverVisible = false, dismissed = false,
+                pausedSinceMs = pausedAt, nowMs = pausedAt + MINIPLAYER_GRACE_MS,
+            ),
+        )
+        assertFalse(
+            miniPlayerVisible(
+                active = true, playing = false, takeoverVisible = false, dismissed = false,
+                pausedSinceMs = pausedAt, nowMs = pausedAt + MINIPLAYER_GRACE_MS + 1,
+            ),
+        )
+    }
+
+    @Test
+    fun miniPlayerHiddenWhenNeverPlayingThisSession() {
+        // pausedSinceMs=0 means "never observed paused/playing" -- nothing to resume, so hidden
+        // regardless of how much time has passed.
+        assertFalse(
+            miniPlayerVisible(
+                active = true, playing = false, takeoverVisible = false, dismissed = false,
+                pausedSinceMs = 0L, nowMs = 999_999L,
+            ),
+        )
+    }
+
+    @Test
+    fun miniPlayerHiddenWhenDismissedRegardlessOfPauseState() {
+        val pausedAt = 100_000L
+        assertFalse(
+            miniPlayerVisible(
+                active = true, playing = false, takeoverVisible = false, dismissed = true,
+                pausedSinceMs = pausedAt, nowMs = pausedAt + 60_000L,
+            ),
+        )
+        assertFalse(
+            miniPlayerVisible(
+                active = true, playing = true, takeoverVisible = false, dismissed = true,
+                pausedSinceMs = 0L, nowMs = pausedAt,
+            ),
+        )
+    }
+
+    @Test
+    fun miniPlayerHiddenWheneverInactiveRegardlessOfOtherState() {
+        val pausedAt = 100_000L
+        assertFalse(
+            miniPlayerVisible(
+                active = false, playing = false, takeoverVisible = false, dismissed = false,
+                pausedSinceMs = pausedAt, nowMs = pausedAt + 60_000L,
+            ),
+        )
+        assertFalse(
+            miniPlayerVisible(
+                active = false, playing = true, takeoverVisible = false, dismissed = false,
+                pausedSinceMs = 0L, nowMs = pausedAt,
+            ),
+        )
+    }
 }

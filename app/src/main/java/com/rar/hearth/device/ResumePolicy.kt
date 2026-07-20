@@ -1,4 +1,4 @@
-package com.rar.hearth.vaca
+package com.rar.hearth.device
 
 /**
  * Decides when resume() must re-open the stream instead of trusting the paused

@@ -1,4 +1,4 @@
-package com.rar.hearth.vaca
+package com.rar.hearth.device
 
 import android.util.Log
 import kotlinx.coroutines.CancellationException
@@ -26,7 +26,7 @@ import java.net.Socket
  * threads (audio callbacks must NEVER block — HA keepalive pings share this
  * connection and time out in 5 s; AnnouncePlayer enqueues and returns).
  */
-class VacaServer(
+class HearthServer(
     private val scope: CoroutineScope,
     private val port: Int = DEFAULT_PORT,
     private val infoEvent: () -> WyomingEvent,
@@ -45,7 +45,7 @@ class VacaServer(
 
     companion object {
         const val DEFAULT_PORT = 10700
-        private const val TAG = "VacaServer"
+        private const val TAG = "HearthServer"
         private const val BIND_RETRY_MS = 5_000L
     }
 
@@ -98,11 +98,11 @@ class VacaServer(
     }
 
     suspend fun sendSettingsFeedback(settings: JsonObject) =
-        send(VacaOutgoing.settingsFeedback(settings))
+        send(HearthOutgoing.settingsFeedback(settings))
 
-    suspend fun sendStatus(status: JsonObject) = send(VacaOutgoing.status(status))
+    suspend fun sendStatus(status: JsonObject) = send(HearthOutgoing.status(status))
 
-    suspend fun sendPlayed() = send(VacaOutgoing.played())
+    suspend fun sendPlayed() = send(HearthOutgoing.played())
 
     private suspend fun send(event: WyomingEvent) {
         val conn = active ?: return
@@ -132,22 +132,22 @@ class VacaServer(
             val input = socket.getInputStream().buffered()
             while (true) {
                 val event = WyomingCodec.read(input) ?: break
-                when (val msg = VacaParser.parse(event)) {
-                    VacaIncoming.Describe -> reply(infoEvent())
-                    VacaIncoming.CapabilitiesRequest -> reply(capabilitiesEvent())
-                    is VacaIncoming.Ping -> reply(VacaOutgoing.pong(msg.text))
-                    VacaIncoming.RunSatellite -> {
+                when (val msg = HearthParser.parse(event)) {
+                    HearthIncoming.Describe -> reply(infoEvent())
+                    HearthIncoming.CapabilitiesRequest -> reply(capabilitiesEvent())
+                    is HearthIncoming.Ping -> reply(HearthOutgoing.pong(msg.text))
+                    HearthIncoming.RunSatellite -> {
                         active = conn
                         isSession = true
                         listener.onSessionStarted()
                     }
-                    is VacaIncoming.SettingsChanged -> listener.onSettings(msg.settings)
-                    is VacaIncoming.Action -> listener.onAction(msg.action, msg.payload)
-                    is VacaIncoming.AudioStart ->
+                    is HearthIncoming.SettingsChanged -> listener.onSettings(msg.settings)
+                    is HearthIncoming.Action -> listener.onAction(msg.action, msg.payload)
+                    is HearthIncoming.AudioStart ->
                         listener.onAudioStart(msg.rate, msg.width, msg.channels)
-                    is VacaIncoming.AudioChunk -> listener.onAudioChunk(msg.pcm)
-                    VacaIncoming.AudioStop -> listener.onAudioStop()
-                    is VacaIncoming.Unknown -> Log.d(TAG, "ignoring event ${msg.type}")
+                    is HearthIncoming.AudioChunk -> listener.onAudioChunk(msg.pcm)
+                    HearthIncoming.AudioStop -> listener.onAudioStop()
+                    is HearthIncoming.Unknown -> Log.d(TAG, "ignoring event ${msg.type}")
                 }
             }
         } catch (e: CancellationException) {

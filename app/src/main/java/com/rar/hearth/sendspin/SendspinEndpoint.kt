@@ -17,7 +17,7 @@ import com.rar.hearth.sendspin.sendspin.SyncAudioPlayer
 import com.rar.hearth.sendspin.sendspin.SyncAudioPlayerCallback
 import com.rar.hearth.sendspin.sendspin.decoder.AudioDecoder
 import com.rar.hearth.sendspin.sendspin.decoder.AudioDecoderFactory
-import com.rar.hearth.vaca.MediaEngine
+import com.rar.hearth.device.MediaEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher

@@ -1,7 +1,7 @@
 package com.rar.hearth.voice
 
 import android.util.Log
-import com.rar.hearth.vaca.WyomingCodec
+import com.rar.hearth.device.WyomingCodec
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

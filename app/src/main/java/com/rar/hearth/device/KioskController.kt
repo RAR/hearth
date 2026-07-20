@@ -1,4 +1,4 @@
-package com.rar.hearth.vaca
+package com.rar.hearth.device
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job

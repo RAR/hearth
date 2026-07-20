@@ -1,4 +1,4 @@
-package com.rar.hearth.vaca
+package com.rar.hearth.device
 
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -13,56 +13,56 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
-sealed interface VacaIncoming {
-    data object Describe : VacaIncoming
-    data object CapabilitiesRequest : VacaIncoming
-    data class Ping(val text: String?) : VacaIncoming
-    data object RunSatellite : VacaIncoming
-    data class SettingsChanged(val settings: JsonObject) : VacaIncoming
-    data class Action(val action: String, val payload: JsonElement?) : VacaIncoming
-    data class AudioStart(val rate: Int, val width: Int, val channels: Int) : VacaIncoming
-    data class AudioChunk(val pcm: ByteArray) : VacaIncoming {
+sealed interface HearthIncoming {
+    data object Describe : HearthIncoming
+    data object CapabilitiesRequest : HearthIncoming
+    data class Ping(val text: String?) : HearthIncoming
+    data object RunSatellite : HearthIncoming
+    data class SettingsChanged(val settings: JsonObject) : HearthIncoming
+    data class Action(val action: String, val payload: JsonElement?) : HearthIncoming
+    data class AudioStart(val rate: Int, val width: Int, val channels: Int) : HearthIncoming
+    data class AudioChunk(val pcm: ByteArray) : HearthIncoming {
         override fun equals(other: Any?) = other is AudioChunk && pcm.contentEquals(other.pcm)
         override fun hashCode() = pcm.contentHashCode()
     }
-    data object AudioStop : VacaIncoming
-    data class Unknown(val type: String) : VacaIncoming
+    data object AudioStop : HearthIncoming
+    data class Unknown(val type: String) : HearthIncoming
 }
 
-object VacaParser {
-    fun parse(event: WyomingEvent): VacaIncoming = when (event.type) {
-        "describe" -> VacaIncoming.Describe
-        "capabilities" -> VacaIncoming.CapabilitiesRequest
-        "ping" -> VacaIncoming.Ping((event.data["text"] as? JsonPrimitive)?.contentOrNull)
-        "run-satellite" -> VacaIncoming.RunSatellite
-        "audio-start" -> VacaIncoming.AudioStart(
+object HearthParser {
+    fun parse(event: WyomingEvent): HearthIncoming = when (event.type) {
+        "describe" -> HearthIncoming.Describe
+        "capabilities" -> HearthIncoming.CapabilitiesRequest
+        "ping" -> HearthIncoming.Ping((event.data["text"] as? JsonPrimitive)?.contentOrNull)
+        "run-satellite" -> HearthIncoming.RunSatellite
+        "audio-start" -> HearthIncoming.AudioStart(
             rate = event.data["rate"]?.jsonPrimitive?.int ?: 22050,
             width = event.data["width"]?.jsonPrimitive?.int ?: 2,
             channels = event.data["channels"]?.jsonPrimitive?.int ?: 1,
         )
-        "audio-chunk" -> VacaIncoming.AudioChunk(event.payload)
-        "audio-stop" -> VacaIncoming.AudioStop
+        "audio-chunk" -> HearthIncoming.AudioChunk(event.payload)
+        "audio-stop" -> HearthIncoming.AudioStop
         "custom-event" -> parseCustom(event.data)
-        else -> VacaIncoming.Unknown(event.type)
+        else -> HearthIncoming.Unknown(event.type)
     }
 
-    private fun parseCustom(data: JsonObject): VacaIncoming {
+    private fun parseCustom(data: JsonObject): HearthIncoming {
         val eventType = (data["event_type"] as? JsonPrimitive)?.contentOrNull
         return when (eventType) {
             // HA flattens custom event data: keys sit beside event_type
-            "settings" -> VacaIncoming.SettingsChanged(
+            "settings" -> HearthIncoming.SettingsChanged(
                 data["settings"] as? JsonObject ?: JsonObject(emptyMap())
             )
-            "action" -> VacaIncoming.Action(
+            "action" -> HearthIncoming.Action(
                 action = (data["action"] as? JsonPrimitive)?.contentOrNull ?: "",
                 payload = data["payload"]?.takeIf { it !is JsonNull },
             )
-            else -> VacaIncoming.Unknown("custom-event/$eventType")
+            else -> HearthIncoming.Unknown("custom-event/$eventType")
         }
     }
 }
 
-object VacaOutgoing {
+object HearthOutgoing {
     fun info(appVersion: String, name: String): WyomingEvent {
         val data = buildJsonObject {
             for (key in listOf("asr", "tts", "handle", "intent", "wake", "mic", "snd")) {

@@ -7,7 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import com.rar.hearth.vaca.AndroidKioskDevice
+import com.rar.hearth.device.AndroidKioskDevice
 
 class MainActivity : ComponentActivity() {
     private lateinit var deps: AppDeps

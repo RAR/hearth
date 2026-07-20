@@ -1,4 +1,4 @@
-package com.rar.hearth.vaca
+package com.rar.hearth.device
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject

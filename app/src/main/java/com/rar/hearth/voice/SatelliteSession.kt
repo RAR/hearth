@@ -1,6 +1,6 @@
 package com.rar.hearth.voice
 
-import com.rar.hearth.vaca.WyomingEvent
+import com.rar.hearth.device.WyomingEvent
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject

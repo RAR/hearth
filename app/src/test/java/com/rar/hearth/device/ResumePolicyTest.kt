@@ -1,4 +1,4 @@
-package com.rar.hearth.vaca
+package com.rar.hearth.device
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

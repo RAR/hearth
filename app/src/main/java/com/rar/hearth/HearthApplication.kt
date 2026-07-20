@@ -9,7 +9,7 @@ class HearthApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         deps = AppDeps(this)
-        deps.startVaca()
+        deps.startHearth()
         deps.startVoice()
         deps.startSendspin()
     }

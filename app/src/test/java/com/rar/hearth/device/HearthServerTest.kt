@@ -1,4 +1,4 @@
-package com.rar.hearth.vaca
+package com.rar.hearth.device
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,9 +27,9 @@ import java.net.Socket
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
-class VacaServerTest {
+class HearthServerTest {
 
-    private class RecordingListener : VacaServer.Listener {
+    private class RecordingListener : HearthServer.Listener {
         val events = LinkedBlockingQueue<Any>()
         override fun onSessionStarted() { events.put("session-started") }
         override fun onSettings(settings: JsonObject) { events.put(settings) }
@@ -52,17 +52,17 @@ class VacaServerTest {
 
     private lateinit var scope: CoroutineScope
     private lateinit var listener: RecordingListener
-    private lateinit var server: VacaServer
+    private lateinit var server: HearthServer
 
     @Before
     fun setUp() {
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         listener = RecordingListener()
-        server = VacaServer(
+        server = HearthServer(
             scope = scope,
             port = 0, // ephemeral for tests
-            infoEvent = { VacaOutgoing.info("0.2", "Test Device") },
-            capabilitiesEvent = { VacaOutgoing.capabilities(VacaOutgoing.buildCapabilities("0.2", hasLightSensor = false)) },
+            infoEvent = { HearthOutgoing.info("0.2", "Test Device") },
+            capabilitiesEvent = { HearthOutgoing.capabilities(HearthOutgoing.buildCapabilities("0.2", hasLightSensor = false)) },
             listener = listener,
         )
         server.start()

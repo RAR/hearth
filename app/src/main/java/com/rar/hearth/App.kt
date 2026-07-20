@@ -64,15 +64,15 @@ import com.rar.hearth.ui.model.pushedNotificationItems
 import com.rar.hearth.ui.model.quickButtonService
 import com.rar.hearth.ui.model.takeoverVisibleOf
 import com.rar.hearth.ui.theme.HearthTheme
-import com.rar.hearth.vaca.AndroidKioskDevice
-import com.rar.hearth.vaca.AnnouncePlayer
-import com.rar.hearth.vaca.AndroidPcmSink
-import com.rar.hearth.vaca.DashActionParser
-import com.rar.hearth.vaca.DuckSource
-import com.rar.hearth.vaca.ExoPlayerEngine
-import com.rar.hearth.vaca.KioskController
-import com.rar.hearth.vaca.LightSensorReporter
-import com.rar.hearth.vaca.MediaBridge
+import com.rar.hearth.device.AndroidKioskDevice
+import com.rar.hearth.device.AnnouncePlayer
+import com.rar.hearth.device.AndroidPcmSink
+import com.rar.hearth.device.DashActionParser
+import com.rar.hearth.device.DuckSource
+import com.rar.hearth.device.ExoPlayerEngine
+import com.rar.hearth.device.KioskController
+import com.rar.hearth.device.LightSensorReporter
+import com.rar.hearth.device.MediaBridge
 import com.rar.hearth.media.NowPlayingStore
 import com.rar.hearth.media.ArtFetcher
 import com.rar.hearth.media.MaThumbs
@@ -80,9 +80,9 @@ import com.rar.hearth.night.NightModeController
 import com.rar.hearth.sendspin.MaLibrary
 import com.rar.hearth.sendspin.SendspinEndpoint
 import com.rar.hearth.sendspin.UserSettings
-import com.rar.hearth.vaca.NsdAdvertiser
-import com.rar.hearth.vaca.VacaOutgoing
-import com.rar.hearth.vaca.VacaServer
+import com.rar.hearth.device.NsdAdvertiser
+import com.rar.hearth.device.HearthOutgoing
+import com.rar.hearth.device.HearthServer
 import com.rar.hearth.voice.EarconKind
 import com.rar.hearth.voice.EarconPlayer
 import com.rar.hearth.voice.MicStreamer
@@ -232,7 +232,7 @@ class AppDeps(context: Context) {
         settings.deviceName = name
         if (vacaRunning) {
             hearthNsd.unregister(); hearthNsd.register()   // re-announce _hearth._tcp mDNS with the new name
-            vaca.stop(); vaca.start()          // drop HA's session so it re-reads info on reconnect
+            hearth.stop(); hearth.start()          // drop HA's session so it re-reads info on reconnect
         }
         voiceRestartTick.value += 1            // reactive voice collect tears down + rebuilds (voiceNsd + satellite)
     }
@@ -265,7 +265,7 @@ class AppDeps(context: Context) {
 
     /**
      * The dashboard view, hoisted out of the composable so HA (`set-view`) and the rail stay in
-     * lockstep. The UI writes it (rail select / idle-return); a collector in [startVaca] reports
+     * lockstep. The UI writes it (rail select / idle-return); a collector in [startHearth] reports
      * `current_view` to HA on change; [statusSnapshot] and `set-view` handling read/write it.
      */
     val currentView = MutableStateFlow(DashView.HOME)
@@ -311,8 +311,8 @@ class AppDeps(context: Context) {
         nowPlaying,
         restoredDucking = settings.duckingVolume,
         persistDucking = { settings.duckingVolume = it },
-        sendSettings = { s -> scope.launch { vaca.sendSettingsFeedback(s) } },
-        sendStatus = { status -> scope.launch { vaca.sendStatus(status) } },
+        sendSettings = { s -> scope.launch { hearth.sendSettingsFeedback(s) } },
+        sendStatus = { status -> scope.launch { hearth.sendStatus(status) } },
         duckSendspin = { g -> sendspin.setDuckGain(g) },
         onStartUrl = { sendspin.stop() },
         // Local URL session ended -> rearm SendSpin so the device rejoins its Music Assistant group.
@@ -339,7 +339,7 @@ class AppDeps(context: Context) {
     val announce = AnnouncePlayer(
         scope,
         AndroidPcmSink(),
-        onPlayed = { scope.launch { vaca.sendPlayed() } },
+        onPlayed = { scope.launch { hearth.sendPlayed() } },
         setDucking = { ducked -> mainScope.launch { media.setDucked(DuckSource.ANNOUNCE, ducked) } },
     )
     val lightSensor = LightSensorReporter(appContext) { lux ->
@@ -349,25 +349,25 @@ class AppDeps(context: Context) {
             nightMode.onLux(lux, SystemClock.elapsedRealtime())
         }
         scope.launch {
-            vaca.sendStatus(buildJsonObject {
+            hearth.sendStatus(buildJsonObject {
                 putJsonObject("sensors") { put("light", lux.toInt()) }
             })
         }
     }
-    val vaca: VacaServer = VacaServer(
+    val hearth: HearthServer = HearthServer(
         scope = scope,
-        infoEvent = { VacaOutgoing.info(BuildConfig.VERSION_NAME, deviceName()) },
+        infoEvent = { HearthOutgoing.info(BuildConfig.VERSION_NAME, deviceName()) },
         capabilitiesEvent = {
-            VacaOutgoing.capabilities(
-                VacaOutgoing.buildCapabilities(BuildConfig.VERSION_NAME, lightSensor.hasSensor)
+            HearthOutgoing.capabilities(
+                HearthOutgoing.buildCapabilities(BuildConfig.VERSION_NAME, lightSensor.hasSensor)
             )
         },
-        listener = object : VacaServer.Listener {
+        listener = object : HearthServer.Listener {
             override fun onSessionStarted() {
                 announce.onDisconnected()
                 mainScope.launch {
-                    vaca.sendSettingsFeedback(JsonObject(kiosk.currentSettings() + media.currentSettings()))
-                    vaca.sendStatus(statusSnapshot())
+                    hearth.sendSettingsFeedback(JsonObject(kiosk.currentSettings() + media.currentSettings()))
+                    hearth.sendStatus(statusSnapshot())
                 }
             }
             override fun onSettings(settings: JsonObject) {
@@ -393,7 +393,7 @@ class AppDeps(context: Context) {
         },
     )
     private val hearthNsd =
-        NsdAdvertiser(appContext, VacaServer.DEFAULT_PORT, "_hearth._tcp.", name = { deviceName() })
+        NsdAdvertiser(appContext, HearthServer.DEFAULT_PORT, "_hearth._tcp.", name = { deviceName() })
 
     // --- Voice satellite (Wyoming) ---
     val voiceOverlay = MutableStateFlow(VoiceOverlayState())
@@ -438,7 +438,7 @@ class AppDeps(context: Context) {
     private val voiceRestartTick = MutableStateFlow(0)
 
     init {
-        kiosk.sendFeedback = { s -> scope.launch { vaca.sendSettingsFeedback(s) } }
+        kiosk.sendFeedback = { s -> scope.launch { hearth.sendSettingsFeedback(s) } }
         artFetcher.start(nowPlaying.state)
     }
 
@@ -451,8 +451,8 @@ class AppDeps(context: Context) {
 
     @Volatile private var vacaRunning = false
 
-    fun startVaca() {
-        vaca.start()
+    fun startHearth() {
+        hearth.start()
         hearthNsd.register()
         lightSensor.start()
         // Report the current view to HA whenever it changes (select entity mirror). sendStatus is a
@@ -462,7 +462,7 @@ class AppDeps(context: Context) {
                 .map { it.name.lowercase(Locale.US) }
                 .distinctUntilChanged()
                 .collect { view ->
-                    vaca.sendStatus(buildJsonObject {
+                    hearth.sendStatus(buildJsonObject {
                         putJsonObject("sensors") { put("current_view", view) }
                     })
                 }

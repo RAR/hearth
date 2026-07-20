@@ -1,4 +1,4 @@
-package com.rar.hearth.vaca
+package com.rar.hearth.device
 
 import android.content.BroadcastReceiver
 import android.content.Context

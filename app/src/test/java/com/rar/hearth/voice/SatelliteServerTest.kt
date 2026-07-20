@@ -1,7 +1,7 @@
 package com.rar.hearth.voice
 
-import com.rar.hearth.vaca.WyomingCodec
-import com.rar.hearth.vaca.WyomingEvent
+import com.rar.hearth.device.WyomingCodec
+import com.rar.hearth.device.WyomingEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

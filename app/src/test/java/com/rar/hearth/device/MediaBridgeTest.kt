@@ -1,4 +1,4 @@
-package com.rar.hearth.vaca
+package com.rar.hearth.device
 
 import com.rar.hearth.media.NowPlayingStore
 import kotlinx.serialization.json.Json

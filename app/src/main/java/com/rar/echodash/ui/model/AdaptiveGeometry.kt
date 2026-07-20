@@ -21,6 +21,7 @@ data class HomeOverlayCaps(
     val notifMaxWidthDp: Int,
     val notifMaxHeightDp: Int,
     val nextEventMaxWidthDp: Int,
+    val cardColumnMaxHeightDp: Int,
 )
 
 data class TakeoverLayout(
@@ -47,6 +48,10 @@ private const val CLOCK_BLOCK_W = 230
 // Horizontal clearance kept between the next-event card and the clock block; the value that
 // reproduces today's 420dp cap on the Show 5 (787 − 28 − 230 − 109 = 420).
 private const val CLOCK_CLEAR = 109
+// Card column draws at a 20dp top pad (Alignment.TopEnd).
+private const val CARD_COLUMN_TOP = 20
+// Bottom-right next-event pill (single row ~44dp) + its 20dp bottom pad + clearance kept above it.
+private const val NEXT_EVENT_BLOCK = 44 + 20 + 14
 
 // Takeover: vertical margins around the art card (today's 2×17 around the 360dp card).
 private const val ART_VMARGINS = 34
@@ -82,7 +87,9 @@ fun solarFlowCard(cardWidthDp: Int): Boolean = cardWidthDp >= 300
  * Home overlay caps for a [screenWidthDp]×[screenHeightDp] canvas. When [reserveCardColumn] the
  * notification width subtracts the EV/solar card column so a row never slides under the cards; pass
  * CONFIG presence (not current card visibility) so a card fading in/out never jumps the width. The
- * next-event and height caps are independent of the card column.
+ * next-event, notification-height, and card-column-height caps are independent of the card column.
+ * The card-column height reserves the top pad and the bottom-right next-event block so the column
+ * never runs off-screen or collides with the next-event card.
  */
 fun homeOverlayCaps(
     screenWidthDp: Float,
@@ -93,7 +100,8 @@ fun homeOverlayCaps(
     val notifW = floorDp(screenWidthDp - EDGE_PADS - reserve).coerceIn(300, 700)
     val notifH = floorDp(screenHeightDp - TOP_ROW - CLOCK_BLOCK_H - NOTIF_CLOCK_GAP).coerceAtLeast(120)
     val nextEventW = floorDp(screenWidthDp - END_PAD - CLOCK_BLOCK_W - CLOCK_CLEAR).coerceIn(240, 640)
-    return HomeOverlayCaps(notifW, notifH, nextEventW)
+    val cardColH = floorDp(screenHeightDp - CARD_COLUMN_TOP - NEXT_EVENT_BLOCK).coerceAtLeast(120)
+    return HomeOverlayCaps(notifW, notifH, nextEventW, cardColH)
 }
 
 /**
@@ -113,6 +121,39 @@ fun takeoverLayout(screenWidthDp: Float, screenHeightDp: Float): TakeoverLayout 
  *  clamped 3..5 so the Show 5 keeps 3 and no screen shows a lonely 1–2 or over-thin 6+ columns. */
 fun agendaDayCount(panelContentWidthDp: Float): Int =
     floorDp(panelContentWidthDp / AGENDA_COL_TARGET).coerceIn(3, 5)
+
+/**
+ * How many leading cards (top-priority first, [cardHeights] in px) fit within [maxHeightPx],
+ * counting [gapPx] between adjacent cards. If not all fit, room for the "+N more" chip
+ * ([overflowChipHeightPx] + one gap) is reserved at the bottom, so the returned count shrinks to
+ * leave space for it. Always returns at least 1 when there is a card (the top card is the protected
+ * now-playing re-entry -- it shows even if it alone would overflow). Returns 0 for an empty list.
+ * The caller shows the chip iff the returned count is less than cardHeights.size.
+ */
+fun visibleCardCount(
+    cardHeights: List<Int>,
+    maxHeightPx: Int,
+    gapPx: Int,
+    overflowChipHeightPx: Int,
+): Int {
+    if (cardHeights.isEmpty()) return 0
+    // Pass 1: how many fit with no chip.
+    var fitNoChip = 0
+    var acc = 0
+    for (h in cardHeights) {
+        val next = if (fitNoChip == 0) h else acc + gapPx + h
+        if (next <= maxHeightPx) { acc = next; fitNoChip++ } else break
+    }
+    if (fitNoChip == cardHeights.size) return fitNoChip
+    // Pass 2: overflow -> reserve chip space (chip sits below the cards with its own gap).
+    var fitWithChip = 0
+    acc = 0
+    for (h in cardHeights) {
+        val cards = if (fitWithChip == 0) h else acc + gapPx + h
+        if (cards + gapPx + overflowChipHeightPx <= maxHeightPx) { acc = cards; fitWithChip++ } else break
+    }
+    return fitWithChip.coerceAtLeast(1)
+}
 
 // floor then Int: outputs never round a region past its fixed neighbour. toDouble() keeps floor
 // exact for the Float inputs (a Float multiply like 961 × 0.46f lands at 442.06, flooring to 442).

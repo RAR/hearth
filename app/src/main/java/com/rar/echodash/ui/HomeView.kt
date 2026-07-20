@@ -80,11 +80,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Placeable
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -113,6 +116,7 @@ import com.rar.echodash.ui.model.miniPlayerVisible
 import com.rar.echodash.ui.model.nextEventCard
 import com.rar.echodash.ui.model.solarFlowCard
 import com.rar.echodash.ui.model.solarStatsCompact
+import com.rar.echodash.ui.model.visibleCardCount
 import com.rar.echodash.ui.model.weatherPillText
 import java.io.File
 import java.text.SimpleDateFormat
@@ -393,7 +397,7 @@ fun HomeView(
                 exit = fadeOut(tween(600)),
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 28.dp),
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                CardColumn(maxHeight = caps.cardColumnMaxHeightDp.dp, cardWidth = cardWidth) {
                     // Now-playing card sits above the EV/solar cards when a session is up.
                     if (showMiniPlayer) {
                         NowPlayingCardView(
@@ -514,6 +518,68 @@ fun HomeView(
                 onClick = { menuOpen = false; onLogout() },
             )
         }
+    }
+}
+
+/** The top-right home card column, height-capped so it never runs off-screen or collides with the
+ *  bottom-right next-event card. Renders whole cards top-down (priority order) until [maxHeight] is
+ *  exhausted; if any are dropped, a "+N more" chip is placed at the bottom. Cards are separated by a
+ *  10dp gap, matching the old Column(spacedBy(10.dp)). */
+@Composable
+private fun CardColumn(
+    maxHeight: Dp,
+    cardWidth: Dp,
+    cards: @Composable () -> Unit,
+) {
+    SubcomposeLayout(
+        Modifier
+            .heightIn(max = maxHeight)
+            .clipToBounds(),
+    ) { constraints ->
+        val gapPx = 10.dp.roundToPx()
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val cardPlaceables = subcompose("cards", cards).map { it.measure(loose) }
+        // maxHeight is finite here (heightIn caps it); guard anyway.
+        val budget = if (constraints.maxHeight == Constraints.Infinity) Int.MAX_VALUE else constraints.maxHeight
+        val chipProbeH = subcompose("probe") { MoreCardsChip(0, cardWidth) }.first().measure(loose).height
+        val count = visibleCardCount(cardPlaceables.map { it.height }, budget, gapPx, chipProbeH)
+        val overflow = cardPlaceables.size - count
+        val chip = if (overflow > 0) {
+            subcompose("chip") { MoreCardsChip(overflow, cardWidth) }.first().measure(loose)
+        } else {
+            null
+        }
+        val shown = cardPlaceables.take(count)
+        val placements = ArrayList<Pair<Placeable, Int>>()
+        var y = 0
+        shown.forEachIndexed { i, p ->
+            if (i > 0) y += gapPx
+            placements += p to y
+            y += p.height
+        }
+        if (chip != null) {
+            if (shown.isNotEmpty()) y += gapPx
+            placements += chip to y
+            y += chip.height
+        }
+        val width = placements.maxOfOrNull { it.first.width } ?: 0
+        val totalH = y.coerceIn(0, if (budget == Int.MAX_VALUE) y else budget)
+        layout(width, totalH) { placements.forEach { (p, py) -> p.place(0, py) } }
+    }
+}
+
+/** Compact "+N more" hint pill shown at the bottom of [CardColumn] when cards are dropped for space.
+ *  Same black-0.35 rounded chrome as the cards; non-interactive (informational). */
+@Composable
+private fun MoreCardsChip(count: Int, cardWidth: Dp) {
+    Box(
+        Modifier
+            .width(cardWidth)
+            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("+$count more", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
     }
 }
 

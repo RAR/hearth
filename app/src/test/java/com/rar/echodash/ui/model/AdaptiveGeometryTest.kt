@@ -49,16 +49,39 @@ class AdaptiveGeometryTest {
 
     @Test
     fun homeOverlayCapsGoldenTable() {
-        // Show 5 787×394, cards configured — today's shipped caps (golden rule).
-        assertEquals(HomeOverlayCaps(460, 200, 420), homeOverlayCaps(787f, 394f, reserveCardColumn = true))
-        // Show 8 961×601, cards configured.
-        assertEquals(HomeOverlayCaps(582, 407, 594), homeOverlayCaps(961f, 601f, reserveCardColumn = true))
+        // Show 5 787×394, cards configured — today's shipped caps (golden rule). Card column
+        // 394 − 20 − 78 = 296.
+        assertEquals(HomeOverlayCaps(460, 200, 420, 296), homeOverlayCaps(787f, 394f, reserveCardColumn = true))
+        // Show 8 961×601, cards configured. Card column 601 − 98 = 503.
+        assertEquals(HomeOverlayCaps(582, 407, 594, 503), homeOverlayCaps(961f, 601f, reserveCardColumn = true))
         // Tab M9 1340×800, cards configured — notif width & next-event hit their caps (700 / 640).
-        assertEquals(HomeOverlayCaps(700, 606, 640), homeOverlayCaps(1340f, 800f, reserveCardColumn = true))
+        // Card column 800 − 98 = 702.
+        assertEquals(HomeOverlayCaps(700, 606, 640, 702), homeOverlayCaps(1340f, 800f, reserveCardColumn = true))
         // Show 5, no cards configured — notif width reclaims the card column (731 → capped 700).
-        assertEquals(HomeOverlayCaps(700, 200, 420), homeOverlayCaps(787f, 394f, reserveCardColumn = false))
-        // Tiny 500×300 — every field floors to its minimum.
-        assertEquals(HomeOverlayCaps(300, 120, 240), homeOverlayCaps(500f, 300f, reserveCardColumn = true))
+        assertEquals(HomeOverlayCaps(700, 200, 420, 296), homeOverlayCaps(787f, 394f, reserveCardColumn = false))
+        // Tiny 500×300 — every field floors to its minimum. Card column 300 − 98 = 202.
+        assertEquals(HomeOverlayCaps(300, 120, 240, 202), homeOverlayCaps(500f, 300f, reserveCardColumn = true))
+    }
+
+    // ---- visibleCardCount: fit math + chip reservation ----
+
+    @Test
+    fun visibleCardCountFitAndOverflow() {
+        // Empty list -> nothing to show, no chip.
+        assertEquals(0, visibleCardCount(emptyList(), 300, 10, 30))
+        // All fit with room to spare -> both, no chip reserved (100 + 10 + 100 = 210 <= 300).
+        assertEquals(2, visibleCardCount(listOf(100, 100), 300, 10, 30))
+        // A single card that fits -> 1, no chip.
+        assertEquals(1, visibleCardCount(listOf(100), 300, 10, 30))
+        // Overflow reserves chip space: three 100s in 250 with gap 10. Pass 1 fits two (210) but not
+        // three, so pass 2 reserves the chip; two cards + gap + chip = 100+10+100+10+30 = 250 <= 250.
+        assertEquals(2, visibleCardCount(listOf(100, 100, 100), 250, 10, 30))
+        // Exact boundary is INCLUDED (<=): one 100 card + gap + 30 chip = 140 == max, so 1 card fits
+        // beside the chip; the second card would push cards+gap+chip to 240 > 140, dropped.
+        assertEquals(1, visibleCardCount(listOf(100, 100), 140, 10, 30))
+        // Pathological floor: even the top card alone (100) overflows a 100 budget once the chip is
+        // reserved, but the protected top card still shows -> 1.
+        assertEquals(1, visibleCardCount(listOf(100, 100), 100, 10, 30))
     }
 
     // ---- takeoverLayout: golden rows (the no-cards row has no takeover values) ----

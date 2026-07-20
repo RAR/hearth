@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -106,11 +107,14 @@ fun NotificationArea(
  * Mini-player card for the home notification stack — shown while a session is active, playing
  * (or within the post-pause grace window, see [miniPlayerVisible]), and neither the takeover nor
  * a swipe has claimed it. Chrome matches [NotificationRow] (RoundedCornerShape(14) on Black-0.35).
- * Row 1 (tap = [onTap], restores the takeover): a 56dp art thumbnail ([artThumb] = art.sharp, or a
- * MusicNote fallback) + a title/artist two-line column ([artist] omitted when null/blank). Row 2:
- * four 36dp transport chips (back/play-pause/next/stop). The whole card is wrapped in the exact
- * swipe-to-dismiss mechanics [NotificationRow] uses below — fire-and-forget, local state only, no
- * server op and so no failure path (unlike the MA queue rows' suspend variant elsewhere).
+ * Layout is a full-height Row: a square album-art panel on the left ([artThumb] = art.sharp, or a
+ * MusicNote fallback) sized to the card height (fillMaxHeight + aspectRatio, so the whole card's
+ * height drives the art edge), then a right column with the title/artist lines ([artist] omitted
+ * when null/blank) above four 36dp transport chips (back/play-pause/next/stop). Tapping the art or
+ * the title/artist column runs [onTap] (restores the takeover); the transport chips consume their
+ * own taps. The whole card is wrapped in the exact swipe-to-dismiss mechanics [NotificationRow]
+ * uses below — fire-and-forget, local state only, no server op and so no failure path (unlike the
+ * MA queue rows' suspend variant elsewhere).
  */
 @Composable
 fun MiniPlayerCard(
@@ -159,44 +163,47 @@ fun MiniPlayerCard(
                 }
             },
     ) {
-        Column(
+        // Full-height Row: the right column's content (title/artist + transport) drives the card
+        // height via IntrinsicSize.Min, and the art panel fills that height as a square.
+        Row(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .background(Color.Black.copy(alpha = 0.35f))
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .height(IntrinsicSize.Min),
         ) {
-            // Body tap restores the takeover. The transport row below sits inside this same swipe
-            // area but consumes its own taps -- normal Compose click handling already wins over
-            // the drag detector for a tap that doesn't cross the swipe threshold.
-            Row(
-                Modifier.fillMaxWidth().clickable { onTap() },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            // Album art spans the whole card height. Tapping it (like the title/artist column)
+            // restores the takeover; the transport chips consume their own taps -- normal Compose
+            // click handling wins over the swipe detector for a tap below the swipe threshold.
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .aspectRatio(1f, matchHeightConstraintsFirst = true)
+                    .background(Color.Black.copy(alpha = 0.25f))
+                    .clickable { onTap() },
+                contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.Black.copy(alpha = 0.25f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (artThumb != null) {
-                        Image(
-                            artThumb, contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                        )
-                    } else {
-                        Icon(
-                            Icons.Outlined.MusicNote, contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.5f),
-                            modifier = Modifier.size(28.dp),
-                        )
-                    }
+                if (artThumb != null) {
+                    Image(
+                        artThumb, contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Icon(
+                        Icons.Outlined.MusicNote, contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.size(32.dp),
+                    )
                 }
-                Column(Modifier.weight(1f)) {
+            }
+            Column(
+                Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(Modifier.fillMaxWidth().clickable { onTap() }) {
                     Text(
                         title,
                         color = Color.White,
@@ -215,16 +222,16 @@ fun MiniPlayerCard(
                         )
                     }
                 }
-            }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                MiniTransportButton(Icons.Outlined.SkipPrevious, onPrev)
-                MiniTransportButton(if (playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, onPlayPause)
-                MiniTransportButton(Icons.Outlined.SkipNext, onNext)
-                MiniTransportButton(Icons.Outlined.Stop, onStop)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    MiniTransportButton(Icons.Outlined.SkipPrevious, onPrev)
+                    MiniTransportButton(if (playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, onPlayPause)
+                    MiniTransportButton(Icons.Outlined.SkipNext, onNext)
+                    MiniTransportButton(Icons.Outlined.Stop, onStop)
+                }
             }
         }
     }

@@ -1,0 +1,118 @@
+package com.rar.hearth.vaca
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import kotlin.math.roundToInt
+
+/** ExoPlayer-backed engine; must be constructed on the main thread. */
+class ExoPlayerEngine(context: Context) : MediaEngine {
+    private val main = Handler(Looper.getMainLooper())
+    override var onPlayingChanged: ((Boolean) -> Unit)? = null
+    override var onMeta: ((String?, ByteArray?) -> Unit)? = null
+    override var onEnded: (() -> Unit)? = null
+    override var onVolumeChanged: ((Int) -> Unit)? = null
+
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+
+    private val resumePolicy = ResumePolicy { SystemClock.elapsedRealtime() }
+
+    private val player: ExoPlayer = ExoPlayer.Builder(context).build().apply {
+        addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                onPlayingChanged?.invoke(isPlaying)
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                onPlayingChanged?.invoke(false)
+                onEnded?.invoke()
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) onEnded?.invoke()
+            }
+            override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
+                // media3 surfaces ICY StreamTitle as title; embedded tag art as artworkData.
+                onMeta?.invoke(mediaMetadata.title?.toString(), mediaMetadata.artworkData)
+            }
+        })
+    }
+
+    override fun play(url: String) = onMain {
+        resumePolicy.onPlay()
+        player.setMediaItem(MediaItem.fromUri(url))
+        player.prepare()
+        player.play()
+    }
+
+    /**
+     * A stream paused for [ResumePolicy.STALE_MS]+ likely has a dead socket: the server drops a
+     * long-paused client, and ExoPlayer reads that FIN as a clean end-of-stream (no error) once the
+     * leftover buffer plays out. Re-prepare in that case, and whenever the player already sits in
+     * IDLE/ENDED, so resume rebuilds the source instead of silently deactivating the session.
+     */
+    override fun resume() = onMain {
+        val mustReprepare = resumePolicy.isStale() ||
+            player.playbackState == Player.STATE_IDLE ||
+            player.playbackState == Player.STATE_ENDED
+        resumePolicy.onPlay()
+        if (mustReprepare && player.currentMediaItem != null) {
+            // stop() keeps the media item; prepare() opens a fresh connection. Seekable content
+            // returns to where it was; live streams rejoin at the live edge.
+            val position = player.currentPosition
+            val seekable = player.isCurrentMediaItemSeekable
+            player.stop()
+            player.prepare()
+            if (seekable && position > 0) player.seekTo(position)
+        }
+        player.play()
+    }
+    override fun pause() = onMain {
+        resumePolicy.onPause()
+        player.pause()
+    }
+    override fun stop() = onMain {
+        player.stop()
+        player.clearMediaItems()
+    }
+    override fun setVolume(fraction: Float) {
+        audioManager.setStreamVolume(
+            AudioManager.STREAM_MUSIC,
+            (fraction.coerceIn(0f, 1f) * maxVolume).roundToInt(),
+            0,
+        )
+    }
+
+    override fun setDucking(fraction: Float) = onMain { player.volume = fraction }
+
+    override fun currentVolumePercent(): Int =
+        audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) * 100 / maxVolume
+
+    init {
+        // "android.media.VOLUME_CHANGED_ACTION" is not in the public SDK but is the long-stable
+        // broadcast for system volume changes (hardware buttons, other apps).
+        // The engine lives for the app's whole life (the app is the device launcher), so the
+        // receiver is never unregistered — there is no teardown path to unregister it from.
+        ContextCompat.registerReceiver(context, object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                if (intent?.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1) == AudioManager.STREAM_MUSIC) {
+                    onVolumeChanged?.invoke(currentVolumePercent())
+                }
+            }
+        }, IntentFilter("android.media.VOLUME_CHANGED_ACTION"), ContextCompat.RECEIVER_NOT_EXPORTED)
+    }
+
+    private fun onMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block() else main.post(block)
+    }
+}

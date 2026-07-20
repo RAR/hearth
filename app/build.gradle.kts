@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.rar.echodash"
+    namespace = "com.rar.hearth"
     compileSdk = 34
     defaultConfig {
         applicationId = "com.rar.echodash"

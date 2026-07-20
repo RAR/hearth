@@ -84,6 +84,33 @@ class AdaptiveGeometryTest {
         assertEquals(1, visibleCardCount(listOf(100, 100), 100, 10, 30))
     }
 
+    // ---- pageCardCount: page window + later-page chip reservation ----
+
+    @Test
+    fun pageCardCountPagingAndChipReservation() {
+        // Empty list -> nothing to show, regardless of page.
+        assertEquals(0, pageCardCount(emptyList(), 0, 300, 10, 30))
+        // pageStart == 0 delegates to visibleCardCount: all-fit and overflow cases match exactly.
+        assertEquals(
+            visibleCardCount(listOf(100, 100), 300, 10, 30),
+            pageCardCount(listOf(100, 100), 0, 300, 10, 30),
+        )
+        assertEquals(
+            visibleCardCount(listOf(100, 100, 100), 250, 10, 30),
+            pageCardCount(listOf(100, 100, 100), 0, 250, 10, 30),
+        )
+        // Later page ALWAYS reserves chip space (a wrap-to-top chip shows once paged forward). The
+        // two remaining 100s from index 2 just fit beside the chip: 100+10+100 +gap+chip = 250 <= 250.
+        assertEquals(2, pageCardCount(listOf(100, 100, 100, 100), 2, 250, 10, 30))
+        // One px tighter and the reserved chip pushes the second card off: 250 > 249 -> only 1.
+        assertEquals(1, pageCardCount(listOf(100, 100, 100, 100), 2, 249, 10, 30))
+        // Out-of-range pageStart is treated as 0 (delegates to visibleCardCount): >= size and negative.
+        assertEquals(2, pageCardCount(listOf(100, 100), 5, 300, 10, 30))
+        assertEquals(2, pageCardCount(listOf(100, 100), -1, 300, 10, 30))
+        // Later-page floor: the card at the start alone can't also fit the chip, but still shows -> 1.
+        assertEquals(1, pageCardCount(listOf(100, 100), 1, 100, 10, 30))
+    }
+
     // ---- takeoverLayout: golden rows (the no-cards row has no takeover values) ----
 
     @Test

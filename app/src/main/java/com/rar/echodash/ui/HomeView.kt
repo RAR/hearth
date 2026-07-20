@@ -11,10 +11,14 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -114,9 +118,9 @@ import com.rar.echodash.ui.model.homeCardWidthDp
 import com.rar.echodash.ui.model.homeOverlayCaps
 import com.rar.echodash.ui.model.miniPlayerVisible
 import com.rar.echodash.ui.model.nextEventCard
+import com.rar.echodash.ui.model.pageCardCount
 import com.rar.echodash.ui.model.solarFlowCard
 import com.rar.echodash.ui.model.solarStatsCompact
-import com.rar.echodash.ui.model.visibleCardCount
 import com.rar.echodash.ui.model.weatherPillText
 import java.io.File
 import java.text.SimpleDateFormat
@@ -391,36 +395,57 @@ fun HomeView(
                 pausedSinceMs = miniPausedSinceMs,
                 nowMs = now,
             )
+            // Which card is at the top of the height-capped column. Tapping the "+N more" chip pages
+            // it forward (see CardColumn); it wraps back to 0 at the end. Reset to 0 whenever the card
+            // SET changes so a new music session / plugged-in EV resurfaces the top-priority page and
+            // the page never rests out of range.
+            var cardPage by remember { mutableIntStateOf(0) }
+            LaunchedEffect(showMiniPlayer, evs.size, solar != null, quickButtons.isNotEmpty()) { cardPage = 0 }
             AnimatedVisibility(
                 visible = evs.isNotEmpty() || solar != null || quickButtons.isNotEmpty() || showMiniPlayer,
                 enter = fadeIn(tween(600)),
                 exit = fadeOut(tween(600)),
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 28.dp),
             ) {
-                CardColumn(maxHeight = caps.cardColumnMaxHeightDp.dp, cardWidth = cardWidth) {
-                    // Now-playing card sits above the EV/solar cards when a session is up.
-                    if (showMiniPlayer) {
-                        NowPlayingCardView(
-                            title = nowPlaying.title?.takeIf { it.isNotBlank() } ?: "Now playing",
-                            artist = nowPlaying.artist,
-                            playing = nowPlaying.playing,
-                            cardWidth = cardWidth,
-                            onPlayPause = { if (nowPlaying.playing) onMediaPause() else onMediaPlay() },
-                            onNext = onMediaNext,
-                            onOpenTakeover = onTakeoverRestore,
-                        )
-                    }
-                    evs.forEach { EvCardView(it, cardWidth) }
-                    // The 300dp+ tiers (Show 8 / Tab M9) show the animated flow diagram; the Show 5
-                    // (248dp) fails solarFlowCard() and keeps the compact pill byte-for-byte.
-                    if (solarFlowCard(cardWidth.value.toInt()) && solarGraph != null) {
-                        SolarFlowCardView(solarGraph, cardWidth)
-                    } else if (solar != null) {
-                        SolarCardView(solar, cardWidth)
-                    }
-                    // Quick buttons sit below the EV/solar cards on every tier (opt-in via config).
-                    if (quickButtons.isNotEmpty()) {
-                        QuickButtonsCardView(quickButtons, cardWidth, onQuickButton)
+                AnimatedContent(
+                    targetState = cardPage,
+                    transitionSpec = {
+                        // pages differ in height; using(null) snaps size, only slide+fade the content.
+                        ((slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()))
+                            .using(null)
+                    },
+                    label = "cardPage",
+                ) { page ->
+                    CardColumn(
+                        maxHeight = caps.cardColumnMaxHeightDp.dp,
+                        cardWidth = cardWidth,
+                        pageStart = page,
+                        onMoreTap = { cardPage = it },
+                    ) {
+                        // Now-playing card sits above the EV/solar cards when a session is up.
+                        if (showMiniPlayer) {
+                            NowPlayingCardView(
+                                title = nowPlaying.title?.takeIf { it.isNotBlank() } ?: "Now playing",
+                                artist = nowPlaying.artist,
+                                playing = nowPlaying.playing,
+                                cardWidth = cardWidth,
+                                onPlayPause = { if (nowPlaying.playing) onMediaPause() else onMediaPlay() },
+                                onNext = onMediaNext,
+                                onOpenTakeover = onTakeoverRestore,
+                            )
+                        }
+                        evs.forEach { EvCardView(it, cardWidth) }
+                        // The 300dp+ tiers (Show 8 / Tab M9) show the animated flow diagram; the Show 5
+                        // (248dp) fails solarFlowCard() and keeps the compact pill byte-for-byte.
+                        if (solarFlowCard(cardWidth.value.toInt()) && solarGraph != null) {
+                            SolarFlowCardView(solarGraph, cardWidth)
+                        } else if (solar != null) {
+                            SolarCardView(solar, cardWidth)
+                        }
+                        // Quick buttons sit below the EV/solar cards on every tier (opt-in via config).
+                        if (quickButtons.isNotEmpty()) {
+                            QuickButtonsCardView(quickButtons, cardWidth, onQuickButton)
+                        }
                     }
                 }
             }
@@ -529,6 +554,8 @@ fun HomeView(
 private fun CardColumn(
     maxHeight: Dp,
     cardWidth: Dp,
+    pageStart: Int,
+    onMoreTap: (Int) -> Unit,
     cards: @Composable () -> Unit,
 ) {
     SubcomposeLayout(
@@ -539,17 +566,24 @@ private fun CardColumn(
         val gapPx = 10.dp.roundToPx()
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
         val cardPlaceables = subcompose("cards", cards).map { it.measure(loose) }
+        val total = cardPlaceables.size
         // maxHeight is finite here (heightIn caps it); guard anyway.
         val budget = if (constraints.maxHeight == Constraints.Infinity) Int.MAX_VALUE else constraints.maxHeight
-        val chipProbeH = subcompose("probe") { MoreCardsChip(0, cardWidth) }.first().measure(loose).height
-        val count = visibleCardCount(cardPlaceables.map { it.height }, budget, gapPx, chipProbeH)
-        val overflow = cardPlaceables.size - count
-        val chip = if (overflow > 0) {
-            subcompose("chip") { MoreCardsChip(overflow, cardWidth) }.first().measure(loose)
+        val start = if (pageStart in 0 until total) pageStart else 0
+        val heights = cardPlaceables.map { it.height }
+        val chipProbeH = subcompose("probe") { MoreCardsChip("+0 more", cardWidth) {} }.first().measure(loose).height
+        val fit = pageCardCount(heights, start, budget, gapPx, chipProbeH)
+        val hiddenBelow = total - (start + fit)
+        val showChip = fit < total // something is off-screen (below now, or above after paging)
+        val chip = if (showChip) {
+            val label = if (hiddenBelow > 0) "+$hiddenBelow more" else "↑ Top"
+            val nextStart = if (hiddenBelow > 0) start + fit else 0
+            subcompose("chip") { MoreCardsChip(label, cardWidth) { onMoreTap(nextStart) } }
+                .first().measure(loose)
         } else {
             null
         }
-        val shown = cardPlaceables.take(count)
+        val shown = cardPlaceables.subList(start, start + fit)
         val placements = ArrayList<Pair<Placeable, Int>>()
         var y = 0
         shown.forEachIndexed { i, p ->
@@ -568,18 +602,21 @@ private fun CardColumn(
     }
 }
 
-/** Compact "+N more" hint pill shown at the bottom of [CardColumn] when cards are dropped for space.
- *  Same black-0.35 rounded chrome as the cards; non-interactive (informational). */
+/** Tappable overflow pill at the bottom of [CardColumn]. Label is "+N more" while cards remain
+ *  below the current page, or an up-arrow "Top" affordance on the last page; tapping pages the
+ *  column (see CardColumn). Same black-0.35 rounded chrome as the cards. */
 @Composable
-private fun MoreCardsChip(count: Int, cardWidth: Dp) {
+private fun MoreCardsChip(label: String, cardWidth: Dp, onClick: () -> Unit) {
     Box(
         Modifier
             .width(cardWidth)
-            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.Black.copy(alpha = 0.35f))
+            .clickable { onClick() }
             .padding(horizontal = 16.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text("+$count more", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
+        Text(label, color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
     }
 }
 

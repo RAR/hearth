@@ -155,6 +155,35 @@ fun visibleCardCount(
     return fitWithChip.coerceAtLeast(1)
 }
 
+/**
+ * Cards that fit on the page starting at [pageStart] (0-based index into [cardHeights],
+ * top-priority first). On the FIRST page (pageStart == 0) the "+N more" chip is reserved only if
+ * some cards overflow -- identical to [visibleCardCount]. On a LATER page a chip is always shown
+ * (either "+N more" or a wrap-to-top affordance), so chip space is always reserved. Returns at
+ * least 1 when a card exists at/after the (clamped) start; 0 for an empty list. An out-of-range
+ * [pageStart] is treated as 0.
+ */
+fun pageCardCount(
+    cardHeights: List<Int>,
+    pageStart: Int,
+    maxHeightPx: Int,
+    gapPx: Int,
+    overflowChipHeightPx: Int,
+): Int {
+    if (cardHeights.isEmpty()) return 0
+    val start = if (pageStart in cardHeights.indices) pageStart else 0
+    if (start == 0) return visibleCardCount(cardHeights, maxHeightPx, gapPx, overflowChipHeightPx)
+    // Later page: reserve chip space unconditionally (a chip always shows once you've paged forward).
+    var fit = 0
+    var acc = 0
+    for (i in start until cardHeights.size) {
+        val h = cardHeights[i]
+        val cards = if (fit == 0) h else acc + gapPx + h
+        if (cards + gapPx + overflowChipHeightPx <= maxHeightPx) { acc = cards; fit++ } else break
+    }
+    return fit.coerceAtLeast(1)
+}
+
 // floor then Int: outputs never round a region past its fixed neighbour. toDouble() keeps floor
 // exact for the Float inputs (a Float multiply like 961 × 0.46f lands at 442.06, flooring to 442).
 private fun floorDp(value: Float): Int = floor(value.toDouble()).toInt()

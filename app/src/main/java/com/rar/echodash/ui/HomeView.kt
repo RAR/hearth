@@ -205,6 +205,13 @@ fun HomeView(
     onBrowse: () -> Unit = {},
     onTakeoverDismiss: () -> Unit = {},
     onTakeoverRestore: () -> Unit = {},
+    // Mini-player dismiss + pause-grace state. Owned by App (NOT declared here) because the
+    // DashboardShell Crossfade disposes this whole composable on every view switch -- including the
+    // routine IdleReturnTimer auto-return to Home -- which would remount local state and restamp the
+    // pause instant / revive a swipe-dismissed card. See App.kt's comment beside manualDismissed.
+    miniDismissed: Boolean = false,
+    miniPausedSinceMs: Long = 0L,
+    onMiniPlayerDismiss: () -> Unit = {},
     onMediaCycleRepeat: () -> Unit = {},
     onMediaToggleShuffle: () -> Unit = {},
     favorite: Boolean? = null,
@@ -219,22 +226,6 @@ fun HomeView(
     val context = LocalContext.current
     var menuOpen by remember { mutableStateOf(false) }
     val now by rememberMinuteTicker()
-
-    // Mini-player dismiss + pause-grace state. Declared here — NOT inside the
-    // `if (takeoverVisible) {...} else {...}` split further down — because that branch unmounts
-    // while the takeover is up; pausedSinceMs must survive that hand-off holding the ACTUAL pause
-    // instant (the takeover's own ~60s paused-timeout hides it well before the mini-player's own
-    // 5-minute grace closes, and the card needs to know the pause started ~60s ago, not "now", to
-    // honor the shared budget). BoxWithConstraints below is composed unconditionally every
-    // recomposition, so state declared here (its ancestor) is unaffected by that inner branch swap.
-    var miniDismissed by remember { mutableStateOf(false) }
-    LaunchedEffect(nowPlaying.active) {
-        if (!nowPlaying.active) miniDismissed = false
-    }
-    var pausedSinceMs by remember { mutableStateOf(0L) }
-    LaunchedEffect(nowPlaying.playing, nowPlaying.active) {
-        pausedSinceMs = if (nowPlaying.active && !nowPlaying.playing) System.currentTimeMillis() else 0L
-    }
 
     val order = remember(photos) { photos.shuffled() }
     var photoIndex by remember(order) { mutableIntStateOf(0) }
@@ -417,16 +408,18 @@ fun HomeView(
                 playing = nowPlaying.playing,
                 takeoverVisible = takeoverVisible,
                 dismissed = miniDismissed,
-                pausedSinceMs = pausedSinceMs,
+                pausedSinceMs = miniPausedSinceMs,
                 nowMs = now,
             )
             // homeOverlayCaps sizes notifMaxHeightDp so the stack ends NOTIF_CLOCK_GAP above the
-            // clock block; the mini-player card is taller than the old single-line row -- 12+56+
-            // 8+36+10 ≈ 122dp of card content (12 top pad + 56 art/title row + 8 Column gap + 36
-            // transport row + 10 bottom pad) plus this Column's own 8dp spacedBy gap above the
-            // stack ⇒ 130 -- so shrink the stack's cap by that amount to keep the clock-clearance
-            // contract. Same coerceAtLeast(60) floor as before (keeps one notification row usable
-            // if a future tiny screen ever bottoms out the geometry floor).
+            // clock block; the mini-player card is taller than the old single-line row -- 10+56+
+            // 8+36+10 = 120dp of card content (10 top pad + 56 art/title row + 8 Column gap + 36
+            // transport row + 10 bottom pad; NotificationArea.kt's Column padding is
+            // vertical=10.dp, not 12) plus this Column's own 8dp spacedBy gap above the stack ⇒
+            // 128 -- so shrink the stack's cap by that amount to keep the clock-clearance contract.
+            // 130 is kept as a safe round-up (2dp of extra shrink, clock clearance still preserved).
+            // Same coerceAtLeast(60) floor as before (keeps one notification row usable if a future
+            // tiny screen ever bottoms out the geometry floor).
             val notifHeightCap =
                 if (showMiniPlayer) (caps.notifMaxHeightDp - 130).coerceAtLeast(60)
                 else caps.notifMaxHeightDp
@@ -453,7 +446,7 @@ fun HomeView(
                             onNext = onMediaNext,
                             onStop = onMediaStop,
                             onTap = onTakeoverRestore,
-                            onDismiss = { miniDismissed = true },
+                            onDismiss = onMiniPlayerDismiss,
                         )
                     }
                     // Guarded so NotificationArea's "empty lists should not be rendered by the

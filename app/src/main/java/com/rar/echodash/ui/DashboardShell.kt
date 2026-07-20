@@ -103,6 +103,11 @@ fun DashboardShell(
     onBrowse: () -> Unit,
     onTakeoverDismiss: () -> Unit = {},
     onTakeoverRestore: () -> Unit = {},
+    // Mini-player dismiss + pause-grace state, owned by App (survives the Crossfade disposal that
+    // remounts this HOME branch on every view switch); see App.kt's comment beside manualDismissed.
+    miniDismissed: Boolean = false,
+    miniPausedSinceMs: Long = 0L,
+    onMiniPlayerDismiss: () -> Unit = {},
     onMediaCycleRepeat: () -> Unit = {},
     onMediaToggleShuffle: () -> Unit = {},
     onMediaSetRepeat: (String) -> Unit = {},
@@ -315,6 +320,9 @@ fun DashboardShell(
                         onBrowse = onBrowse,
                         onTakeoverDismiss = onTakeoverDismiss,
                         onTakeoverRestore = onTakeoverRestore,
+                        miniDismissed = miniDismissed,
+                        miniPausedSinceMs = miniPausedSinceMs,
+                        onMiniPlayerDismiss = onMiniPlayerDismiss,
                         onMediaCycleRepeat = onMediaCycleRepeat,
                         onMediaToggleShuffle = onMediaToggleShuffle,
                         // Heart shows on a SendSpin source with a live MA socket (companion sources

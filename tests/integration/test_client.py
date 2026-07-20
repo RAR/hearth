@@ -22,7 +22,7 @@ DEFAULT_SETTINGS = {
 
 
 class FakeAppServer:
-    """Speaks the app's VacaServer contract: probe replies, session, feedback, announce ack."""
+    """Speaks the app's HearthServer contract: probe replies, session, feedback, announce ack."""
 
     def __init__(self, *, device_name="Test Hearth", app_version="9.9", has_light=True) -> None:
         self.device_name = device_name

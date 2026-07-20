@@ -63,18 +63,22 @@ Run the full gate green **before every commit**. This repo works directly on
   `filesDir`, edited from the config page. There is no YAML/HA-label config path
   anymore — don't reintroduce one.
 
-## App architecture (`app/src/main/java/com/rar/echodash/`)
+## App architecture (`app/src/main/java/com/rar/hearth/`)
 
-- `App.kt` — `EchoDashApp` composable (top-level state, screen routing, splash
-  overlay); `MainActivity`, `EchoDashApplication`, `BootReceiver`.
+- The Kotlin package is `com.rar.hearth`, but the **`applicationId` stays
+  `com.rar.echodash`** (in `app/build.gradle.kts`) so the app updates in place on
+  the fleet and keeps its `filesDir` auth/config/PIN. Never change `applicationId`;
+  only `namespace` tracks the package. The on-device data path is therefore still
+  `/data/data/com.rar.echodash/`.
+- `App.kt` — `HearthApp` composable (top-level state, screen routing, splash
+  overlay); `MainActivity`, `HearthApplication`, `BootReceiver`.
 - `ha/` — Home Assistant WebSocket client, `EntityHub` (one `subscribe_entities`
   feed), connection state.
-- `vaca/` — **the Hearth wire protocol** (legacy package name). `VacaServer` is
-  the port-10700 server; `VacaMessages` the codec; `MediaBridge`,
-  `KioskController`, `SatelliteSession` handle HA-driven control. The `vaca`
-  naming is historical (this project began speaking to the third-party VACA
-  integration); it is **not** the removed VACA integration. A rename is optional
-  future cleanup.
+- `device/` — **the Hearth wire protocol + device integration.** `HearthServer` is
+  the port-10700 server; `HearthMessages` the codec (`HearthIncoming`/`HearthParser`/
+  `HearthOutgoing`); `MediaBridge`, `KioskController`, `SatelliteSession` handle
+  HA-driven control. (Formerly the `vaca/` package — renamed 2026-07-20; the wire
+  protocol itself, `_hearth._tcp.` + port 10700, is unchanged.)
 - `ui/` — Compose screens; `ui/panels/` the right-rail panels; `ui/theme/` the
   Nunito type system and colors.
 - `data/` — `SettingsStore` / `DashConfig` persistence.

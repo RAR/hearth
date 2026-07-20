@@ -168,6 +168,12 @@ class AppDeps(context: Context) {
     private val ensuredNotifyToken: String by lazy {
         settings.notifyToken ?: generateNotifyToken().also { settings.notifyToken = it }
     }
+    /**
+     * Live config PIN for the on-device display (Setup screen + Home menu). Seeded from the
+     * persisted/first-boot PIN and re-published by [applyConfigPin] / [resetConfigPin] so a PIN
+     * change made in the web config shows on the device screen without an app restart.
+     */
+    val pinState = MutableStateFlow(configPin())
     val pushStore = com.rar.hearth.notify.PushNotificationStore()
     val configServer = ConfigServer(
         store = configStore,
@@ -176,6 +182,8 @@ class AppDeps(context: Context) {
         notifyToken = { ensuredNotifyToken },
         deviceName = { deviceName() },
         setDeviceName = { applyDeviceName(it) },
+        setPin = { applyConfigPin(it) },
+        resetPin = { resetConfigPin() },
         pushStore = pushStore,
         entitiesJson = { buildEntityListJson(entityHub.registry.value, entityHub.entities.value) },
         setup = setup,
@@ -211,8 +219,8 @@ class AppDeps(context: Context) {
     )
     private var serverStarted = false
 
-    /** The 6-digit config PIN (generated once, persisted). */
-    fun configPin(): String = ensuredPin
+    /** The config PIN: a custom/persisted value if set, else the generate-once default. */
+    fun configPin(): String = settings.configPin ?: ensuredPin
 
     /** The config page URL to show the user (best-effort LAN IP). */
     fun configUrl(): String = "http://${localIpAddress() ?: "device-ip"}:8080"
@@ -235,6 +243,20 @@ class AppDeps(context: Context) {
             hearth.stop(); hearth.start()          // drop HA's session so it re-reads info on reconnect
         }
         voiceRestartTick.value += 1            // reactive voice collect tears down + rebuilds (voiceNsd + satellite)
+    }
+
+    /** Persist a user-chosen PIN and publish it to the live on-device display. */
+    private fun applyConfigPin(pin: String) {
+        settings.configPin = pin
+        pinState.value = pin
+    }
+
+    /** Generate a fresh random PIN, persist + publish it, and return it. */
+    private fun resetConfigPin(): String {
+        val pin = generatePin()
+        settings.configPin = pin
+        pinState.value = pin
+        return pin
     }
 
     /** Start the embedded config web server. Runs for the app's lifetime, independent of HA auth. */
@@ -636,6 +658,7 @@ fun initialScreen(settings: SettingsStore): Screen =
 fun HearthApp(deps: AppDeps) {
     var screen by remember { mutableStateOf(initialScreen(deps.settings)) }
     val connState by deps.ws.connectionState.collectAsStateWithLifecycle()
+    val configPin by deps.pinState.collectAsStateWithLifecycle()
 
     LaunchedEffect(connState) {
         if (connState == ConnState.AUTH_FAILED) {
@@ -670,7 +693,7 @@ fun HearthApp(deps: AppDeps) {
             when (screen) {
                 Screen.Setup -> SetupScreen(
                     configUrl = remember { deps.configUrl() },
-                    configPin = remember { deps.configPin() },
+                    configPin = configPin,
                 )
                 Screen.Dashboard -> {
                     LaunchedEffect(Unit) { deps.startDashboard() }
@@ -733,7 +756,7 @@ fun HearthApp(deps: AppDeps) {
                         }
                     }
                     val configUrl = remember { deps.configUrl() }
-                    val configPinValue = remember { deps.configPin() }
+                    val configPinValue = configPin
                     val view by deps.currentView.collectAsStateWithLifecycle()
                     val uiScope = rememberCoroutineScope()
                     val idleSeconds = config.home.idleReturnSeconds

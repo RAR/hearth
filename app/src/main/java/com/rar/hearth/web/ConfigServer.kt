@@ -29,6 +29,8 @@ class ConfigServer(
     private val notifyToken: () -> String,
     private val deviceName: () -> String,
     private val setDeviceName: (String?) -> Unit,
+    private val setPin: (String) -> Unit = {},
+    private val resetPin: () -> String = { "" },
     private val pushStore: com.rar.hearth.notify.PushNotificationStore,
     private val entitiesJson: () -> String,
     private val setup: SetupCoordinator,
@@ -63,6 +65,7 @@ class ConfigServer(
         if (uri == "/api/login" && method == Method.POST) return handleLogin(session)
         if (uri == "/api/notify" && method == Method.POST) return handleNotify(session)
         if (uri == "/api/notify/clear" && method == Method.POST) return handleNotifyClear(session)
+        if (uri == "/api/hello" && method == Method.GET) return handleHello()
 
         if (uri.startsWith("/api/")) {
             if (!authed(session)) return error(Response.Status.UNAUTHORIZED, "unauthorized")
@@ -74,6 +77,8 @@ class ConfigServer(
                 uri == "/api/status" && method == Method.GET -> handleStatus()
                 uri == "/api/disconnect" && method == Method.POST -> handleDisconnect()
                 uri == "/api/name" && method == Method.PUT -> handlePutName(session)
+                uri == "/api/pin" && method == Method.PUT -> handlePutPin(session)
+                uri == "/api/pin/reset" && method == Method.POST -> handlePinReset()
                 uri == "/api/setup/begin" && method == Method.POST -> handleSetupBegin(session)
                 uri == "/api/setup/complete" && method == Method.POST -> handleSetupComplete(session)
                 uri == "/api/voice/preview-chime" && method == Method.POST -> handlePreviewChime(session)
@@ -123,6 +128,7 @@ class ConfigServer(
             put("lux", lux())            // int, or JSON null when no sensor reading yet
             put("notifyToken", notifyToken())
             put("deviceName", deviceName())
+            put("pin", pin())
             put("sendspin", sendspinStatus())
         }.toString())
 
@@ -153,6 +159,29 @@ class ConfigServer(
         if (s.length > 40) s = s.substring(0, 40)
         s = s.trim()
         return s.ifEmpty { null }
+    }
+
+    /** Pre-auth: the device name + configured flag for the login card. Name is not a secret. */
+    private fun handleHello(): Response =
+        ok(buildJsonObject {
+            put("name", deviceName())
+            put("configured", configured())
+        }.toString())
+
+    /** Gated: set a custom 4–8 digit PIN. Does NOT clear the session cookie. */
+    private fun handlePutPin(session: IHTTPSession): Response {
+        val obj = runCatching { ConfigJson.json.parseToJsonElement(readBody(session)) as JsonObject }
+            .getOrNull() ?: return error(Response.Status.BAD_REQUEST, "invalid request")
+        val raw = obj["pin"]?.jsonPrimitive?.contentOrNull ?: ""
+        if (!isValidCustomPin(raw)) return error(Response.Status.BAD_REQUEST, "invalid pin")
+        setPin(raw)
+        return ok(buildJsonObject { put("pin", raw) }.toString())
+    }
+
+    /** Gated: replace the PIN with a fresh random one and return it. */
+    private fun handlePinReset(): Response {
+        val newPin = resetPin()
+        return ok(buildJsonObject { put("pin", newPin) }.toString())
     }
 
     /** Constant-time check of the `Authorization: Bearer <token>` header against the notify token. */

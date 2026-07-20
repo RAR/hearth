@@ -32,6 +32,8 @@ class ConfigServerTest {
     private val previewCalls = mutableListOf<Pair<String, Int>>()
     private var customName: String? = null
     private val setNameCalls = mutableListOf<String?>()
+    private var currentPin = "123456"
+    private val setPinCalls = mutableListOf<String>()
     private val defaultName = "Hearth (Pixel 1234)"
     private val maSignInCalls = mutableListOf<Pair<String, String>>()
     private var maSignInResult: Result<String> = Result.success("Andrew")
@@ -48,10 +50,12 @@ class ConfigServerTest {
             port = 0,
             store = store,
             sessions = SessionManager(random = Random(1)),
-            pin = { "123456" },
+            pin = { currentPin },
             notifyToken = { "testtoken" },
             deviceName = { customName ?: defaultName },
             setDeviceName = { v -> setNameCalls += v; customName = v },
+            setPin = { p -> setPinCalls += p; currentPin = p },
+            resetPin = { currentPin = "654321"; currentPin },
             pushStore = pushStore,
             entitiesJson = { """[{"id":"light.k","name":"K","domain":"light","state":"on"}]""" },
             setup = SetupCoordinator(AuthManager(InMemorySettingsStore(), OkHttpClient()), onConfigured = {}),
@@ -455,6 +459,81 @@ class ConfigServerTest {
             .execute().use { r ->
                 assertEquals(200, r.code)
                 assertTrue(r.body!!.string().contains("\"deviceName\":\"Hearth (Pixel 1234)\""))
+            }
+    }
+
+    @Test
+    fun helloReturnsNameAndConfiguredPreAuth() {
+        // No cookie: /api/hello is pre-auth.
+        http.newCall(Request.Builder().url("$base/api/hello").build()).execute().use { r ->
+            assertEquals(200, r.code)
+            val body = r.body!!.string()
+            assertTrue(body.contains("\"name\":\"$defaultName\""))
+            assertTrue(body.contains("\"configured\":false"))
+        }
+    }
+
+    @Test
+    fun statusIncludesPin() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/status").header("Cookie", cookie).build())
+            .execute().use { r ->
+                assertEquals(200, r.code)
+                assertTrue(r.body!!.string().contains("\"pin\":\"123456\""))
+            }
+    }
+
+    @Test
+    fun putPinValidChangesPinAndReturnsIt() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/pin").header("Cookie", cookie)
+            .put("""{"pin":"4321"}""".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(200, r.code)
+                assertEquals("""{"pin":"4321"}""", r.body!!.string())
+            }
+        assertEquals(listOf("4321"), setPinCalls)
+        assertEquals("4321", currentPin)
+        // The new PIN authenticates without a restart (the pin lambda reads currentPin live).
+        login("4321").use { assertEquals(200, it.code) }
+    }
+
+    @Test
+    fun putPinInvalidReturns400AndLeavesPinUntouched() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/pin").header("Cookie", cookie)
+            .put("""{"pin":"12"}""".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(400, r.code)
+                assertTrue(r.body!!.string().contains("\"error\":\"invalid pin\""))
+            }
+        assertTrue(setPinCalls.isEmpty())
+        assertEquals("123456", currentPin)
+    }
+
+    @Test
+    fun putPinRequiresSession() {
+        http.newCall(Request.Builder().url("$base/api/pin")
+            .put("""{"pin":"4321"}""".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(401, r.code)
+            }
+        assertTrue(setPinCalls.isEmpty())
+    }
+
+    @Test
+    fun pinResetReturnsNewPinAndPersists() {
+        val cookie = cookieFrom(login("123456"))
+        http.newCall(Request.Builder().url("$base/api/pin/reset").header("Cookie", cookie)
+            .post("{}".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(200, r.code)
+                assertEquals("""{"pin":"654321"}""", r.body!!.string())
+            }
+        assertEquals("654321", currentPin)
+    }
+
+    @Test
+    fun pinResetRequiresSession() {
+        http.newCall(Request.Builder().url("$base/api/pin/reset")
+            .post("{}".toRequestBody(json)).build()).execute().use { r ->
+                assertEquals(401, r.code)
             }
     }
 

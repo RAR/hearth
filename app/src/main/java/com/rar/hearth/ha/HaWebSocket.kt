@@ -4,6 +4,7 @@ import com.rar.hearth.data.SettingsStore
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -30,8 +31,20 @@ enum class ConnState { CONNECTING, CONNECTED, OFFLINE, AUTH_FAILED }
 
 fun wsUrl(baseUrl: String): String = baseUrl.replaceFirst("http", "ws") + "/api/websocket"
 
+/** Exponential reconnect-backoff CEILING: 2s, 4s, 8s, 16s, 32s, capped at 60s. */
 fun backoffMs(attempt: Int): Long =
     (2_000L * (1L shl attempt.coerceAtMost(5))).coerceAtMost(60_000L)
+
+/**
+ * Equal-jitter reconnect delay in `[ceil/2, ceil]` where `ceil` = [backoffMs] for this attempt. Half
+ * the delay is fixed (so attempt 0 still paces ~1s+) and half is random, spreading the several kiosks
+ * that share one HA server so they don't reconnect in lockstep after a co-restart. RNG injected so
+ * the bound is unit-testable.
+ */
+fun nextBackoffMs(attempt: Int, random: Random = Random): Long {
+    val ceil = backoffMs(attempt)
+    return ceil / 2 + random.nextLong(ceil / 2 + 1) // [ceil/2, ceil]
+}
 
 /** General Home Assistant WebSocket client: request/reply + id-routed subscriptions. */
 interface HaClient {
@@ -139,7 +152,7 @@ class HaWebSocket(
             }
             _connectionState.value = ConnState.OFFLINE
             attempt = if (session.sawAuthOk) 0 else attempt + 1
-            delay(backoffMs(attempt))
+            delay(nextBackoffMs(attempt))
         }
     }
 

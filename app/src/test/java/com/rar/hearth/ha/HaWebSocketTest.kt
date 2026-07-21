@@ -48,6 +48,18 @@ class HaWebSocketTest {
         assertEquals(60_000L, backoffMs(20))
     }
 
+    @Test
+    fun nextBackoffStaysWithinEqualJitterBounds() {
+        val rnd = kotlin.random.Random(42) // seeded -> deterministic
+        repeat(500) {
+            for (attempt in 0..8) {
+                val ceil = backoffMs(attempt)
+                val v = nextBackoffMs(attempt, rnd)
+                assertTrue("attempt=$attempt v=$v ceil=$ceil", v in (ceil / 2)..ceil)
+            }
+        }
+    }
+
     /** Fake HA server: performs auth handshake, acks subscribe_entities, pushes one state. */
     private fun haServerListener() = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {

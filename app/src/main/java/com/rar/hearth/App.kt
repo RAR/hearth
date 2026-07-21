@@ -104,6 +104,7 @@ import com.rar.hearth.web.localIpAddress
 import java.io.File
 import java.time.ZoneId
 import java.util.Locale
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -131,7 +132,13 @@ class AppDeps(context: Context) {
     val settings: SettingsStore = PrefsSettingsStore(appContext)
     val client = OkHttpClient()
     val auth = AuthManager(settings, client)
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /** Backstop for uncaught exceptions in [scope]/[mainScope] children: a SupervisorJob keeps
+     *  siblings alive, but an unhandled throw in a bare launch{} would otherwise reach the default
+     *  handler and crash the kiosk process. Log-and-swallow instead. */
+    private val coroutineErr = CoroutineExceptionHandler { _, e ->
+        android.util.Log.e("AppDeps", "uncaught coroutine exception", e)
+    }
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + coroutineErr)
     val ws = HaWebSocket(settings, auth, client, scope)
     val configStore = ConfigStore(appContext.filesDir)
     val entityHub = EntityHub(ws, scope, configStore.config)
@@ -275,7 +282,7 @@ class AppDeps(context: Context) {
 
     // --- VACA ---
     val kioskUi = KioskUiState()
-    val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + coroutineErr)
     val kioskDevice = AndroidKioskDevice(kioskUi) { ws.stop(); ws.start() }
     val kiosk = KioskController(
         mainScope,

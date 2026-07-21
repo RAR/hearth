@@ -73,6 +73,7 @@ import com.rar.hearth.device.ExoPlayerEngine
 import com.rar.hearth.device.KioskController
 import com.rar.hearth.device.LightSensorReporter
 import com.rar.hearth.device.MediaBridge
+import com.rar.hearth.device.NetworkMonitor
 import com.rar.hearth.media.NowPlayingStore
 import com.rar.hearth.media.ArtFetcher
 import com.rar.hearth.media.MaThumbs
@@ -318,6 +319,15 @@ class AppDeps(context: Context) {
         scope = scope,
         mainScope = mainScope,
     )
+    /** Reconnects the HA WebSocket (if not already up) and re-arms SendSpin the instant a network
+     *  becomes available, so a wifi/router blip recovers immediately instead of waiting out reconnect
+     *  backoff. Started in [startDashboard]; callback hops to mainScope off the binder thread. */
+    val networkMonitor = NetworkMonitor(appContext) {
+        mainScope.launch {
+            if (ws.connectionState.value != ConnState.CONNECTED) ws.start()
+            sendspin.onNetworkAvailable()
+        }
+    }
     /** Thumbnail loader for the MA library browser; shares the app-wide OkHttp client (like ArtFetcher). */
     val maThumbs = MaThumbs(client)
     // Constructed AFTER `sendspin`: getPlayerId() needs UserSettings.initialize, which runs in
@@ -476,6 +486,7 @@ class AppDeps(context: Context) {
         entityHub.start()
         photoStore.start(ws.connectionState)
         ws.start()
+        networkMonitor.start()
     }
 
     @Volatile private var vacaRunning = false

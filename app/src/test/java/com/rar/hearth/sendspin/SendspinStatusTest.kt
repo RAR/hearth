@@ -3,6 +3,8 @@ package com.rar.hearth.sendspin
 import com.rar.hearth.sendspin.coordinator.FailureReason
 import com.rar.hearth.sendspin.coordinator.TransportState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -55,5 +57,20 @@ class SendspinStatusTest {
                 streaming = false,
             ),
         )
+    }
+
+    @Test
+    fun reArm_only_after_exhausted() {
+        // Exhausted = engine gave up its reconnect cap -> self-heal re-arm.
+        assertTrue(shouldReArmAfter(TransportState.Failed(FailureReason.Exhausted)))
+        // Other Failed reasons are transient; the engine's own loop is still retrying.
+        assertFalse(shouldReArmAfter(TransportState.Failed(FailureReason.TransientNetwork)))
+        assertFalse(shouldReArmAfter(TransportState.Failed(FailureReason.HandshakeFailed)))
+        assertFalse(shouldReArmAfter(TransportState.Failed(FailureReason.AuthRejected)))
+        assertFalse(shouldReArmAfter(TransportState.Failed(FailureReason.ProtocolError)))
+        // Idle = intentional teardown; Ready/Connecting = healthy or healing.
+        assertFalse(shouldReArmAfter(TransportState.Idle))
+        assertFalse(shouldReArmAfter(TransportState.Ready))
+        assertFalse(shouldReArmAfter(TransportState.Connecting))
     }
 }

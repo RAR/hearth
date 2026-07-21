@@ -9,6 +9,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import com.rar.hearth.config.DashConfig
 import com.rar.hearth.media.NowPlayingStore
+import com.rar.hearth.sendspin.coordinator.FailureReason
 import com.rar.hearth.sendspin.coordinator.TransportState
 import com.rar.hearth.sendspin.discovery.NsdDiscoveryManager
 import com.rar.hearth.sendspin.sendspin.PlaybackState
@@ -22,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -58,6 +60,16 @@ fun sendspinLoading(
     hasTrack && playWhenReady && startingStream
 
 /**
+ * Whether a terminal transport [state] warrants a self-heal re-arm. Only true for
+ * `Failed(Exhausted)` — the engine hit its reconnect cap (~8 min) and gave up. A `Failed` with any
+ * other reason is a transient failure the engine's own reconnect loop is still handling (it goes
+ * back to Connecting), and `Idle` is an intentional teardown (disconnect/destroy), so neither
+ * re-arms. Pure so it is unit-testable; see `SendspinStatusTest`.
+ */
+fun shouldReArmAfter(state: TransportState): Boolean =
+    state is TransportState.Failed && state.reason == FailureReason.Exhausted
+
+/**
  * Long-lived glue that makes Hearth act as a SendSpin (Music Assistant) multi-room
  * synced-audio playback endpoint. NOT an Android Service -- a plain process-lifetime
  * object owned by `AppDeps`.
@@ -88,6 +100,10 @@ class SendspinEndpoint(
 ) {
     private companion object {
         const val TAG = "SendspinEndpoint"
+
+        /** After the engine exhausts its reconnect cap (Failed(Exhausted), ~8 min), wait this long
+         *  before a self-heal re-arm, then keep retrying at this cadence while the outage persists. */
+        const val RE_ARM_COOLDOWN_MS = 60_000L
     }
 
     init {
@@ -148,6 +164,10 @@ class SendspinEndpoint(
     @Volatile private var nsd: NsdDiscoveryManager? = null
     private var stateCollectorJob: Job? = null
     private var controllerCollectorJob: Job? = null
+    // Delayed self-heal after Failed(Exhausted). Scheduled on `scope` (a sibling of the collector,
+    // so it survives the collector but is cancelled by stop()); reArm() reuses the live client, so
+    // it never cancels the collector and thus can't self-cancel this job.
+    @Volatile private var reArmJob: Job? = null
 
     // User sync-delay (ms) from config, applied to the time filter's USER static-delay slot -- the
     // seam upstream SendSpinDroid's settings slider used (setUserSyncOffsetMs). Positive = this
@@ -542,6 +562,16 @@ class SendspinEndpoint(
                     mainScope.launch {
                         nowPlaying.onSendspin(false, false, null, null, null, null, npVolume, muted = false)
                     }
+                    // Long-outage self-heal: on Failed(Exhausted) the engine gave up and won't retry
+                    // on its own. Schedule a delayed re-arm so the kiosk reconnects when the server
+                    // returns, even if the device's own network never dropped (no ConnectivityManager
+                    // event fires for a server-only outage). One pending timer at a time.
+                    if (shouldReArmAfter(state) && reArmJob?.isActive != true) {
+                        reArmJob = scope.launch {
+                            delay(RE_ARM_COOLDOWN_MS)
+                            reArm()
+                        }
+                    }
                 }
                 if (state is TransportState.Ready) {
                     // Handshake done: reconcile the volume with the device's REAL output level. Show
@@ -608,6 +638,8 @@ class SendspinEndpoint(
         stateCollectorJob = null
         controllerCollectorJob?.cancel()
         controllerCollectorJob = null
+        reArmJob?.cancel()
+        reArmJob = null
 
         val discovery = nsd
         nsd = null
@@ -646,6 +678,47 @@ class SendspinEndpoint(
         npDurationMs = 0; npPositionMs = 0; npPositionAtMs = 0
         npRepeatMode = null; npShuffle = null; npCanRepeat = false; npCanShuffle = false
         mainScope.launch { nowPlaying.onSendspin(false, false, null, null, null, null, npVolume, muted = false) }
+    }
+
+    /**
+     * Re-arm the transport after a terminal Failed(Exhausted) or on a network-available signal.
+     * Reuses the LIVE client + its collectors (no stop()/start()), so it never cancels the state
+     * collector and can safely run from [reArmJob] or a network callback. No-op unless we're started
+     * and the transport is actually dead -- a Ready/Connecting transport is already healthy or healing.
+     */
+    private fun reArm() {
+        if (!started) return
+        val ss = sendSpin ?: return
+        val state = ss.connectionState.value
+        if (state is TransportState.Ready || state is TransportState.Connecting) return
+        val address = config.value.sendspin.serverAddress.trim()
+        if (address.isNotBlank()) {
+            Log.i(TAG, "Re-arming SendSpin: reconnecting to manual address $address")
+            ss.connectLocal(address)
+        } else {
+            Log.i(TAG, "Re-arming SendSpin: restarting mDNS discovery")
+            mainScope.launch {
+                runCatching { nsd?.startDiscovery() }
+                    .onFailure { Log.e(TAG, "re-arm discovery restart failed", it) }
+            }
+        }
+    }
+
+    /**
+     * Network-available signal (from the app's ConnectivityManager monitor): the device just got a
+     * network back. Drive the engine's fast-reconnect path (a no-op unless it is mid-reconnect),
+     * refresh the multicast lock in case the interface flapped, then re-arm immediately -- preempting
+     * any pending [reArmJob] cooldown -- so a wifi/router blip recovers at once instead of waiting out
+     * the backoff. Safe to call from any thread and when stopped (no-ops). Only reconnects a dead
+     * transport; [reArm] guards a Ready/Connecting one.
+     */
+    fun onNetworkAvailable() {
+        if (!started) return
+        sendSpin?.onNetworkAvailable()
+        mainScope.launch { runCatching { nsd?.refreshMulticastLockIfActive() } }
+        reArmJob?.cancel()
+        reArmJob = null
+        reArm()
     }
 
     /** Recompute the published status from the current transport state + streaming flag. */

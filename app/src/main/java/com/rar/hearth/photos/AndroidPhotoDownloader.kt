@@ -2,8 +2,11 @@ package com.rar.hearth.photos
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.os.Build
 import com.rar.hearth.ha.HaClient
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.roundToInt
@@ -85,16 +88,41 @@ class AndroidPhotoDownloader(
         ) sample *= 2
         val opts = BitmapFactory.Options().apply { inSampleSize = sample }
         val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+        // BitmapFactory ignores EXIF orientation. On API < 28 (no ImageDecoder path) apply it here,
+        // BEFORE scaling/cropping, so phone-origin JPEGs on the Shelly Wall Display aren't sideways.
+        val oriented =
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) applyExifRotation(bytes, decoded)
+            else decoded
         val scale = maxOf(
-            target.width.toFloat() / decoded.width,
-            target.height.toFloat() / decoded.height,
+            target.width.toFloat() / oriented.width,
+            target.height.toFloat() / oriented.height,
         )
-        if (scale >= 1f) return centerCropToScreen(decoded) // never upscale a small original
-        val targetW = (decoded.width * scale).roundToInt().coerceAtLeast(1)
-        val targetH = (decoded.height * scale).roundToInt().coerceAtLeast(1)
-        val scaled = Bitmap.createScaledBitmap(decoded, targetW, targetH, true)
-        if (scaled !== decoded) decoded.recycle()
+        if (scale >= 1f) return centerCropToScreen(oriented) // never upscale a small original
+        val targetW = (oriented.width * scale).roundToInt().coerceAtLeast(1)
+        val targetH = (oriented.height * scale).roundToInt().coerceAtLeast(1)
+        val scaled = Bitmap.createScaledBitmap(oriented, targetW, targetH, true)
+        if (scaled !== oriented) oriented.recycle()
         return centerCropToScreen(scaled)
+    }
+
+    /**
+     * Rotate [bmp] upright per [bytes]' EXIF orientation tag (JPEG). No-op when the tag is normal,
+     * absent, or unreadable. Only used on the API < 28 fallback path (ImageDecoder handles this on
+     * API 28+), so it can't change decode output on the Echos.
+     */
+    private fun applyExifRotation(bytes: ByteArray, bmp: Bitmap): Bitmap {
+        val degrees = runCatching {
+            val orientation = ExifInterface(ByteArrayInputStream(bytes))
+                .getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+            exifRotationDegrees(orientation)
+        }.getOrDefault(0)
+        if (degrees == 0) return bmp
+        val rotated = Bitmap.createBitmap(
+            bmp, 0, 0, bmp.width, bmp.height,
+            Matrix().apply { postRotate(degrees.toFloat()) }, true,
+        )
+        if (rotated !== bmp) bmp.recycle()
+        return rotated
     }
 
     /** Center-crop the overflow dimension down to the screen bounds; no-op when already within. */

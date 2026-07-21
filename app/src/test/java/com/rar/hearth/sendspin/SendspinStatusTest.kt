@@ -60,12 +60,17 @@ class SendspinStatusTest {
     }
 
     @Test
-    fun reArm_only_after_exhausted() {
-        // Exhausted = engine gave up its reconnect cap -> self-heal re-arm.
+    fun reArm_on_recoverable_terminal_failures() {
+        // Exhausted (8-min cap) AND the first-attempt give-ups the engine treats as non-recoverable
+        // (refused/DNS/TLS -> HandshakeFailed) all self-heal: the common server-restart case.
         assertTrue(shouldReArmAfter(TransportState.Failed(FailureReason.Exhausted)))
-        // Other Failed reasons are transient; the engine's own loop is still retrying.
-        assertFalse(shouldReArmAfter(TransportState.Failed(FailureReason.TransientNetwork)))
-        assertFalse(shouldReArmAfter(TransportState.Failed(FailureReason.HandshakeFailed)))
+        assertTrue(shouldReArmAfter(TransportState.Failed(FailureReason.HandshakeFailed)))
+        assertTrue(shouldReArmAfter(TransportState.Failed(FailureReason.TransientNetwork)))
+    }
+
+    @Test
+    fun no_reArm_when_retry_cannot_help() {
+        // A blind retry won't fix these, so don't churn.
         assertFalse(shouldReArmAfter(TransportState.Failed(FailureReason.AuthRejected)))
         assertFalse(shouldReArmAfter(TransportState.Failed(FailureReason.ProtocolError)))
         // Idle = intentional teardown; Ready/Connecting = healthy or healing.

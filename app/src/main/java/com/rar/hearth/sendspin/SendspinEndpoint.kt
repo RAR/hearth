@@ -60,14 +60,21 @@ fun sendspinLoading(
     hasTrack && playWhenReady && startingStream
 
 /**
- * Whether a terminal transport [state] warrants a self-heal re-arm. Only true for
- * `Failed(Exhausted)` — the engine hit its reconnect cap (~8 min) and gave up. A `Failed` with any
- * other reason is a transient failure the engine's own reconnect loop is still handling (it goes
- * back to Connecting), and `Idle` is an intentional teardown (disconnect/destroy), so neither
- * re-arms. Pure so it is unit-testable; see `SendspinStatusTest`.
+ * Whether a terminal transport [state] warrants a self-heal re-arm. True for any `Failed` reason
+ * EXCEPT the two a blind retry can't fix: `AuthRejected` (needs a fresh MA token / user re-auth) and
+ * `ProtocolError` (version/shape mismatch). This deliberately includes `HandshakeFailed` and
+ * `TransientNetwork`, not just `Exhausted`: the engine treats a connection-refused / DNS / TLS
+ * failure as NON-recoverable and gives up on the FIRST attempt with `Failed(HandshakeFailed)` rather
+ * than cycling to `Exhausted`, so the common "MA server process restarted while the device network
+ * stayed up" outage lands here — the exact case no ConnectivityManager event would ever fire for.
+ * `Exhausted` (the ~8-min black-hole cap) is covered too. The re-arm cooldown paces retries, so a
+ * still-down server just re-fails every RE_ARM_COOLDOWN_MS with no churn. `Idle` (intentional
+ * disconnect/destroy) never re-arms. Pure so it is unit-testable; see `SendspinStatusTest`.
  */
 fun shouldReArmAfter(state: TransportState): Boolean =
-    state is TransportState.Failed && state.reason == FailureReason.Exhausted
+    state is TransportState.Failed &&
+        state.reason != FailureReason.AuthRejected &&
+        state.reason != FailureReason.ProtocolError
 
 /**
  * Long-lived glue that makes Hearth act as a SendSpin (Music Assistant) multi-room

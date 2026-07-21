@@ -324,7 +324,12 @@ class AppDeps(context: Context) {
      *  backoff. Started in [startDashboard]; callback hops to mainScope off the binder thread. */
     val networkMonitor = NetworkMonitor(appContext) {
         mainScope.launch {
-            if (ws.connectionState.value != ConnState.CONNECTED) ws.start()
+            // Restart only from a clean OFFLINE (never interrupt an in-flight CONNECTING handshake
+            // or override AUTH_FAILED) and only while still authed (no refreshToken == logged out ->
+            // don't resurrect the socket on the Setup screen).
+            if (settings.refreshToken != null && ws.connectionState.value == ConnState.OFFLINE) {
+                ws.start()
+            }
             sendspin.onNetworkAvailable()
         }
     }

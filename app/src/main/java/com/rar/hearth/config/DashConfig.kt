@@ -230,10 +230,27 @@ data class SendspinConfig(
 ) {
     fun clamped(): SendspinConfig = copy(
         syncDelayMs = syncDelayMs.coerceIn(-2000, 2000),
-        serverAddress = serverAddress.trim(),
+        serverAddress = serverAddress.trim().let { if (isValidSendspinAddress(it)) it else "" },
         maToken = maToken.trim(),
         maUser = maUser.trim(),
     )
+}
+
+/**
+ * Validate a manual SendSpin / Music Assistant server address. Accepts blank (= fall back to mDNS
+ * discovery) or a plausible `host` / `host:port`: host non-empty with no scheme, slash, or
+ * whitespace; optional port in 1..65535. Deliberately lenient (no DNS resolution) — the goal is only
+ * to reject obviously-malformed input so [SendspinConfig.clamped] blanks it to the safe discovery
+ * default instead of churning the transport against a bad address. Pure so it is JVM-unit-testable.
+ */
+internal fun isValidSendspinAddress(s: String): Boolean {
+    if (s.isBlank()) return true
+    if (s.contains("://") || s.contains('/') || s.any { it.isWhitespace() }) return false
+    val host = s.substringBefore(':')
+    val port = s.substringAfter(':', "")
+    if (host.isEmpty()) return false
+    if (port.isNotEmpty() && port.toIntOrNull() !in 1..65535) return false
+    return true
 }
 
 /** The whole device configuration; one versioned document persisted at filesDir/config.json. */

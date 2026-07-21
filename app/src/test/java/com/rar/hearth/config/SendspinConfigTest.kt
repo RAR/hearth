@@ -1,6 +1,8 @@
 package com.rar.hearth.config
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SendspinConfigTest {
@@ -11,6 +13,30 @@ class SendspinConfigTest {
     }
     @Test fun blankAddressStaysBlank() {
         assertEquals("", SendspinConfig(serverAddress = "   ").clamped().serverAddress)
+    }
+    @Test fun clampBlanksMalformedAddress() {
+        // Obviously-malformed values fall back to mDNS discovery (blank) rather than churning.
+        assertEquals("", SendspinConfig(serverAddress = "http://ma.local").clamped().serverAddress)
+        assertEquals("", SendspinConfig(serverAddress = "host:99999").clamped().serverAddress)
+        assertEquals("", SendspinConfig(serverAddress = "a b").clamped().serverAddress)
+        // A plausible host:port survives.
+        assertEquals("ma.local:8095", SendspinConfig(serverAddress = "ma.local:8095").clamped().serverAddress)
+    }
+    @Test fun isValidSendspinAddressAcceptsHostAndHostPort() {
+        assertTrue(isValidSendspinAddress(""))              // blank = mDNS
+        assertTrue(isValidSendspinAddress("10.0.0.5"))      // bare host
+        assertTrue(isValidSendspinAddress("10.0.0.5:8927")) // host:port
+        assertTrue(isValidSendspinAddress("ma.local:1"))    // min port
+        assertTrue(isValidSendspinAddress("ma.local:65535"))// max port
+    }
+    @Test fun isValidSendspinAddressRejectsMalformed() {
+        assertFalse(isValidSendspinAddress("http://x"))     // scheme
+        assertFalse(isValidSendspinAddress("host/path"))    // slash
+        assertFalse(isValidSendspinAddress("a b"))          // whitespace
+        assertFalse(isValidSendspinAddress(":8095"))        // empty host
+        assertFalse(isValidSendspinAddress("host:0"))       // port below range
+        assertFalse(isValidSendspinAddress("host:70000"))   // port above range
+        assertFalse(isValidSendspinAddress("host:abc"))     // non-numeric port
     }
     @Test fun dashConfigClampedRunsSendspinClamp() {
         val d = DashConfig(sendspin = SendspinConfig(syncDelayMs = -9000)).clamped()

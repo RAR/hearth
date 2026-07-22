@@ -459,6 +459,9 @@ class AppDeps(context: Context) {
         scope = scope,
         appVersion = BuildConfig.VERSION_NAME,
         name = { deviceName() },
+        // Read LIVE on each playback finish — deliberately NOT in startVoice()'s restart
+        // trigger set: restarting the satellite would drop device-local timers.
+        followUp = { configStore.config.value.voice.followUpEnabled },
         out = object : SatelliteServer.Out {
             override fun onStartMic() = micStreamer.start()
             override fun onStopMic() = micStreamer.stop()

@@ -11,15 +11,15 @@ A native Android wall-dashboard for Home Assistant, plus its own HA integration.
 
 ## What's on screen
 
-- **Home** — photo slideshow backdrop (synced from an HA media folder), clock, weather + AQI + rain pills, next-calendar-event card, EV-charging cards while a car is plugged in, a notification area (HA push + NWS weather alerts), and a full now-playing takeover with album art while music plays.
-- **Panels** (right-side rail, swipe-back, auto-return to Home after a configurable idle timeout): Lights, Climate, Media, Weather (current + forecast), Solar power flow, Cameras (RTSP/HLS), and a 3-day Calendar agenda.
-- **Voice** — a Wyoming satellite with **on-device wake word** (openWakeWord TFLite: Okay Nabu / Hey Jarvis / Alexa). Mic audio only leaves the device after a local wake detection; HA runs STT/intent/TTS. Assist timers live on the device with countdown chips and a chime, and survive HA restarts.
+- **Home** — photo slideshow backdrop (synced from an HA media folder), clock, weather + AQI + rain pills, next-calendar-event card, EV-charging cards while a car is plugged in, an animated solar power-flow card, an optional quick-buttons card (up to 4 toggles/scenes/scripts), a notification area (HA push + NWS weather alerts), and a full now-playing takeover with album art while music plays. Layout adapts to the panel size, so a 5" Echo Show and a 10" tablet each get a fitting density.
+- **Panels** (right-side rail, swipe-back, auto-return to Home after a configurable idle timeout): Lights, Climate, Media, Weather (current + forecast), animated Solar power flow, Cameras (RTSP/HLS), and a Calendar agenda (day count scales with panel width).
+- **Voice** — a Wyoming satellite with **on-device wake word** (openWakeWord TFLite: Okay Nabu / Hey Jarvis / Alexa / Ok Ember). Mic audio only leaves the device after a local wake detection; HA runs STT/intent/TTS. Optional **follow-up conversations** reopen the mic without a wake word when the assistant's reply is a question ("Which room?"). Assist timers live on the device with countdown chips and a chime, and survive HA restarts.
 - **Extras** — doorbell camera popups, ambient-light night clock (huge dim clock in a dark room), dark mode, screensaver, ambient auto-brightness.
 - **Multi-room synced audio** — acts as a Music Assistant SendSpin player for sample-accurate multi-room playback (auto-discovered via mDNS; enable on the config page).
 
 ## The web config page
 
-Long-press the Home view → **Configure** shows a URL (`http://<device-ip>:8080`) and a 6-digit PIN. From any browser on the LAN you can: run first-time HA OAuth setup, name the device, pick entities from searchable lists, enable/reorder panels, build light groups, configure cameras/doorbells/calendars/EVs, tune voice (wake word, chime, volumes with live preview), set night mode with a live lux readout, manage weather alerts, and **export/import the whole config as a JSON file** — handy for cloning a setup onto a new device. Device identity (name, HA auth, PIN, notify token) stays per-device and is never exported.
+Long-press the Home view → **Configure** shows a URL (`http://<device-ip>:8080`) and the PIN. From any browser on the LAN you can: run first-time HA OAuth setup, name the device, pick entities from searchable lists, enable/reorder panels, build light groups, configure cameras/doorbells/calendars/EVs, set up quick buttons, tune voice (wake word, follow-up, chime, volumes with live preview), set night mode with a live lux readout, manage weather alerts, and **export/import the whole config as a JSON file** — handy for cloning a setup onto a new device. The login page shows the device name and the PIN field is browser-savable; a random 6-digit PIN is generated on first run, and you can override it with your own 4–8 digit PIN. Device identity (name, HA auth, PIN, notify token) stays per-device and is never exported.
 
 Plain HTTP, LAN-only trust: PIN-gated session cookies, 5-strike lockout, no TLS — same grade as a default HA install. Keep it on a trusted network.
 
@@ -46,7 +46,7 @@ After building/flashing a version with SendSpin, verify it on real devices with 
 
 ```bash
 export JAVA_HOME=/usr/lib/jvm/java-21-amazon-corretto  # any JDK 17+
-./gradlew test assembleDebug                            # app: build + 454 unit tests
+./gradlew test assembleDebug                            # app: build + 1000+ unit tests
 python3 -m pytest tests/integration -q                  # integration protocol tests (stdlib + pytest only)
 ```
 
@@ -59,4 +59,4 @@ adb connect <device-ip>   # or USB
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-First run: the device shows a pointer card — open `http://<device-ip>:8080` in a browser, enter the PIN, and complete HA login there (OAuth on HA's own page). For boot-to-dashboard, set Hearth as the default launcher (*Settings → Apps → Default apps → Home*); this is also what auto-starts it after a reboot on Android 10+.
+First run: the device shows a pointer card — open `http://<device-ip>:8080` in a browser, enter the PIN, and complete HA login there (OAuth on HA's own page). For boot-to-dashboard, set Hearth as the default launcher (*Settings → Apps → Default apps → Home*); this is also what auto-starts it after a reboot on Android 10+. Runs on Android 8.1+ (API 27) — tested from LineageOS Echo Shows through a Shelly Wall Display to a Lenovo tablet.

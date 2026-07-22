@@ -795,6 +795,65 @@ class SatelliteSessionTest {
     }
 
     @Test
+    fun tapDismissDuringQuestionReplyDoesNotReopen() {
+        // Critical: a RESPONSE-tap dismiss must survive AnnouncePlayer's stray onPlayed() for the
+        // aborted finish() — the stale "Which room?" text must not reopen the hot mic.
+        val s = followUpSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        s.onEvent(event("transcript", """{"text":"turn on the lights"}"""), nowMs = 1_000)
+        s.onEvent(event("synthesize", """{"text":"Which room?"}"""), nowMs = 1_000)
+        s.onEvent(event("audio-start", """{"rate":22050,"width":2,"channels":1}"""), nowMs = 1_000)
+        val tap = s.onOverlayTapped(nowMs = 1_500)
+        assertTrue(tap.contains(SatelliteAction.PlaybackAbort))         // playback aborted
+        assertEquals(VoiceOverlayState(), s.overlay)                    // overlay hidden
+        // The stray onPlayed() fires: reopen guard must fail (lastResponseText was blanked).
+        val a = s.onPlaybackFinished(nowMs = 1_600)
+        assertEquals(listOf("played"), sends(a).map { it.type })        // NO run-pipeline
+        assertTrue(a.none { it is SatelliteAction.Earcon })             // NO wake earcon
+        assertEquals(VoiceOverlayPhase.HIDDEN, s.overlay.phase)         // stays hidden
+    }
+
+    @Test
+    fun failActionsClearsFollowUpState() {
+        // A follow-up abandoned by HA (run-satellite while LISTENING -> failActions -> FAILED) must
+        // disarm the leftover deadline and un-route the FAILED-pill tap from the follow-up branch.
+        val s = followUpSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        driveToResponse(s, "Which room?", nowMs = 1_000)
+        s.onPlaybackFinished(nowMs = 2_000)                            // reopened, deadline @ 12_000
+        s.onEvent(event("run-satellite"), nowMs = 5_000)               // LISTENING -> failActions
+        assertEquals(VoiceOverlayPhase.FAILED, s.overlay.phase)
+        // Tap on the FAILED pill goes through the FAILED branch (hides), NOT the follow-up branch.
+        val tap = s.onOverlayTapped(nowMs = 5_100)
+        assertEquals(VoiceOverlayState(), s.overlay)
+        assertFalse(sends(tap).map { it.type }.contains("streaming-stopped"))
+        assertFalse(tap.contains(SatelliteAction.ResetDetector))
+        // The old 12 s deadline is dead: a tick past it fires no followUpQuietDismiss.
+        val late = s.onTick(nowMs = 13_000)
+        assertFalse(sends(late).map { it.type }.contains("streaming-stopped"))
+        assertFalse(late.contains(SatelliteAction.ResetDetector))
+    }
+
+    @Test
+    fun reopenBlockedFromPaused() {
+        // Chosen option: pause-satellite during a follow-up must disarm the deadline so a later tick
+        // can't run followUpQuietDismiss and overwrite PAUSED with DETECTING.
+        val s = followUpSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        driveToResponse(s, "Which room?", nowMs = 1_000)
+        s.onPlaybackFinished(nowMs = 2_000)                            // reopened, deadline @ 12_000
+        s.onEvent(event("pause-satellite"), nowMs = 5_000)             // PAUSED, deadline cleared
+        val late = s.onTick(nowMs = 13_000)                            // past old deadline
+        assertFalse(sends(late).map { it.type }.contains("streaming-stopped"))
+        assertFalse(late.contains(SatelliteAction.ResetDetector))
+        assertTrue(late.none { it is SatelliteAction.Overlay })        // PAUSED not overwritten
+        assertTrue(s.onMicChunk(ByteArray(960) { 1 }).isEmpty())       // still PAUSED (mic off)
+    }
+
+    @Test
     fun legacyModeNeverReopens() {
         // Non-localWake (HA runs wake): fallback path stays byte-for-byte unchanged.
         val s = SatelliteSession(appVersion = "9.9", name = { "Test Sat" }, followUp = { true })

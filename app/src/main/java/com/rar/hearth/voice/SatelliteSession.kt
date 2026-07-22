@@ -136,16 +136,21 @@ class SatelliteSession(
                 SatelliteAction.StartMic,
             )
         }
-        "pause-satellite" -> if (localWake) {
-            wakeState = WakeState.PAUSED
-            listOf(
-                SatelliteAction.Send(WyomingEvent("streaming-stopped")),
-                SatelliteAction.ResetDetector,
-                SatelliteAction.StopMic,
-            )
-        } else {
-            streaming = false
-            listOf(SatelliteAction.StopMic, SatelliteAction.Send(WyomingEvent("streaming-stopped")))
+        "pause-satellite" -> {
+            // Disarm any live follow-up so its deadline can't later overwrite PAUSED with DETECTING.
+            followUpActive = false
+            followUpDeadlineAtMs = null
+            if (localWake) {
+                wakeState = WakeState.PAUSED
+                listOf(
+                    SatelliteAction.Send(WyomingEvent("streaming-stopped")),
+                    SatelliteAction.ResetDetector,
+                    SatelliteAction.StopMic,
+                )
+            } else {
+                streaming = false
+                listOf(SatelliteAction.StopMic, SatelliteAction.Send(WyomingEvent("streaming-stopped")))
+            }
         }
         "detection" -> {
             // Legacy/fallback: HA reports the wake word. In localWake HA never sends this.
@@ -378,6 +383,11 @@ class SatelliteSession(
             ttsActive = false
             dismissAtMs = null
             watchdogAtMs = null
+            // Neutralize the aborted-playback path: AnnouncePlayer's Cmd.Stop still fires onPlayed()
+            // for the aborted finish(), so a stray onPlaybackFinished can run with wakeState=DETECTING
+            // and this (stale) response text. Blanking it makes the endsWith("?") reopen guard fail,
+            // mirroring how the THINKING tap sets suppressRun to neutralize the in-flight run.
+            lastResponseText = ""
             listOf(SatelliteAction.PlaybackAbort, overlayAction(VoiceOverlayState()))
         }
         VoiceOverlayPhase.THINKING -> {
@@ -500,6 +510,11 @@ class SatelliteSession(
      */
     private fun failActions(nowMs: Long): List<SatelliteAction> {
         alarmSilencedThisRun = false
+        // Disarm any live follow-up: a leftover deadline would otherwise fire followUpQuietDismiss()
+        // on a later tick and truncate the FAILED flash, and a tap on the FAILED pill would mis-route
+        // into the followUpActive branch.
+        followUpActive = false
+        followUpDeadlineAtMs = null
         dismissAtMs = nowMs + FAILED_MS
         watchdogAtMs = null
         val cleanup = if (localWake) {

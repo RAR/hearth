@@ -452,6 +452,16 @@ class DashConfigTest {
     }
 
     @Test
+    fun followUpEnabledDefaultsFalseAndSurvivesClamp() {
+        assertEquals(false, DashConfig().voice.followUpEnabled)
+        val cfg = decodeConfig("""{"version":1,"voice":{"enabled":true}}""")
+        assertEquals(false, cfg.voice.followUpEnabled)             // old config -> default
+        // Plain boolean: clamped() must pass it through unchanged in both states.
+        assertEquals(true, DashConfig(voice = VoiceSettings(followUpEnabled = true)).clamped().voice.followUpEnabled)
+        assertEquals(false, DashConfig(voice = VoiceSettings(followUpEnabled = false)).clamped().voice.followUpEnabled)
+    }
+
+    @Test
     fun wakeSettingsRoundTrip() {
         val cfg = DashConfig(voice = VoiceSettings(enabled = true, wakeWord = "alexa", wakeThreshold = 65))
         val text = ConfigJson.json.encodeToString(DashConfig.serializer(), cfg)

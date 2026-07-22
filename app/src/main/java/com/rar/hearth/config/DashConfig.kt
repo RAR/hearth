@@ -146,6 +146,7 @@ data class VoiceSettings(
     val wakeSoundVolume: Int = 80,
     val wakeWord: String = "okay_nabu",
     val wakeThreshold: Int = 50,
+    val followUpEnabled: Boolean = false,
 ) {
     /** Normalize the timer-alarm fields: trim + unknown/blank tone falls to "argon",
      *  volumes coerced into 0..100. Wake word clamps to the bundled set (unknown -> okay_nabu);

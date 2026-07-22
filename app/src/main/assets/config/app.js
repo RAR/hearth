@@ -968,6 +968,7 @@ function renderVoice() {
   if (v.wakeSoundVolume == null) v.wakeSoundVolume = 80;
   if (v.wakeWord == null) v.wakeWord = "okay_nabu";
   if (v.wakeThreshold == null) v.wakeThreshold = 50;
+  if (v.followUpEnabled == null) v.followUpEnabled = false;
 
   const toggle = el("input"); toggle.type = "checkbox"; toggle.checked = !!v.enabled;
   toggle.setAttribute("aria-label", "Voice satellite enabled");
@@ -986,6 +987,11 @@ function renderVoice() {
   const sens = el("input"); sens.type = "number"; sens.min = 10; sens.max = 95; sens.value = v.wakeThreshold;
   sens.addEventListener("change", () => v.wakeThreshold = Math.round(parseFloat(sens.value) || 50));
   host.appendChild(labeledRow("Wake sensitivity", sens));
+
+  const followUp = el("input"); followUp.type = "checkbox"; followUp.checked = !!v.followUpEnabled;
+  followUp.setAttribute("aria-label", "Continue conversation enabled");
+  followUp.addEventListener("change", () => v.followUpEnabled = followUp.checked);
+  host.appendChild(labeledRow("Continue conversation", followUp));
 
   const toneSel = el("select");
   TONE_OPTIONS.forEach(([val, lbl]) => {
@@ -1033,6 +1039,7 @@ function renderVoice() {
     "The wake word is now detected on-device — pick it above (sensitivity 10–95, higher = stricter, clamped on save). " +
     "HA's own streaming wake-word setting is no longer used, and mic audio only reaches HA after the wake word is heard. " +
     "Wake sound: chirps when the wake word is heard and when it stops listening; volume 0 disables it. " +
+    "Continue conversation: when the assistant's reply is a question, the mic reopens for your answer without a new wake word (up to 3 rounds; applies immediately, no restart). " +
     "If the on-device models fail to load, the satellite silently falls back to HA-side wake."));
 }
 

@@ -74,6 +74,12 @@ class SatelliteSession(
     private var dismissAtMs: Long? = null
     private var watchdogAtMs: Long? = null
     private var suppressRun = false
+    // Follow-up conversation state (localWake only): reopen the mic without a wake word when
+    // the assistant's reply is a question. See onPlaybackFinished.
+    private var lastResponseText = ""
+    private var followUpActive = false
+    private var followUpRound = 0
+    private var followUpDeadlineAtMs: Long? = null
     var overlay: VoiceOverlayState = VoiceOverlayState()
         private set
 
@@ -159,6 +165,8 @@ class SatelliteSession(
             base
         }
         "transcript" -> {
+            followUpActive = false
+            followUpDeadlineAtMs = null
             val silencedRun = alarmSilencedThisRun
             alarmSilencedThisRun = false
             val rearm = if (localWake) {
@@ -199,11 +207,16 @@ class SatelliteSession(
                 emptyList()
             }
             cleanup + overlayAction(VoiceOverlayState())
+        } else if (followUpActive) {
+            // STT VAD timed out on silence during a follow-up listen: the user chose not to
+            // answer. Quiet dismiss — no FAILED flash — and re-arm the wake detector.
+            followUpQuietDismiss()
         } else {
             failActions(nowMs)
         }
         "synthesize" -> if (suppressRun) emptyList() else {
             watchdogAtMs = nowMs + WATCHDOG_MS
+            lastResponseText = textOf(event)
             listOf(overlayAction(VoiceOverlayState(VoiceOverlayPhase.RESPONSE, textOf(event))))
         }
         "audio-start" -> if (suppressRun) emptyList() else {
@@ -265,6 +278,10 @@ class SatelliteSession(
         wakeState = WakeState.STREAMING
         micTimestampMs = 0L
         suppressRun = false
+        followUpActive = false
+        followUpRound = 0
+        followUpDeadlineAtMs = null
+        lastResponseText = ""
         watchdogAtMs = nowMs + WATCHDOG_MS
         val actions = mutableListOf<SatelliteAction>(
             SatelliteAction.Send(detectionEvent(name)),
@@ -321,6 +338,28 @@ class SatelliteSession(
 
     fun onPlaybackFinished(nowMs: Long): List<SatelliteAction> {
         ttsActive = false
+        // Follow-up: the assistant asked a question — reopen the mic without a new wake word.
+        // DETECTING is the normal post-transcript state at playback end; it also excludes
+        // PAUSED (mic is off) and IDLE, mirroring onWakeDetected's guard.
+        val reopen = localWake && followUp() && !suppressRun &&
+            wakeState == WakeState.DETECTING &&
+            lastResponseText.trim().endsWith("?") &&
+            followUpRound < MAX_FOLLOW_UP_ROUNDS
+        if (reopen) {
+            wakeState = WakeState.STREAMING
+            micTimestampMs = 0L
+            followUpActive = true
+            followUpRound += 1
+            followUpDeadlineAtMs = nowMs + FOLLOW_UP_LISTEN_MS
+            // Mic stayed on through TTS (gated by ttsActive), so streaming resumes with no StartMic.
+            return listOf(
+                SatelliteAction.Send(WyomingEvent("played")),
+                SatelliteAction.Send(runPipelineLocalEvent()),
+                SatelliteAction.Send(WyomingEvent("streaming-started")),
+                SatelliteAction.Earcon(EarconKind.WAKE),
+                overlayAction(VoiceOverlayState(VoiceOverlayPhase.LISTENING)),
+            )
+        }
         dismissAtMs = nowMs + DISMISS_MS
         return listOf(SatelliteAction.Send(WyomingEvent("played")))
     }
@@ -330,7 +369,11 @@ class SatelliteSession(
      * ttsActive); THINKING hides and suppresses the rest of the in-flight run so HA's pipeline
      * still completes; FAILED hides immediately. LISTENING/HIDDEN/TRANSCRIPT are no-ops.
      */
-    fun onOverlayTapped(nowMs: Long): List<SatelliteAction> = when (overlay.phase) {
+    fun onOverlayTapped(nowMs: Long): List<SatelliteAction> = if (followUpActive) {
+        // Tap while the follow-up mic is hot (overlay is LISTENING): cancel quietly and
+        // re-arm wake detection. Non-follow-up LISTENING taps below stay a no-op.
+        followUpQuietDismiss()
+    } else when (overlay.phase) {
         VoiceOverlayPhase.RESPONSE -> {
             ttsActive = false
             dismissAtMs = null
@@ -369,6 +412,12 @@ class SatelliteSession(
 
     fun onTick(nowMs: Long): List<SatelliteAction> {
         val actions = mutableListOf<SatelliteAction>()
+        // Follow-up listen deadline: no error arrived and the user said nothing — quiet dismiss.
+        // Checked before the watchdog (and it clears watchdogAtMs) so a follow-up silence can
+        // never surface the loud LISTENING FAILED flash.
+        followUpDeadlineAtMs?.let {
+            if (nowMs >= it && followUpActive) actions += followUpQuietDismiss()
+        }
         // Watchdog: a stalled pipeline (no transcript, or answer text but no playback) must not
         // strand the pill. LISTENING/THINKING fail loudly; RESPONSE hides quietly.
         watchdogAtMs?.let {
@@ -410,6 +459,24 @@ class SatelliteSession(
     private fun boolOf(event: WyomingEvent, key: String, default: Boolean): Boolean =
         (event.data[key] as? JsonPrimitive)?.booleanOrNull ?: default
 
+    /**
+     * Quietly close a follow-up listen window (silence, deadline, or tap): hide the overlay with
+     * no FAILED flash, stop streaming, and re-arm the on-device detector. Only reachable while
+     * followUpActive, which is only ever set in localWake mode.
+     */
+    private fun followUpQuietDismiss(): List<SatelliteAction> {
+        followUpActive = false
+        followUpDeadlineAtMs = null
+        watchdogAtMs = null
+        dismissAtMs = null
+        wakeState = WakeState.DETECTING
+        return listOf(
+            SatelliteAction.Send(WyomingEvent("streaming-stopped")),
+            SatelliteAction.ResetDetector,
+            overlayAction(VoiceOverlayState()),
+        )
+    }
+
     private fun reset() {
         streaming = false
         wakeState = WakeState.IDLE
@@ -419,6 +486,10 @@ class SatelliteSession(
         watchdogAtMs = null
         suppressRun = false
         alarmSilencedThisRun = false
+        lastResponseText = ""
+        followUpActive = false
+        followUpRound = 0
+        followUpDeadlineAtMs = null
         overlay = VoiceOverlayState()
     }
 
@@ -557,6 +628,8 @@ class SatelliteSession(
         const val WATCHDOG_MS = 30_000L
         const val FAILED_MS = 3_000L
         const val FAILED_TEXT = "No response — try again"
+        const val MAX_FOLLOW_UP_ROUNDS = 3
+        const val FOLLOW_UP_LISTEN_MS = 10_000L
 
         /** Utterances that mean "shut the alarm up" and nothing more, matched against a
          *  normalized transcript (lowercased, punctuation stripped, whitespace collapsed).

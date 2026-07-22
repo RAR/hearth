@@ -606,4 +606,203 @@ class SatelliteSessionTest {
         assertEquals(VoiceOverlayState(VoiceOverlayPhase.LISTENING),
             (wake.last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
     }
+
+    // ---- follow-up conversations ----
+
+    private fun followUpSession(enabled: () -> Boolean = { true }) =
+        SatelliteSession(appVersion = "9.9", name = { "Test Sat" }, localWake = true, followUp = enabled)
+
+    /** Drive wake -> transcript -> synthesize(text) so onPlaybackFinished can decide. */
+    private fun driveToResponse(s: SatelliteSession, text: String, nowMs: Long) {
+        s.onEvent(event("transcript", """{"text":"turn on the lights"}"""), nowMs = nowMs)
+        s.onEvent(event("synthesize", """{"text":"$text"}"""), nowMs = nowMs)
+        s.onEvent(event("audio-start", """{"rate":22050,"width":2,"channels":1}"""), nowMs = nowMs)
+        s.onEvent(event("audio-stop"), nowMs = nowMs)
+    }
+
+    @Test
+    fun followUpReopensWhenResponseEndsInQuestionMark() {
+        val s = followUpSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        driveToResponse(s, "Which room?", nowMs = 1_000)
+        val a = s.onPlaybackFinished(nowMs = 4_000)
+        val ev = sends(a)
+        assertEquals("played", ev[0].type)
+        assertEquals("run-pipeline", ev[1].type)
+        assertEquals("asr", ev[1].data["start_stage"]!!.jsonPrimitive.content)
+        assertEquals("tts", ev[1].data["end_stage"]!!.jsonPrimitive.content)
+        assertEquals(false, ev[1].data["restart_on_end"]!!.jsonPrimitive.boolean)
+        assertEquals("streaming-started", ev[2].type)
+        assertTrue(a.contains(SatelliteAction.Earcon(EarconKind.WAKE)))
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.LISTENING),
+            (a.last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
+        assertFalse(a.contains(SatelliteAction.StartMic))              // mic never went off
+        // Mic chunks stream straight to HA again — no new wake word.
+        assertEquals("audio-chunk", sends(s.onMicChunk(ByteArray(960) { 3 })).single().type)
+        // No dismissAtMs was set: before the 10 s listen deadline nothing hides the overlay.
+        assertTrue(s.onTick(nowMs = 13_999).none { it is SatelliteAction.Overlay })
+        assertEquals(VoiceOverlayPhase.LISTENING, s.overlay.phase)
+    }
+
+    @Test
+    fun followUpDisabledDismissesNormally() {
+        val s = followUpSession(enabled = { false })
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        driveToResponse(s, "Which room?", nowMs = 1_000)
+        val a = s.onPlaybackFinished(nowMs = 4_000)
+        assertEquals(listOf("played"), sends(a).map { it.type })       // no run-pipeline
+        assertTrue(a.none { it is SatelliteAction.Earcon })
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.HIDDEN),      // normal +4 s auto-dismiss
+            (s.onTick(nowMs = 8_000).last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
+    }
+
+    @Test
+    fun followUpNotOpenedWithoutTrailingQuestionMark() {
+        val s = followUpSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        driveToResponse(s, "Okay, lights on.", nowMs = 1_000)
+        val a = s.onPlaybackFinished(nowMs = 4_000)
+        assertEquals(listOf("played"), sends(a).map { it.type })
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.HIDDEN),
+            (s.onTick(nowMs = 8_000).last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
+    }
+
+    @Test
+    fun suppressedRunNeverReopensAndStoresNoText() {
+        val s = followUpSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        s.onEvent(event("transcript", """{"text":"hi"}"""), nowMs = 0) // THINKING
+        s.onOverlayTapped(nowMs = 100)                                 // tap -> suppressRun
+        assertTrue(s.onEvent(event("synthesize", """{"text":"Which room?"}""")).isEmpty()) // swallowed
+        val a = s.onPlaybackFinished(nowMs = 1_000)
+        assertEquals(listOf("played"), sends(a).map { it.type })       // no reopen
+    }
+
+    @Test
+    fun followUpChainsUpToCapThenDismisses() {
+        val s = followUpSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        var now = 1_000L
+        repeat(3) { round ->
+            driveToResponse(s, "And then?", nowMs = now)
+            val a = s.onPlaybackFinished(nowMs = now)
+            assertTrue("round $round should reopen",
+                sends(a).map { it.type }.contains("run-pipeline"))
+            now += 1_000
+        }
+        // Round 4: cap reached -> normal dismiss.
+        driveToResponse(s, "And then?", nowMs = now)
+        val capped = s.onPlaybackFinished(nowMs = now)
+        assertEquals(listOf("played"), sends(capped).map { it.type })
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.HIDDEN),
+            (s.onTick(nowMs = now + 4_000).last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
+    }
+
+    @Test
+    fun silenceDuringFollowUpDismissesQuietlyViaError() {
+        val s = followUpSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        driveToResponse(s, "Which room?", nowMs = 1_000)
+        s.onPlaybackFinished(nowMs = 2_000)                            // reopened
+        val a = s.onEvent(event("error", """{"text":"stt timeout"}"""), nowMs = 9_000)
+        assertEquals(VoiceOverlayState(), s.overlay)                   // NO FAILED flash
+        assertTrue(sends(a).map { it.type }.contains("streaming-stopped"))
+        assertTrue(a.contains(SatelliteAction.ResetDetector))
+        // Re-armed: the next mic chunk feeds the detector again.
+        assertEquals(SatelliteAction.FeedDetector(ByteArray(960) { 1 }),
+            s.onMicChunk(ByteArray(960) { 1 }).first())
+        // A later, unrelated error still fails loudly.
+        s.onWakeDetected("alexa", nowMs = 10_000)
+        s.onEvent(event("error"), nowMs = 11_000)
+        assertEquals(VoiceOverlayPhase.FAILED, s.overlay.phase)
+    }
+
+    @Test
+    fun followUpDeadlineTickDismissesQuietly() {
+        val s = followUpSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        driveToResponse(s, "Which room?", nowMs = 1_000)
+        s.onPlaybackFinished(nowMs = 2_000)                            // deadline @ 12_000
+        assertTrue(s.onTick(nowMs = 11_999).isEmpty())                 // before deadline: nothing
+        val a = s.onTick(nowMs = 12_000)
+        assertEquals(VoiceOverlayState(VoiceOverlayPhase.HIDDEN),
+            (a.last { it is SatelliteAction.Overlay } as SatelliteAction.Overlay).state)
+        assertTrue(sends(a).map { it.type }.contains("streaming-stopped"))
+        assertTrue(a.contains(SatelliteAction.ResetDetector))
+        // The quiet dismiss also cleared the watchdog: no loud FAILED ever fires later.
+        assertTrue(s.onTick(nowMs = 60_000).none { it is SatelliteAction.Overlay })
+    }
+
+    @Test
+    fun tapDuringFollowUpCancelsQuietlyAndReArms() {
+        val s = followUpSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        driveToResponse(s, "Which room?", nowMs = 1_000)
+        s.onPlaybackFinished(nowMs = 2_000)                            // reopened, LISTENING
+        val a = s.onOverlayTapped(nowMs = 3_000)
+        assertEquals(VoiceOverlayState(), s.overlay)                   // hidden, no FAILED
+        assertTrue(sends(a).map { it.type }.contains("streaming-stopped"))
+        assertTrue(a.contains(SatelliteAction.ResetDetector))
+        assertEquals(SatelliteAction.FeedDetector(ByteArray(960) { 1 }),
+            s.onMicChunk(ByteArray(960) { 1 }).first())                // detector re-armed
+        // A NON-follow-up LISTENING tap stays a no-op (existing behavior preserved).
+        s.onWakeDetected("alexa", nowMs = 4_000)
+        assertTrue(s.onOverlayTapped(nowMs = 4_500).isEmpty())
+    }
+
+    @Test
+    fun freshWakeResetsFollowUpChain() {
+        val s = followUpSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        var now = 1_000L
+        repeat(3) {                                                    // exhaust the cap
+            driveToResponse(s, "And then?", nowMs = now)
+            s.onPlaybackFinished(nowMs = now)
+            now += 1_000
+        }
+        driveToResponse(s, "And then?", nowMs = now)
+        s.onPlaybackFinished(nowMs = now)                              // capped -> dismissed
+        s.onTick(nowMs = now + 4_000)                                  // overlay hidden
+        // New wake: followUpRound/lastResponseText reset, so follow-up works again.
+        s.onWakeDetected("alexa", nowMs = now + 10_000)
+        driveToResponse(s, "Which room?", nowMs = now + 11_000)
+        assertTrue(sends(s.onPlaybackFinished(nowMs = now + 12_000))
+            .map { it.type }.contains("run-pipeline"))
+    }
+
+    @Test
+    fun followUpProviderIsReadLive() {
+        var on = false
+        val s = followUpSession(enabled = { on })
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        driveToResponse(s, "Which room?", nowMs = 1_000)
+        assertEquals(listOf("played"), sends(s.onPlaybackFinished(nowMs = 2_000)).map { it.type })
+        s.onTick(nowMs = 6_000)                                        // dismissed
+        on = true                                                      // toggle flips LIVE, no restart
+        s.onWakeDetected("alexa", nowMs = 10_000)
+        driveToResponse(s, "Which room?", nowMs = 11_000)
+        assertTrue(sends(s.onPlaybackFinished(nowMs = 12_000)).map { it.type }.contains("run-pipeline"))
+    }
+
+    @Test
+    fun legacyModeNeverReopens() {
+        // Non-localWake (HA runs wake): fallback path stays byte-for-byte unchanged.
+        val s = SatelliteSession(appVersion = "9.9", name = { "Test Sat" }, followUp = { true })
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onEvent(event("detection", """{"name":"x"}"""), nowMs = 0)
+        s.onEvent(event("transcript", """{"text":"hi"}"""), nowMs = 1_000)
+        s.onEvent(event("synthesize", """{"text":"Which room?"}"""), nowMs = 1_000)
+        val a = s.onPlaybackFinished(nowMs = 2_000)
+        assertEquals(listOf("played"), sends(a).map { it.type })
+    }
 }

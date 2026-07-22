@@ -420,6 +420,29 @@ class NotificationModelTest {
         )
     }
 
+    @Test
+    fun autoDismissExemptsStillActiveAlerts() {
+        // Two WARNING rows well past the dwell: one is a still-in-effect alert (activeUntilMs in the
+        // future), the other has an end that already passed. Only the expired one is dismissed.
+        val items = listOf(
+            NotificationItem("active-alert", NotifSeverity.WARNING, "Flood Watch", null, null, activeUntilMs = 100_000L),
+            NotificationItem("expired-alert", NotifSeverity.WARNING, "Wind Advisory", null, null, activeUntilMs = 5_000L),
+            NotificationItem("no-end", NotifSeverity.WARNING, "Push notice", null, null, activeUntilMs = null),
+        )
+        val firstSeen = mapOf("active-alert" to 0L, "expired-alert" to 0L, "no-end" to 0L)
+        // now=50_000: dwell (10s) satisfied for all three. active-alert exempt (end 100k > now);
+        // expired-alert eligible (end 5k <= now); no-end eligible (no validity window).
+        assertEquals(
+            listOf("expired-alert", "no-end"),
+            autoDismissKeys(items, NotifSeverity.WARNING, firstSeen, 10_000L, 50_000L),
+        )
+        // Once the active alert's end passes (now=150_000) it becomes eligible like any other row.
+        assertEquals(
+            listOf("active-alert", "expired-alert", "no-end"),
+            autoDismissKeys(items, NotifSeverity.WARNING, firstSeen, 10_000L, 150_000L),
+        )
+    }
+
     // ---- takeoverVisibleOf ----
 
     @Test

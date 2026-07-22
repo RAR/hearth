@@ -17,7 +17,10 @@ enum class NotifSeverity { INFO, WARNING, CRITICAL }
 
 /**
  * One notification row. [key] is the stable identity (NWS alert ID) used for dismissal and list keys.
- * [detail] null means the row is not expandable.
+ * [detail] null means the row is not expandable. [activeUntilMs] is the alert's effective end instant
+ * (epoch millis) while it is still officially in effect; null means "no known validity window" (all
+ * pushed rows, and NWS alerts with no parseable end). Still-active rows are exempt from the dwell-based
+ * auto-dismiss — see [autoDismissKeys].
  */
 data class NotificationItem(
     val key: String,
@@ -25,6 +28,7 @@ data class NotificationItem(
     val title: String,
     val detail: String?,
     val timestampMs: Long?,
+    val activeUntilMs: Long? = null,
 )
 
 /** Map a config min-severity string to the enum. Unknown/blank -> INFO (show everything). */
@@ -124,6 +128,7 @@ fun nwsNotifications(
                 title = title,
                 detail = detail,
                 timestampMs = onset?.toEpochMilli(),
+                activeUntilMs = end?.toInstant()?.toEpochMilli(),
             ),
             onset = onset,
         )
@@ -177,6 +182,11 @@ fun autoDismissCutoff(configValue: String): NotifSeverity? =
  * Keys of rows due for auto-dismissal: severity at or below [cutoff] AND on screen for at least
  * [timeoutMs] (per [firstSeenMs]; a row with no recorded first-seen is treated as just arrived).
  * Null [cutoff] disables the feature (empty result).
+ *
+ * Rows still officially in effect are exempt: a row with an [NotificationItem.activeUntilMs] in the
+ * future is never dismissed, no matter how long it has been on screen. Auto-dismiss is a declutter
+ * timer for stale rows (pushed notices, expired/end-less alerts), not a way to hide a multi-day
+ * weather alert that is still valid. Once its end time passes it becomes eligible like any other row.
  */
 fun autoDismissKeys(
     items: List<NotificationItem>,
@@ -188,6 +198,7 @@ fun autoDismissKeys(
     if (cutoff == null) return emptyList()
     return items
         .filter { it.severity.ordinal <= cutoff.ordinal }
+        .filterNot { it.activeUntilMs?.let { until -> until > nowMs } ?: false }
         .filter { nowMs - (firstSeenMs[it.key] ?: nowMs) >= timeoutMs }
         .map { it.key }
 }

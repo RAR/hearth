@@ -62,6 +62,7 @@ class SatelliteSession(
     private val appVersion: String,
     private val name: () -> String,
     private val localWake: Boolean = false,
+    private val followUp: () -> Boolean = { false },
 ) {
 
     private enum class WakeState { IDLE, DETECTING, STREAMING, PAUSED }

@@ -35,6 +35,7 @@ class SatelliteServer(
     private val port: Int = PORT,
     private val appVersion: String,
     private val name: () -> String,
+    private val followUp: () -> Boolean = { false },
     private val out: Out,
 ) {
     interface Out {
@@ -78,7 +79,7 @@ class SatelliteServer(
     // Recreated on each start() with the current localWake flag; device-local timers persist
     // across HA reconnects (same session instance) but are dropped on a start()/stop() cycle
     // (voice enable/disable or a wake-word/threshold change), which is rare and acceptable.
-    @Volatile private var session = SatelliteSession(appVersion, name)
+    @Volatile private var session = SatelliteSession(appVersion, name, followUp = followUp)
     private val lock = Any()
     @Volatile private var serverSocket: ServerSocket? = null
     private var active: Connection? = null
@@ -94,7 +95,7 @@ class SatelliteServer(
 
     fun start(localWake: Boolean = false, detector: WakeDetector? = null, wakeWord: String = "okay_nabu") {
         if (acceptJob?.isActive == true) return
-        session = SatelliteSession(appVersion, name, localWake)
+        session = SatelliteSession(appVersion, name, localWake, followUp = followUp)
         this.detector = if (localWake) detector else null
         this.wakeWord = wakeWord
         startDetectorThread()

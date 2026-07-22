@@ -9,6 +9,25 @@ A native Android wall-dashboard for Home Assistant, plus its own HA integration.
 - **The app** (`app/`): a Kotlin + Jetpack Compose kiosk that turns an Android device into an always-on HA dashboard and voice satellite. Born on a LineageOS Echo Show 5, now happily multi-device. Everything is configured from a web page the device serves on your LAN — no YAML.
 - **The integration** (`custom_components/hearth/`): a slim custom integration that gives HA full control of each device — media player, screen, brightness, toasts, TTS announcements.
 
+## Screenshots
+
+<em>Running on an Echo Show 8.</em>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/home.png" alt="Home view" /><br/><sub><b>Home</b> — weather/AQI pills, mini now-playing card, EV charge, animated solar flow, next-event chip.</sub></td>
+    <td width="50%"><img src="docs/screenshots/now-playing.png" alt="Now-playing takeover" /><br/><sub><b>Now-playing takeover</b> — full album art, seek slider, shuffle/repeat, favorite.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/media.png" alt="Media panel" /><br/><sub><b>Media</b> — library browser with the multi-room speaker pane (SendSpin).</sub></td>
+    <td width="50%"><img src="docs/screenshots/climate.png" alt="Climate panel" /><br/><sub><b>Climate</b> — per-thermostat setpoint steppers and mode chips.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/cameras.png" alt="Cameras panel" /><br/><sub><b>Cameras</b> — live RTSP/HLS feeds with a source picker.</sub></td>
+    <td width="50%"><img src="docs/screenshots/lights.png" alt="Lights panel" /><br/><sub><b>Lights</b> — grouped light controls.</sub></td>
+  </tr>
+</table>
+
 ## What's on screen
 
 - **Home** — photo slideshow backdrop (synced from an HA media folder), clock, weather + AQI + rain pills, next-calendar-event card, EV-charging cards while a car is plugged in, an animated solar power-flow card, an optional quick-buttons card (up to 4 toggles/scenes/scripts), a notification area (HA push + NWS weather alerts), and a full now-playing takeover with album art while music plays. Layout adapts to the panel size, so a 5" Echo Show and a 10" tablet each get a fitting density.

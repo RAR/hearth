@@ -21,6 +21,19 @@ import java.io.StringWriter
 object DiagLog {
 
     /**
+     * Priority floors for the two tags that would otherwise crowd everything else out.
+     *
+     * Measured on an Echo Show 5: the vendored SendSpin engine's per-frame and
+     * time-sync lines are 66% of all log volume (~21 KB/min total), which would cycle
+     * the whole file in about six minutes and defeat the point of writing to disk.
+     * Raising just these two to I keeps their warnings and errors — the part that
+     * matters when the audio path misbehaves — while dropping routine frame traffic.
+     * The trailing `*:D` sets the floor for every other tag; without it, supplying any
+     * filterspec would silently raise the default.
+     */
+    private val FILTERS = arrayOf("SendSpin:I", "WebSocketTransport:I", "*:D")
+
+    /**
      * Start tailing this process's logcat into [log]. Idempotent — a second call is
      * ignored, so re-entering from a restarted Activity can't spawn a second pump.
      *
@@ -35,7 +48,9 @@ object DiagLog {
         val pid = Process.myPid()
         pump = Thread({
             runCatching {
-                val proc = ProcessBuilder("logcat", "-v", "time", "-T", "1", "--pid=$pid")
+                val proc = ProcessBuilder(
+                    "logcat", "-v", "time", "-T", "1", "--pid=$pid", *FILTERS,
+                )
                     .redirectErrorStream(true)
                     .start()
                 BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->

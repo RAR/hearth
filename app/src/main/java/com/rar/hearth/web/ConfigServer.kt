@@ -381,8 +381,10 @@ class ConfigServer(
     }
 
     companion object {
-        private const val DEFAULT_LOG_LIMIT = 256 * 1024
-        private const val MAX_LOG_LIMIT = 2 * 1024 * 1024
+        // Default covers the full retained log (FileLog keeps 1 MB × 2) so a plain
+        // download gets everything; the ceiling leaves headroom without being unbounded.
+        private const val DEFAULT_LOG_LIMIT = 2 * 1024 * 1024
+        private const val MAX_LOG_LIMIT = 4 * 1024 * 1024
 
         private val STATUS_429 = object : Response.IStatus {
             override fun getRequestStatus(): Int = 429

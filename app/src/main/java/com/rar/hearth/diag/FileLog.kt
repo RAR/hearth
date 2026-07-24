@@ -29,7 +29,10 @@ import java.util.Locale
 class FileLog(
     private val dir: File,
     private val name: String = "hearth-log.txt",
-    private val maxBytes: Long = 128L * 1024,
+    // 1 MB × 2 files. Sized against the measured post-filter rate of ~7 KB/min (see
+    // DiagLog.FILTERS), which retains roughly 2.5–5 hours — long enough that a fault
+    // noticed hours after a reboot is still in the file. Trivial against ~1 GB of flash.
+    private val maxBytes: Long = 1024L * 1024,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val lock = Any()

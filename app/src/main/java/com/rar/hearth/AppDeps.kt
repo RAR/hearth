@@ -10,6 +10,8 @@ import com.rar.hearth.camera.StreamResolver
 import com.rar.hearth.config.ConfigStore
 import com.rar.hearth.data.PrefsSettingsStore
 import com.rar.hearth.data.SettingsStore
+import com.rar.hearth.diag.DiagLog
+import com.rar.hearth.diag.FileLog
 import com.rar.hearth.ha.AuthManager
 import com.rar.hearth.ha.ConnState
 import com.rar.hearth.ha.EntityHub
@@ -94,6 +96,13 @@ class AppDeps(context: Context) {
     /** Latest ambient-light reading (lux) for the config page's live display; null when no sensor. */
     @Volatile var lastLux: Int? = null
 
+    /**
+     * Rolling on-disk log, readable from the config page after a reboot has cleared
+     * logcat. Declared first so [startDiagnostics] can capture faults from the rest
+     * of construction onward.
+     */
+    val fileLog = FileLog(appContext.filesDir)
+
     val settings: SettingsStore = PrefsSettingsStore(appContext)
     val client = OkHttpClient()
     val auth = AuthManager(settings, client)
@@ -167,6 +176,10 @@ class AppDeps(context: Context) {
         disconnect = { settings.clearAuth(); logoutEvents.tryEmit(Unit) },
         lux = { lastLux },
         sendspinStatus = { sendspin.status.value.name },
+        appVersion = { BuildConfig.VERSION_NAME },
+        logText = { limit -> fileLog.tail(limit) },
+        logSizeBytes = { fileLog.sizeBytes() },
+        clearLog = { fileLog.clear() },
         // MA sign-in: exchange credentials for a token on the device, persist token + display
         // name BEFORE returning (the browser re-pulls config right after, and the maToken
         // collector in startSendspin() reacts by connecting the library socket).
@@ -229,6 +242,17 @@ class AppDeps(context: Context) {
         settings.configPin = pin
         pinState.value = pin
         return pin
+    }
+
+    /**
+     * Begin persisting diagnostics: crash handler first (so a fault during the rest
+     * of startup is recorded), then the session banner, then the logcat pump. Call
+     * this before anything else in HearthApplication.
+     */
+    fun startDiagnostics() {
+        DiagLog.installCrashHandler(fileLog)
+        fileLog.banner("Hearth ${BuildConfig.VERSION_NAME} started on ${Build.MODEL} (API ${Build.VERSION.SDK_INT})")
+        DiagLog.startLogcatPump(fileLog)
     }
 
     /** Start the embedded config web server. Runs for the app's lifetime, independent of HA auth. */

@@ -374,6 +374,7 @@ function render() {
   renderDevice();
   renderPin();
   renderBackup();
+  renderDiag();
   renderPanels();
   renderHome();
   renderNight();
@@ -1296,6 +1297,84 @@ function renderBackup() {
     "device still needs its own HA setup. Importing replaces this device's entire configuration."));
 }
 
+// ---------- diagnostics ----------
+
+function formatBytes(n) {
+  if (!n) return "empty";
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+  return (n / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+function renderDiag() {
+  const host = document.getElementById("diag");
+  clear(host);
+
+  const version = el("input");
+  version.readOnly = true;
+  version.value = (lastStatus && lastStatus.appVersion) || "unknown";
+  version.setAttribute("aria-label", "App version");
+  version.addEventListener("focus", () => version.select());
+  host.appendChild(labeledRow("App version", version));
+
+  const size = el("span", "status info", "…");
+  size.id = "diag-log-size";
+  host.appendChild(labeledRow("Device log", size));
+  updateDiagLogSize(lastStatus);   // paint now; the 5s poll refreshes it after
+
+  const row = el("div", "row");
+
+  const dl = el("button", "ghost", "Download log");
+  dl.type = "button";
+  dl.addEventListener("click", downloadLog);
+  row.appendChild(dl);
+
+  const clr = el("button", "ghost danger", "Clear log");
+  clr.type = "button";
+  clr.addEventListener("click", clearLog);
+  row.appendChild(clr);
+
+  host.appendChild(row);
+
+  host.appendChild(el("div", "muted",
+    "The device keeps its most recent log lines in a small rolling file, so a fault is still " +
+    "readable after the reboot that cleared it. Include this file when reporting a problem — " +
+    "it records crashes and the audio, voice, and connection subsystems."));
+}
+
+// Live size line; called after render and from the 5s poll. Sets text only.
+function updateDiagLogSize(status) {
+  const node = document.getElementById("diag-log-size");
+  if (!node) return;
+  node.textContent = status ? formatBytes(status.logBytes) : "…";
+}
+
+function downloadLog() {
+  // A plain navigation, not fetch+blob: the endpoint already sends
+  // Content-Disposition, and the session cookie rides along automatically.
+  const a = el("a");
+  a.href = "/api/log";
+  a.download = "hearth-log.txt";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+async function clearLog() {
+  if (!confirm("Clear the device log? Anything not yet downloaded is lost.")) return;
+  setStatus("Clearing…", "busy");
+  try {
+    const r = await api("POST", "/api/log/clear", {});
+    if (r.status === 401) { showLogin(); return; }
+    if (!r.ok) { setStatus("Clear failed (" + r.status + ")", "err"); return; }
+    if (lastStatus) lastStatus.logBytes = 0;
+    updateDiagLogSize(lastStatus);
+    setStatus("Log cleared", "ok");
+  } catch (e) {
+    setStatus("Can't reach the device — log not cleared.", "err");
+  }
+}
+
 async function exportConfig() {
   // Fetch a FRESH copy from the device, not the in-memory `config` (which may hold unsaved edits).
   setStatus("Exporting…", "busy");
@@ -1382,7 +1461,7 @@ function startStatusPoll() {
   setInterval(async () => {
     try {
       const r = await api("GET", "/api/status");
-      if (r.ok) { lastStatus = await r.json(); updateNightLux(lastStatus); updateSendspinStatus(lastStatus); updateHaConn(lastStatus); }
+      if (r.ok) { lastStatus = await r.json(); updateNightLux(lastStatus); updateSendspinStatus(lastStatus); updateHaConn(lastStatus); updateDiagLogSize(lastStatus); }
     } catch (e) { /* device may be briefly unreachable; ignore */ }
   }, 5000);
 }

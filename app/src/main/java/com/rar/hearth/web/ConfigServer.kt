@@ -40,6 +40,12 @@ class ConfigServer(
     private val disconnect: () -> Unit = {},
     private val lux: () -> Int? = { null },
     private val sendspinStatus: () -> String = { "disconnected" },
+    // Diagnostics: the rolling on-disk log. Defaults keep tests that don't care
+    // about logging free of the wiring.
+    private val appVersion: () -> String = { "" },
+    private val logText: (Int) -> String = { "" },
+    private val logSizeBytes: () -> Long = { 0L },
+    private val clearLog: () -> Unit = {},
     // MA sign-in bridge: exchanges credentials for a token device-side and persists it before
     // returning the display name. Defaults keep App.kt compiling until Task 6 wires MaLibrary.
     private val maSignIn: suspend (username: String, password: String) -> Result<String> =
@@ -83,6 +89,8 @@ class ConfigServer(
                 uri == "/api/setup/complete" && method == Method.POST -> handleSetupComplete(session)
                 uri == "/api/voice/preview-chime" && method == Method.POST -> handlePreviewChime(session)
                 uri == "/api/voice/preview-wake" && method == Method.POST -> handlePreviewWake(session)
+                uri == "/api/log" && method == Method.GET -> handleLog(session)
+                uri == "/api/log/clear" && method == Method.POST -> handleLogClear(session)
                 uri == "/api/sendspin/login" && method == Method.POST -> handleMaLogin(session)
                 uri == "/api/sendspin/logout" && method == Method.POST -> handleMaLogout()
                 else -> error(Response.Status.NOT_FOUND, "not found")
@@ -130,6 +138,8 @@ class ConfigServer(
             put("deviceName", deviceName())
             put("pin", pin())
             put("sendspin", sendspinStatus())
+            put("appVersion", appVersion())   // git-derived build string, same value HA shows as sw_version
+            put("logBytes", logSizeBytes())   // drives the config page's "Device log (N KB)" line
         }.toString())
 
     /** Session-gated (see route()). Clears auth device-side and returns the device to setup. */
@@ -246,6 +256,32 @@ class ConfigServer(
         return ok("""{"ok":true}""")
     }
 
+    /**
+     * Session-gated: the retained device log as plain text, newest lines last.
+     * `?limit=<bytes>` caps the response (default 256 KiB, hard ceiling 2 MiB) so a
+     * browser on the LAN can't be handed an unbounded body. Served as a download so
+     * it can be attached to a bug report rather than only read in the tab.
+     */
+    private fun handleLog(session: IHTTPSession): Response {
+        val requested = session.parameters["limit"]?.firstOrNull()?.toIntOrNull() ?: DEFAULT_LOG_LIMIT
+        val limit = requested.coerceIn(1, MAX_LOG_LIMIT)
+        val body = logText(limit)
+        return newFixedLengthResponse(Response.Status.OK, "text/plain; charset=utf-8", body).apply {
+            addHeader("Content-Disposition", "attachment; filename=\"hearth-log.txt\"")
+            addHeader("Cache-Control", "no-store")
+        }
+    }
+
+    /** Session-gated: discard the retained log and report the (now zero) size. */
+    private fun handleLogClear(session: IHTTPSession): Response {
+        // Drain the request body even though it is unused: NanoHTTPD leaves an
+        // unconsumed body in the socket, which misframes the next request on a
+        // keep-alive connection.
+        readBody(session)
+        clearLog()
+        return ok(buildJsonObject { put("ok", true); put("bytes", logSizeBytes()) }.toString())
+    }
+
     private fun handleMaLogin(session: IHTTPSession): Response {
         val obj = runCatching { ConfigJson.json.parseToJsonElement(readBody(session)) as JsonObject }
             .getOrNull() ?: return error(Response.Status.BAD_REQUEST, "invalid request")
@@ -345,6 +381,9 @@ class ConfigServer(
     }
 
     companion object {
+        private const val DEFAULT_LOG_LIMIT = 256 * 1024
+        private const val MAX_LOG_LIMIT = 2 * 1024 * 1024
+
         private val STATUS_429 = object : Response.IStatus {
             override fun getRequestStatus(): Int = 429
             override fun getDescription(): String = "429 Too Many Requests"

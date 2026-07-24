@@ -1463,6 +1463,9 @@ private fun QueueRow(
 /** Per-cell thumbnail: cache-first via MaThumbs (IO-dispatched decode), music-note placeholder. */
 @Composable
 private fun Thumb(url: String?, thumbs: MaThumbs, size: Dp, corner: Dp = 8.dp) {
+    // Lint's ProduceStateDoesNotAssignValue misses the assignment when the right-hand
+    // side is a conditional wrapping a suspend call; `value` is assigned on both branches.
+    @Suppress("ProduceStateDoesNotAssignValue")
     val bmp by produceState<ImageBitmap?>(initialValue = null, url) {
         value = if (url == null) null else thumbs.load(url)
     }

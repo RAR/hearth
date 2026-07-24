@@ -23,8 +23,8 @@ JDK 17+ required (`JAVA_HOME` must point at one). The Android SDK path comes
 from `local.properties` (`sdk.dir=…`).
 
 ```bash
-# App — the gate. Both must pass before any commit.
-./gradlew :app:testDebugUnitTest :app:assembleDebug
+# App — the gate. All three must pass before any commit.
+./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
 # APK: app/build/outputs/apk/debug/app-debug.apk
 
 # Integration — protocol-layer tests (Python stdlib + pytest only)
@@ -37,15 +37,42 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 Run the full gate green **before every commit**. This repo works directly on
 `master`; keep commits small and focused.
 
+`lintDebug` is part of the gate because the test policy is plain-JVM JUnit4 —
+lint is the only automated check that sees the Android-framework surface (API
+levels below the `minSdk 27` floor, manifest and resource problems). It aborts
+on errors; warnings are informational.
+
+**Versions are derived from git, never hand-edited.** `app/build.gradle.kts`
+computes `versionCode` from the commit count and `versionName` as
+`0.2.<commits>+<sha>[.dirty]`. That string reaches HA as each device's
+`sw_version`, so the HA device page tells you which build is on which device,
+and a `.dirty` suffix means it was flashed from an uncommitted tree. Bump only
+the `baseVersion` constant, and only for a real release. Anything cloning the
+repo for a build needs full history (CI uses `fetch-depth: 0`); without `.git`
+the version falls back to `0.2.1+nogit`.
+
 ## Hard constraints — do not break these
 
-- **`compileSdk` / `targetSdk` stay at 34. Never bump them.** Same for
-  `minSdk = 28`.
+- **`targetSdk` stays at 34. Never bump it** — it is what changes runtime
+  behavior on the fleet. **`minSdk` is 27** (lowered from 28 for the Shelly Wall
+  Display, an Android 8.1 / Unisoc device); never raise it.
+  `compileSdk` is also 34 today, but note that unlike `targetSdk` it has **no
+  runtime effect** — it only sets the API surface available at compile time.
+  Bumping it is the prerequisite for dependency updates (see below), and is a
+  human decision, not an automatic one.
 - **No new dependencies** on either side without explicit human approval. The
   app's deps (in `app/build.gradle.kts`) are deliberately minimal — Compose BOM,
   coroutines, serialization, OkHttp, media3, NanoHTTPD, TensorFlow Lite. The
   integration has **zero runtime/pip dependencies** (`manifest.json`
   `requirements` is empty) — keep it that way; use only the Python stdlib.
+- **Dependency versions are pinned old on purpose, but not by device age.** The
+  app's AndroidX/media3 versions are ~18 months behind. That is a consequence of
+  the `compileSdk 34` pin (newer AndroidX artifacts require 35+), *not* a
+  requirement of the Android 8.1–13 fleet — `minSdk 27` is what governs device
+  compatibility, and it is independent of both. Don't "fix" the stale versions
+  by bumping `compileSdk` on your own initiative: the upgrade is safe in
+  principle but needs all four devices reflashed and eyeballed, so it is a
+  deliberate, human-scheduled piece of work.
 - **App tests are plain-JVM JUnit4 only** — no instrumented tests, no
   Robolectric. `testOptions.unitTests.isReturnDefaultValues = true` is set so
   Android stubs return defaults; design testable logic as pure functions.
@@ -71,14 +98,22 @@ Run the full gate green **before every commit**. This repo works directly on
   only `namespace` tracks the package. The on-device data path is therefore still
   `/data/data/com.rar.echodash/`.
 - `App.kt` — `HearthApp` composable (top-level state, screen routing, splash
-  overlay); `MainActivity`, `HearthApplication`, `BootReceiver`.
+  overlay); `MainActivity`, `HearthApplication`, `BootReceiver`. Per-session UI
+  state must be hoisted here, **above the shell `Crossfade`** — a `remember {}`
+  inside `HomeView` is discarded on every view switch.
+- `AppDeps.kt` — the hand-rolled DI container: construction and wiring for every
+  long-lived subsystem, plus the `startConfigServer` / `startDashboard` /
+  `startHearth` / `startVoice` / `startSendspin` entry points. Split out of
+  `App.kt` 2026-07-24; no Compose state lives here.
 - `ha/` — Home Assistant WebSocket client, `EntityHub` (one `subscribe_entities`
   feed), connection state.
 - `device/` — **the Hearth wire protocol + device integration.** `HearthServer` is
   the port-10700 server; `HearthMessages` the codec (`HearthIncoming`/`HearthParser`/
-  `HearthOutgoing`); `MediaBridge`, `KioskController`, `SatelliteSession` handle
-  HA-driven control. (Formerly the `vaca/` package — renamed 2026-07-20; the wire
-  protocol itself, `_hearth._tcp.` + port 10700, is unchanged.)
+  `HearthOutgoing`); `MediaBridge` and `KioskController` handle HA-driven control.
+  (Formerly the `vaca/` package — renamed 2026-07-20; the wire protocol itself,
+  `_hearth._tcp.` + port 10700, is unchanged.) The Wyoming satellite lives in
+  `voice/` (`SatelliteServer` / `SatelliteSession`), not here — see the note below
+  about keeping the two apart.
 - `ui/` — Compose screens; `ui/panels/` the right-rail panels; `ui/theme/` the
   Nunito type system and colors.
 - `data/` — `SettingsStore` / `DashConfig` persistence.
@@ -112,8 +147,21 @@ stores in the web config (`sendspin.maToken`).
 
 ## Device / hardware notes
 
-Primary targets: **Echo Show 5** (LineageOS 18.1 / Android 11, MT8163, 960×480)
-and **Lenovo Tab M9** (Android 13, 1340×800). Landscape kiosk only.
+Landscape kiosk only. The fleet spans Android 8.1 → 13, which is why `minSdk` is
+27 and why adaptive sizing (`ui/model/AdaptiveGeometry.kt`) exists:
+
+| Device | OS / API | SoC | Panel |
+|---|---|---|---|
+| **Echo Show 5** (×2) | LineageOS 18.1 / Android 11 (30) | MT8163 | 960×480 |
+| **Echo Show 8** | LineageOS 18.1 / Android 11 (30) | MT8183 | 1280×800 |
+| **Lenovo Tab M9** | Android 13 (33) | — | 1340×800 |
+| **Shelly Wall Display E500** | Android 8.1 (27) | Unisoc | 1280×800 |
+
+- The **Shelly Wall Display sets the API floor.** It is the only API-27 device;
+  anything below `Build.VERSION_CODES.P` must stay off the `ImageDecoder` path
+  (`photos/ImageDecoderPhotos.kt` is isolated for exactly this reason — see the
+  `SDK_INT >= P` gate in `photos/AndroidPhotoDownloader.kt`).
+- The **Echo Shows have no working camera** (no HAL on the ROM). Don't re-probe.
 
 - **Echo audio HAL is fragile.** Prime the `AudioTrack` buffer *before* `play()`
   (an empty start renders silent); pad short one-shots with ≥300 ms trailing

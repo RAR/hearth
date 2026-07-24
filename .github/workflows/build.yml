@@ -16,6 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: versionCode/versionName are derived from the commit count
+          # and short SHA in app/build.gradle.kts. A shallow clone would pin every
+          # CI build to versionCode 1.
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -26,6 +31,17 @@ jobs:
 
       - name: Build + unit tests
         run: ./gradlew test assembleDebug --no-daemon --stacktrace
+
+      - name: Android Lint
+        run: ./gradlew lintDebug --no-daemon --stacktrace
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-debug.*
+          if-no-files-found: ignore
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4

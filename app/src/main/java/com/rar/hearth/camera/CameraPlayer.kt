@@ -44,7 +44,10 @@ private val DUSK = Color(0xFF12141C)
  * instance. All playback decisions (which URL, fallback, mute) live in the caller — this composable
  * just plays what it is told and reports errors via [onError].
  */
-@OptIn(UnstableApi::class)
+// androidx.annotation.OptIn, not kotlin.OptIn: media3 marks UnstableApi with
+// androidx.annotation.RequiresOptIn, which the Kotlin compiler ignores and the
+// UnsafeOptInUsageError lint check enforces. Only the androidx annotation silences it.
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun CameraPlayer(
     source: StreamSource,
@@ -90,7 +93,7 @@ fun CameraPlayer(
     )
 }
 
-@OptIn(UnstableApi::class)
+@androidx.annotation.OptIn(UnstableApi::class)
 private fun buildMediaSource(source: StreamSource): MediaSource? = when (source) {
     is StreamSource.Rtsp ->
         RtspMediaSource.Factory().createMediaSource(MediaItem.fromUri(source.url))

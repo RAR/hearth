@@ -8,7 +8,7 @@ import android.util.Log
 import kotlin.concurrent.thread
 
 /**
- * Captures mic audio (16 kHz / 16-bit / mono, VOICE_RECOGNITION) in ~30 ms chunks and
+ * Captures mic audio (16 kHz / 16-bit / mono, source MIC) in ~30 ms chunks and
  * pushes each to [onChunk]. Runs on its own thread while [start] is active. Any init or
  * read failure (including a missing RECORD_AUDIO grant surfacing as a failed init) calls
  * [onError] once and stops. Never throws to the caller.

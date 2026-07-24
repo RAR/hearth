@@ -65,14 +65,24 @@ the version falls back to `0.2.1+nogit`.
   coroutines, serialization, OkHttp, media3, NanoHTTPD, TensorFlow Lite. The
   integration has **zero runtime/pip dependencies** (`manifest.json`
   `requirements` is empty) — keep it that way; use only the Python stdlib.
-- **Dependency versions are pinned old on purpose, but not by device age.** The
-  app's AndroidX/media3 versions are ~18 months behind. That is a consequence of
-  the `compileSdk 34` pin (newer AndroidX artifacts require 35+), *not* a
-  requirement of the Android 8.1–13 fleet — `minSdk 27` is what governs device
-  compatibility, and it is independent of both. Don't "fix" the stale versions
-  by bumping `compileSdk` on your own initiative: the upgrade is safe in
-  principle but needs all four devices reflashed and eyeballed, so it is a
-  deliberate, human-scheduled piece of work.
+- **Dependency versions are ~18 months behind, and the fleet is not the reason.**
+  This was measured, not assumed (2026-07-24, on a scratch branch):
+  - `compileSdk 35` + Compose BOM 2025.01 + media3 1.5.1 + core-ktx 1.15.0
+    builds and packages clean with `minSdk 27` untouched.
+  - The *newest* tier (core-ktx 1.19, media3 1.10.1, lifecycle 2.11,
+    activity 1.13, Compose BOM 2025.12) fails on **AGP version floors** —
+    `requires Android Gradle plugin 8.9.1 / 9.1.0 or higher`, against the
+    8.7.3 in use. Not one dependency complained about `minSdk`.
+
+  So the real constraint is the toolchain (AGP/Gradle), with `compileSdk 34` as
+  the secondary gate; device age governs `minSdk` only, and `minSdk` blocks
+  nothing here. Note `compileSdk` has **no runtime effect** — only `targetSdk`
+  changes behavior on device, and that stays at 34.
+
+  Do not bump any of this on your own initiative. It is safe in principle but
+  needs all four devices reflashed and eyeballed, so it is deliberate,
+  human-scheduled work — the sequence is AGP/Gradle first, then `compileSdk`,
+  then the libraries.
 - **App tests are plain-JVM JUnit4 only** — no instrumented tests, no
   Robolectric. `testOptions.unitTests.isReturnDefaultValues = true` is set so
   Android stubs return defaults; design testable logic as pure functions.

@@ -48,6 +48,21 @@ class FakeAppServer:
             with suppress(Exception):
                 await self._server.wait_closed()
 
+    async def wait_session(self, timeout: float = 2.0) -> None:
+        """Block until run-satellite has been handled and session_writer is live.
+
+        The client flips to connected as soon as it *sends* run-satellite, so
+        async_wait_connected can return before the server has processed it. A test
+        that calls drop_session() at that point closes nothing and silently tests
+        no reconnect at all — always await this first.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while self.session_writer is None:
+            if loop.time() >= deadline:
+                raise AssertionError("server never established a session")
+            await asyncio.sleep(0.01)
+
     async def drop_session(self) -> None:
         if self.session_writer is not None:
             self.session_writer.close()
@@ -296,8 +311,14 @@ def test_reconnect_after_connection_drop():
         )
         await client.async_start()
         await client.async_wait_connected(2)
+        await server.wait_session()   # else the drop below races ahead and closes nothing
         await server.drop_session()
-        await asyncio.sleep(0.05)
+        # Wait for the drop to be *observed*: async_wait_connected returns immediately
+        # while the client still believes it is connected, skipping the reconnect.
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 2
+        while client.connected and loop.time() < deadline:
+            await asyncio.sleep(0.01)
         await client.async_wait_connected(2)  # supervisor reconnects
         reconnected = client.connected
         await client.async_stop()
@@ -307,3 +328,51 @@ def test_reconnect_after_connection_drop():
     reconnected = asyncio.run(scenario())
     assert reconnected is True
     assert True in conn and False in conn  # saw at least one up and one down transition
+
+
+def test_reconnect_after_reflash_exposes_new_version_when_connection_event_fires():
+    """A reflashed device's new version must be readable the moment 'connection' fires.
+
+    The HA integration syncs DeviceInfo.sw_version into the device registry from
+    inside its 'connection' listener, so the ordering matters: _handshake must have
+    stored the new app_version *before* _set_connected(True) emits. If that ever
+    inverted, the registry would silently keep the previous build's version and the
+    HA device page would go stale after every flash.
+    """
+    seen_versions: list[str | None] = []
+
+    async def scenario() -> None:
+        server = FakeAppServer(app_version="0.2.487+aaaaaaa")
+        await server.start()
+        client = HearthClient(
+            server.host, server.port, ping_interval=0.05, backoff_base=0.05, backoff_max=0.2
+        )
+        # Record the version as observed at each connect edge, not afterwards.
+        client.add_listener(
+            lambda kind, data: seen_versions.append(client.app_version)
+            if kind == "connection" and data["connected"]
+            else None
+        )
+        await client.async_start()
+        await client.async_wait_connected(2)
+
+        # The device is reflashed and comes back reporting a different build.
+        await server.wait_session()   # else the drop below races ahead and closes nothing
+        server.app_version = "0.2.488+bbbbbbb"
+        await server.drop_session()
+        # Wait for the drop to actually be observed: async_wait_connected returns
+        # immediately while the client still believes it is connected, which would
+        # skip the reconnect entirely.
+        deadline = asyncio.get_running_loop().time() + 2
+        while client.connected and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.01)
+        await client.async_wait_connected(2)
+
+        await client.async_stop()
+        await server.stop()
+
+    asyncio.run(scenario())
+
+    assert len(seen_versions) >= 2, f"expected two connect edges, got {seen_versions}"
+    assert seen_versions[0] == "0.2.487+aaaaaaa"
+    assert seen_versions[-1] == "0.2.488+bbbbbbb"

@@ -9,6 +9,7 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.service import async_extract_referenced_entity_ids
 from homeassistant.helpers.typing import ConfigType
@@ -122,7 +123,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady(f"Could not connect to {entry.title}") from err
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = client
+
+    def _sync_sw_version() -> None:
+        """Push a changed app version into the device registry.
+
+        DeviceInfo.sw_version is only read when entities are constructed, so
+        without this the registry keeps whatever version was current at setup —
+        a device flashed with a new build would keep reporting the old one until
+        HA restarted or the entry was reloaded. The client re-learns the version
+        on every handshake, so refresh it whenever the device reconnects.
+        """
+        version = client.app_version
+        if not version:
+            return
+        dev_reg = dr.async_get(hass)
+        device = dev_reg.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+        if device is not None and device.sw_version != version:
+            dev_reg.async_update_device(device.id, sw_version=version)
+
+    def _on_client_event(kind: str, data: dict) -> None:
+        if kind == "connection" and data.get("connected"):
+            _sync_sw_version()
+
+    entry.async_on_unload(client.add_listener(_on_client_event))
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # The device row only exists once the platforms have registered their entities,
+    # so the initial reconcile has to happen after the forward, not before.
+    _sync_sw_version()
     return True
 
 

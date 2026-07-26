@@ -471,6 +471,17 @@ class DashConfigTest {
     }
 
     @Test
+    fun captureOnWakeDefaultsOffAndRoundTrips() {
+        assertEquals(false, DashConfig().voice.captureOnWake)
+        // Absent from an older config file -> stays off; nobody gets a recorder by upgrading.
+        assertEquals(false, decodeConfig("""{"voice":{"enabled":true}}""").voice.captureOnWake)
+        val cfg = DashConfig(voice = VoiceSettings(captureOnWake = true))
+        val text = ConfigJson.json.encodeToString(DashConfig.serializer(), cfg)
+        assertEquals(true, decodeConfig(text).voice.captureOnWake)
+        assertEquals(true, cfg.clamped().voice.captureOnWake)
+    }
+
+    @Test
     fun notificationsDefaults() {
         val n = DashConfig().notifications
         assertEquals(null, n.nwsAlerts)

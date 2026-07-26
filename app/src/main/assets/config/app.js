@@ -970,6 +970,7 @@ function renderVoice() {
   if (v.wakeWord == null) v.wakeWord = "okay_nabu";
   if (v.wakeThreshold == null) v.wakeThreshold = 50;
   if (v.followUpEnabled == null) v.followUpEnabled = false;
+  if (v.captureOnWake == null) v.captureOnWake = false;
 
   const toggle = el("input"); toggle.type = "checkbox"; toggle.checked = !!v.enabled;
   toggle.setAttribute("aria-label", "Voice satellite enabled");
@@ -993,6 +994,11 @@ function renderVoice() {
   followUp.setAttribute("aria-label", "Continue conversation enabled");
   followUp.addEventListener("change", () => v.followUpEnabled = followUp.checked);
   host.appendChild(labeledRow("Continue conversation", followUp));
+
+  const capture = el("input"); capture.type = "checkbox"; capture.checked = !!v.captureOnWake;
+  capture.setAttribute("aria-label", "Capture audio on wake");
+  capture.addEventListener("change", () => v.captureOnWake = capture.checked);
+  host.appendChild(labeledRow("Capture audio on wake", capture));
 
   const toneSel = el("select");
   TONE_OPTIONS.forEach(([val, lbl]) => {
@@ -1038,6 +1044,7 @@ function renderVoice() {
   host.appendChild(el("div", "muted",
     "Home Assistant should auto-discover the satellite; otherwise add the Wyoming Protocol integration at <this-device-ip>:10600. " +
     "The wake word is now detected on-device — pick it above (sensitivity 10–95, higher = stricter, clamped on save). " +
+    "Capture audio on wake saves the ~10 s before each detection to the device for false-positive tuning; it stays on the device, and is meant to be left off. "  +
     "HA's own streaming wake-word setting is no longer used, and mic audio only reaches HA after the wake word is heard. " +
     "Wake sound: chirps when the wake word is heard and when it stops listening; volume 0 disables it. " +
     "Continue conversation: when the assistant's reply is a question, the mic reopens for your answer without a new wake word (up to 3 rounds; applies immediately, no restart). " +

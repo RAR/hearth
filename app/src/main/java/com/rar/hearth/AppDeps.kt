@@ -51,6 +51,7 @@ import com.rar.hearth.voice.SatelliteServer
 import com.rar.hearth.voice.TfliteWakeGraphs
 import com.rar.hearth.voice.TimerChime
 import com.rar.hearth.voice.TimersUiState
+import com.rar.hearth.voice.WakeAudioRing
 import com.rar.hearth.voice.WakeDetector
 import com.rar.hearth.voice.VoiceOverlayState
 import com.rar.hearth.web.ConfigServer
@@ -515,10 +516,10 @@ class AppDeps(context: Context) {
     fun startVoice() {
         scope.launch {
             val voiceSettings = configStore.config
-                .map { Triple(it.voice.enabled, it.voice.wakeWord, it.voice.wakeThreshold) }
+                .map { VoiceKey(it.voice.enabled, it.voice.wakeWord, it.voice.wakeThreshold, it.voice.captureOnWake) }
                 .distinctUntilChanged()
             combine(voiceSettings, voiceRestartTick) { s, _ -> s }
-                .collect { (enabled, wakeWord, threshold) ->
+                .collect { (enabled, wakeWord, threshold, captureOnWake) ->
                     // Tear down any running instance first so a config change fully restarts it.
                     voiceNsd.unregister()
                     satellite.stop()
@@ -542,7 +543,17 @@ class AppDeps(context: Context) {
                             android.util.Log.w("AppDeps", "wake models failed to load; falling back to HA-side wake")
                             null
                         }
-                        satellite.start(localWake = detector != null, detector = detector, wakeWord = wakeWord)
+                        val audioRing = if (captureOnWake) {
+                            WakeAudioRing(java.io.File(appContext.filesDir, "wake-captures"))
+                        } else {
+                            null
+                        }
+                        satellite.start(
+                            localWake = detector != null,
+                            detector = detector,
+                            wakeWord = wakeWord,
+                            audioRing = audioRing,
+                        )
                         voiceNsd.register()
                     } else {
                         timerChime.stop()
@@ -659,3 +670,11 @@ class AppDeps(context: Context) {
         }
     }
 }
+
+/** Restart key for the voice collector: any change here rebuilds the satellite. */
+private data class VoiceKey(
+    val enabled: Boolean,
+    val wakeWord: String,
+    val threshold: Int,
+    val captureOnWake: Boolean,
+)

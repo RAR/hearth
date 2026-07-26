@@ -147,6 +147,10 @@ data class VoiceSettings(
     val wakeWord: String = "okay_nabu",
     val wakeThreshold: Int = 50,
     val followUpEnabled: Boolean = false,
+    /** Dump the ~10 s of mic audio preceding each wake fire to filesDir/wake-captures (see
+     *  [com.rar.hearth.voice.WakeAudioRing]). Off by default: it writes room audio to flash, and
+     *  is meant to be switched on only while investigating a specific false positive. */
+    val captureOnWake: Boolean = false,
 ) {
     /** Normalize the timer-alarm fields: trim + unknown/blank tone falls to "argon",
      *  volumes coerced into 0..100. Wake word clamps to the bundled set (unknown -> okay_nabu);

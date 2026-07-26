@@ -89,15 +89,23 @@ class SatelliteServer(
     // On-device wake detection (localWake only).
     @Volatile private var detector: WakeDetector? = null
     @Volatile private var wakeWord: String = "okay_nabu"
+    // Opt-in false-positive capture; null when voice.captureOnWake is off.
+    @Volatile private var audioRing: WakeAudioRing? = null
     private val detectorQueue = LinkedBlockingDeque<Any>()
     private val droppedChunks = java.util.concurrent.atomic.AtomicInteger(0)
     @Volatile private var detectorThread: Thread? = null
 
-    fun start(localWake: Boolean = false, detector: WakeDetector? = null, wakeWord: String = "okay_nabu") {
+    fun start(
+        localWake: Boolean = false,
+        detector: WakeDetector? = null,
+        wakeWord: String = "okay_nabu",
+        audioRing: WakeAudioRing? = null,
+    ) {
         if (acceptJob?.isActive == true) return
         session = SatelliteSession(appVersion, name, localWake, followUp = followUp)
         this.detector = if (localWake) detector else null
         this.wakeWord = wakeWord
+        this.audioRing = if (localWake) audioRing else null
         startDetectorThread()
         acceptJob = scope.launch(Dispatchers.IO) {
             while (isActive) {
@@ -281,6 +289,9 @@ class SatelliteServer(
                         continue
                     }
                     if (item !is ByteArray) continue
+                    // Fed here rather than at enqueue so the ring holds exactly what the detector
+                    // scored — chunks dropped by the queue never reached the model either.
+                    audioRing?.add(item)
                     var sumSq = 0L
                     var i = 0
                     while (i + 1 < item.size) {
@@ -309,6 +320,13 @@ class SatelliteServer(
                         windowStart = nowW
                     }
                     if (fired.isNotEmpty()) {
+                        // Before the connection check below: a false positive is worth keeping even
+                        // when HA is away, and that is exactly when nobody notices one happened.
+                        audioRing?.let { ring ->
+                            val name = fired.first()
+                            val file = ring.dump(name, det.lastScoreOf(name))
+                            if (file != null) Log.i(TAG, "captured wake audio -> ${file.name}")
+                        }
                         synchronized(lock) {
                             val conn = active
                             // Mic is only armed while connected, so requiring conn holds for stop too.

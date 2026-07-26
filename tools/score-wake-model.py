@@ -16,7 +16,7 @@ Pipeline (must match WakeDetector.kt):
   - audioRing 1760 = 480 context + 1280 new; melspec -> 8x32 frames, x/10 + 2
   - melRing 76x32 -> embedding -> 96; embRing 16x96 -> head -> score
 """
-import sys, wave, numpy as np
+import os, sys, wave, numpy as np
 from ai_edge_litert.interpreter import Interpreter
 
 ASSETS = "/home/rar/android_simpla_ha_dash/app/src/main/assets/wake"
@@ -69,6 +69,11 @@ def score(samples, head_paths):
                 maxes[n] = v
     return maxes
 
-heads = [f"{ASSETS}/stop.tflite", f"{ASSETS}/ok_ember.tflite", f"{ASSETS}/okay_nabu.tflite"]
+# Every bundled head, so a capture is scored against the model that fired AND the controls.
+# Filtered by existence: `stop.tflite` has never been bundled, and an absent asset should
+# drop out of the comparison rather than abort the run.
+heads = [p for p in (f"{ASSETS}/{n}.tflite" for n in
+                     ("stop", "ok_ember", "okay_nabu", "alexa", "hey_jarvis"))
+         if os.path.exists(p)]
 for wav in sys.argv[1:]:
     print(wav, "->", {k: round(v, 3) for k, v in score(read_wav_16k(wav), heads).items()})

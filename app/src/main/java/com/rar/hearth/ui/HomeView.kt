@@ -1066,49 +1066,37 @@ private fun ClaudeUsageCardView(card: ClaudeUsageCard) {
             .width(USAGE_CARD_W.dp)
             .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
             .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        // 4dp, matching EvCardView — its title/gauge/stats stack uses the same rhythm.
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         card.bars.forEach { bar -> UsageBarRow(bar) }
+        // Same size and alpha as the EV card's charge/eta stats line.
         card.paceText?.let {
-            Text(it, color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp, maxLines = 1)
+            Text(
+                it, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
 
+/** Label + reset + percent over a full-width gauge — the EV card's row/bar shape. */
 @Composable
 private fun UsageBarRow(bar: UsageBar) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(
-            bar.label, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp,
-            maxLines = 1, modifier = Modifier.width(52.dp),
-        )
-        Box(
-            Modifier
-                .weight(1f)
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(Color.White.copy(alpha = 0.15f)),
-        ) {
-            // Zero-width fill is legal and renders nothing — a 0% bucket shows an empty track
-            // rather than a stub, which is the honest reading of "used none of it".
-            Box(
-                Modifier
-                    .fillMaxWidth(bar.percent / 100f)
-                    .fillMaxHeight()
-                    .background(usageTint(bar.percent)),
-            )
-        }
-        Text(
-            "${bar.percent}%", color = Color.White, fontSize = 12.sp,
-            maxLines = 1, textAlign = TextAlign.End, modifier = Modifier.width(34.dp),
-        )
+        Text(bar.label, color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
         bar.resetLabel?.let {
-            Text(it, color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp, maxLines = 1)
+            Text(it, color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp, maxLines = 1)
         }
+        Text("${bar.percent}%", color = Color.White, fontSize = 14.sp)
     }
+    // Reusing the EV/solar gauge rather than a private bar: same 8dp height, 4dp radius, and
+    // white-0.25 track, and they cannot drift apart later. shimmer is off — that animation means
+    // "charging right now", which has no analogue for a quota that only ever fills.
+    GaugeBar(bar.percent, shimmer = false, fill = usageTint(bar.percent))
 }
 
 /** Ember below 60%, amber from 60, red from 85 — the thresholds the bar tints at. */

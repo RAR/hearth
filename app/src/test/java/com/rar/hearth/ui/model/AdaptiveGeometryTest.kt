@@ -74,12 +74,12 @@ class AdaptiveGeometryTest {
 
     @Test
     fun usageCardReserveTakesItsWidthOutOfTheNextEventPill() {
-        // Show 8: 594 − 260 = 334. Only nextEventMaxWidthDp moves; the other three are untouched.
+        // Show 8: 594 − 236 = 358. Only nextEventMaxWidthDp moves; the other three are untouched.
         assertEquals(
-            HomeOverlayCaps(582, 407, 334, 503),
+            HomeOverlayCaps(582, 407, 358, 503),
             homeOverlayCaps(961f, 601f, reserveCardColumn = true, reserveUsageCard = true),
         )
-        // Tab M9: 1340 − 28 − 230 − 109 − 260 = 713, still over the 640 ceiling.
+        // Tab M9: 1340 − 28 − 230 − 109 − 236 = 737, still over the 640 ceiling.
         assertEquals(
             HomeOverlayCaps(700, 606, 640, 702),
             homeOverlayCaps(1340f, 800f, reserveCardColumn = true, reserveUsageCard = true),
@@ -107,6 +107,23 @@ class AdaptiveGeometryTest {
     fun usageCardStartsClearOfTheClockBlock() {
         // 28dp start pad + the clock's 230dp worst-case date line + a 20dp gap.
         assertEquals(278, usageCardStartDp())
+    }
+
+    /**
+     * The usage card's other neighbour. The EV/solar column is right-aligned and can hang low
+     * enough to reach the bottom strip, so the card must end before the column starts on every
+     * screen. The Show 5 is the one that binds — a 240dp card overlapped it by 7dp.
+     */
+    @Test
+    fun usageCardClearsTheEvSolarColumnOnEveryScreen() {
+        for ((w, label) in listOf(787f to "Show 5", 961f to "Show 8", 1340f to "Tab M9")) {
+            val columnLeftEdge = w.toInt() - 28 - homeCardWidthDp(w)
+            assertTrue(
+                "$label: usage card ends at ${usageCardStartDp() + USAGE_CARD_W}, " +
+                    "card column starts at $columnLeftEdge",
+                usageCardStartDp() + USAGE_CARD_W < columnLeftEdge,
+            )
+        }
     }
 
     // ---- visibleCardCount: fit math + chip reservation ----

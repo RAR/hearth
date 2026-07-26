@@ -44,7 +44,10 @@ private const val CLOCK_BLOCK_H = 110
 private const val NOTIF_CLOCK_GAP = 14
 // The Claude usage card, which sits in the bottom strip between the clock block and the
 // next-event pill. Its width is fixed (the content is two short bars, not a growable region).
-const val USAGE_CARD_W = 240
+// 216 is set by the Show 5, the only screen where the card can reach the card column: that
+// column's left edge is 787 − 28 − 248 = 511, and 278 + 216 = 494 clears it by 17dp. A wider
+// card overlaps the bottom EV/solar card there — 240 did, by 7dp.
+const val USAGE_CARD_W = 216
 // Gap kept on either side of the usage card — from the clock block on its left, and from the
 // next-event pill on its right.
 private const val USAGE_GAP = 20

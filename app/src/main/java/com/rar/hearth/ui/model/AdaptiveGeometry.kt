@@ -42,18 +42,11 @@ private const val TOP_ROW = 70
 private const val CLOCK_BLOCK_H = 110
 // Breathing room kept between the bottom of the notification stack and the top of the clock block.
 private const val NOTIF_CLOCK_GAP = 14
-// Gap kept on either side of the usage card — from the clock block on its left, and from the
-// next-event pill on its right.
-private const val USAGE_GAP = 20
-// Width the next-event pill is guaranteed while the usage card shares the strip. The pill
-// ellipsizes and the card does not, so the pill is the one that yields.
-private const val NEXT_EVENT_MIN_W = 240
-// The usage card never grows past this. Set by what it costs its neighbour, not by the card: at
-// 335 on the Show 8 the next-event pill fell to 239dp and truncated "Trash Pickup" to "Tras…".
-// 280 leaves the pill ~294dp, which fits a typical "<weekday> All day <title>" line, and is still
-// far from stubby. A long enough event title will always ellipsize — that is the pill's own
-// behaviour, and the point here is not to cause it at ordinary lengths.
-private const val USAGE_CARD_MAX_W = 280
+// The Claude usage card, parked at the bottom of the notification column just above the clock.
+// Two label rows, two 8dp gauges, and the pace line inside a 10dp-padded card.
+private const val USAGE_CARD_H = 110
+// Clearance between the bottom of the notification stack and the top of the usage card.
+private const val USAGE_STACK_GAP = 10
 // Home overlay end pad (the next-event card is right-aligned at 28dp).
 private const val END_PAD = 28
 // Worst-case width of the bottom-left clock's date line (a long weekday + full date).
@@ -112,41 +105,24 @@ fun homeOverlayCaps(
 ): HomeOverlayCaps {
     val reserve = if (reserveCardColumn) homeCardWidthDp(screenWidthDp) + CARD_GAP else 0
     val notifW = floorDp(screenWidthDp - EDGE_PADS - reserve).coerceIn(300, 700)
-    val notifH = floorDp(screenHeightDp - TOP_ROW - CLOCK_BLOCK_H - NOTIF_CLOCK_GAP).coerceAtLeast(120)
-    // The usage card shares the bottom strip with the next-event pill, so it comes out of that
-    // pill's width. Its floor drops 240 -> 200 while the card is on: the Show 5's bottom strip is
-    // only 787dp wide and the clock block, card, and pill together need every dp of it. Trimming
-    // the pill (it ellipsizes) beats overlapping it.
-    val usage = if (reserveUsageCard) usageCardWidthDp(screenWidthDp) + USAGE_GAP else 0
-    val nextEventW = floorDp(screenWidthDp - END_PAD - CLOCK_BLOCK_W - CLOCK_CLEAR - usage)
-        .coerceIn(if (reserveUsageCard) 200 else NEXT_EVENT_MIN_W, 640)
+    // The usage card is bottom-anchored in this same column, so it comes out of the stack's height.
+    // The floor drops 120 -> 80 while the card is on: the Show 5 has only 200dp between the pills
+    // and the clock, and 80 + 120 uses it exactly. That is about one notification row there — the
+    // honest cost of putting a second element in that column on the smallest screen.
+    val usage = if (reserveUsageCard) USAGE_CARD_H + USAGE_STACK_GAP else 0
+    val notifH = floorDp(screenHeightDp - TOP_ROW - CLOCK_BLOCK_H - NOTIF_CLOCK_GAP - usage)
+        .coerceAtLeast(if (reserveUsageCard) 80 else 120)
+    val nextEventW = floorDp(screenWidthDp - END_PAD - CLOCK_BLOCK_W - CLOCK_CLEAR).coerceIn(240, 640)
     val cardColH = floorDp(screenHeightDp - CARD_COLUMN_TOP - NEXT_EVENT_BLOCK).coerceAtLeast(120)
     return HomeOverlayCaps(notifW, notifH, nextEventW, cardColH)
 }
 
 /**
- * Left offset of the bottom-strip usage card: clear of the clock block's worst-case date line, plus
- * a gap. Screen-independent — the clock block does not grow, so neither does this.
+ * Distance from the screen bottom to the usage card's bottom edge: clear of the clock block plus
+ * the same breathing room the notification stack keeps. Screen-independent — the clock block is a
+ * fixed reserve, so this is too.
  */
-fun usageCardStartDp(): Int = HOME_START_PAD + CLOCK_BLOCK_W + USAGE_GAP
-
-/**
- * Usage-card width: the bottom strip's leftover, between the clock block and whichever right-hand
- * neighbour reaches furthest left. Two neighbours can, and the tighter one wins:
- *
- *  - the EV/solar card column, which is right-aligned and hangs low enough to reach this strip;
- *  - the next-event pill, holding its [NEXT_EVENT_MIN_W] floor.
- *
- * On the Show 5 the column binds and the card stays narrow (213dp); on the Show 8 it grows to
- * 335dp, which is what stops it looking stubby in a strip with room to spare.
- */
-fun usageCardWidthDp(screenWidthDp: Float): Int {
-    val screen = floorDp(screenWidthDp)
-    val columnLeftEdge = screen - END_PAD - homeCardWidthDp(screenWidthDp)
-    val pillLeftEdge = screen - END_PAD - NEXT_EVENT_MIN_W
-    val rightLimit = minOf(columnLeftEdge, pillLeftEdge)
-    return (rightLimit - usageCardStartDp() - USAGE_GAP).coerceIn(200, USAGE_CARD_MAX_W)
-}
+fun usageCardBottomDp(): Int = CLOCK_BLOCK_H + NOTIF_CLOCK_GAP
 
 /**
  * Now-playing takeover split: a square art card sized by the smaller of the height budget and a

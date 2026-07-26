@@ -118,8 +118,7 @@ import com.rar.hearth.ui.model.WeatherPill
 import com.rar.hearth.ui.model.eventTimeLabel
 import com.rar.hearth.ui.model.homeCardWidthDp
 import com.rar.hearth.ui.model.homeOverlayCaps
-import com.rar.hearth.ui.model.usageCardStartDp
-import com.rar.hearth.ui.model.usageCardWidthDp
+import com.rar.hearth.ui.model.usageCardBottomDp
 import com.rar.hearth.ui.model.miniPlayerVisible
 import com.rar.hearth.ui.model.nextEventCard
 import com.rar.hearth.ui.model.pageCardCount
@@ -486,18 +485,19 @@ fun HomeView(
                 }
             }
 
-            // Claude usage: bottom strip, parked to the right of the clock block. Its left offset
-            // clears the clock's worst-case date line, and its width is reserved out of the
-            // next-event pill's cap, so the three share the strip without overlapping.
+            // Claude usage: bottom of the notification column, just above the clock. Anchored to
+            // the bottom rather than flowing under the stack so it holds one spot regardless of how
+            // many notifications are up; the stack's height cap reserves its block, so they meet
+            // but never overlap. Notification width, because it reads as one of that column's rows.
             AnimatedVisibility(
                 visible = claudeUsage != null,
                 enter = fadeIn(tween(600)),
                 exit = fadeOut(tween(600)),
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(start = usageCardStartDp().dp, bottom = 20.dp),
+                    .padding(start = 28.dp, bottom = usageCardBottomDp().dp),
             ) {
-                claudeUsage?.let { ClaudeUsageCardView(it, usageCardWidthDp(maxWidth.value).dp) }
+                claudeUsage?.let { ClaudeUsageCardView(it, caps.notifMaxWidthDp.dp) }
             }
 
             // Next-event card: bottom-right, diagonal from the clock. Width-capped by
@@ -1055,9 +1055,9 @@ private fun QuickButtonCell(
 }
 
 /**
- * Claude subscription usage: one bar per readable quota bucket, plus the pace line. Sits in the
- * bottom strip beside the clock; AdaptiveGeometry reserves its width out of the next-event pill's
- * cap so the strip's three occupants never overlap.
+ * Claude subscription usage: one bar per readable quota bucket, plus the pace line. Parked at the
+ * bottom of the notification column; AdaptiveGeometry reserves its height out of the stack's cap
+ * so the two meet without overlapping.
  */
 @Composable
 private fun ClaudeUsageCardView(card: ClaudeUsageCard, cardWidth: Dp) {

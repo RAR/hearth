@@ -73,70 +73,35 @@ class AdaptiveGeometryTest {
     }
 
     @Test
-    fun usageCardReserveTakesItsWidthOutOfTheNextEventPill() {
-        // Show 8: 594 − (280 + 20) = 294. Only nextEventMaxWidthDp moves; the others are untouched.
+    fun usageCardReserveTakesItsHeightOutOfTheNotificationStack() {
+        // Show 8: 407 - 120 = 287. Only notifMaxHeightDp moves; the other three are untouched.
         assertEquals(
-            HomeOverlayCaps(582, 407, 294, 503),
+            HomeOverlayCaps(582, 287, 594, 503),
             homeOverlayCaps(961f, 601f, reserveCardColumn = true, reserveUsageCard = true),
         )
-        // Tab M9: 1340 − 28 − 230 − 109 − (280 + 20) = 673, back over the 640 ceiling.
+        // Tab M9: 606 - 120 = 486.
         assertEquals(
-            HomeOverlayCaps(700, 606, 640, 702),
+            HomeOverlayCaps(700, 486, 640, 702),
             homeOverlayCaps(1340f, 800f, reserveCardColumn = true, reserveUsageCard = true),
         )
     }
 
     /**
-     * The card takes the strip's leftover rather than a fixed width — a constant sized for the
-     * Show 5's card column left it stubby on every larger screen.
+     * The Show 5 is where the column is tightest: 200dp between the pills and the clock, and the
+     * card takes 120 of it. The stack floor drops to 80 so the pair uses the budget EXACTLY rather
+     * than spilling into the clock — the arithmetic that keeps them from overlapping.
      */
     @Test
-    fun usageCardWidthGrowsWithTheStripAndCapsOut() {
-        assertEquals("Show 5: card column binds at 511", 213, usageCardWidthDp(787f))
-        assertEquals("Show 8: hits the 280 ceiling", 280, usageCardWidthDp(961f))
-        assertEquals("Tab M9: hits the 280 ceiling", 280, usageCardWidthDp(1340f))
-        // A screen narrow enough that the leftover goes negative still floors to something usable.
-        assertEquals(200, usageCardWidthDp(500f))
-    }
-
-    /**
-     * The bottom strip is the tight one on the Show 5. Its three occupants — clock block, usage
-     * card, next-event pill — plus their gaps must fit inside 787dp, which is why the pill's floor
-     * drops to 200 while the card is on. Guards the actual no-overlap arithmetic, not just the cap.
-     */
-    @Test
-    fun bottomStripOccupantsDoNotOverlapOnTheShow5() {
+    fun usageCardAndNotificationStackUseTheShow5ColumnExactly() {
         val caps = homeOverlayCaps(787f, 394f, reserveCardColumn = true, reserveUsageCard = true)
-        assertEquals(200, caps.nextEventMaxWidthDp)          // floored, not the raw 160
-        val cardRightEdge = usageCardStartDp() + usageCardWidthDp(787f) // 278 + 213 = 491
-        val pillLeftEdge = 787 - 28 - caps.nextEventMaxWidthDp // right-aligned at the 28dp end pad
-        assertTrue(
-            "usage card ($cardRightEdge) must end before the next-event pill ($pillLeftEdge)",
-            cardRightEdge < pillLeftEdge,
-        )
+        assertEquals(80, caps.notifMaxHeightDp)
+        assertEquals(200, caps.notifMaxHeightDp + 110 + 10)
     }
 
     @Test
-    fun usageCardStartsClearOfTheClockBlock() {
-        // 28dp start pad + the clock's 230dp worst-case date line + a 20dp gap.
-        assertEquals(278, usageCardStartDp())
-    }
-
-    /**
-     * The usage card's other neighbour. The EV/solar column is right-aligned and can hang low
-     * enough to reach the bottom strip, so the card must end before the column starts on every
-     * screen. The Show 5 is the one that binds — a 240dp card overlapped it by 7dp.
-     */
-    @Test
-    fun usageCardClearsTheEvSolarColumnOnEveryScreen() {
-        for ((w, label) in listOf(787f to "Show 5", 961f to "Show 8", 1340f to "Tab M9")) {
-            val columnLeftEdge = w.toInt() - 28 - homeCardWidthDp(w)
-            assertTrue(
-                "$label: usage card ends at ${usageCardStartDp() + usageCardWidthDp(w)}, " +
-                    "card column starts at $columnLeftEdge",
-                usageCardStartDp() + usageCardWidthDp(w) < columnLeftEdge,
-            )
-        }
+    fun usageCardSitsJustAboveTheClockBlock() {
+        // The clock's 110dp block plus the same 14dp breathing room the stack keeps.
+        assertEquals(124, usageCardBottomDp())
     }
 
     // ---- visibleCardCount: fit math + chip reservation ----

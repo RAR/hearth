@@ -1099,16 +1099,23 @@ private fun UsageBarRow(bar: UsageBar) {
     GaugeBar(bar.percent, shimmer = false, fill = usageTint(bar.percent))
 }
 
-/** Ember below 60%, amber from 60, red from 85 — the thresholds the bar tints at. */
+/**
+ * Green below 60%, amber from 60, red from 85.
+ *
+ * Green at rest is the point: it borrows the EV/solar gauge colours so a resting quota looks like
+ * every other healthy bar on the screen, and a tint change actually means something. The earlier
+ * ember floor was warning-coloured at 3% used — permanently alarming, therefore permanently
+ * ignorable. The EV's green means "full is good" and this one means "empty is good", but they
+ * agree on the only thing a glance reads: green is fine, amber is worth a look, red is not.
+ */
 private fun usageTint(percent: Int): Color = when {
     percent >= 85 -> UsageBarHot
-    percent >= 60 -> UsageBarWarm
-    else -> UsageBarCool
+    percent >= 60 -> GaugeAmber
+    else -> GaugeGreen
 }
 
-// Brand ember, then the web config's --accent-hi amber, then a red that still reads on the scrim.
-private val UsageBarCool = Color(0xFFEF6A17)
-private val UsageBarWarm = Color(0xFFF8B62D)
+// No existing gauge has a "past the point of caring" step, so this is the one new colour: a red
+// that still reads against the 0.35 scrim.
 private val UsageBarHot = Color(0xFFE0453A)
 
 // Lights-panel palette: on / PRESS-flash blue, off / PRESS-idle dark.

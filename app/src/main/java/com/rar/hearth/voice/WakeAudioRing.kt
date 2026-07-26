@@ -6,7 +6,9 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * A rolling in-memory buffer of the most recent mic audio, dumped to a WAV when a wake head fires.
+ * A rolling in-memory buffer of the most recent mic audio, dumped to a WAV when a score crosses
+ * the capture floor (voice.captureThreshold — deliberately below the wake threshold, so
+ * near-misses are collected without triggering a wake session for each one).
  *
  * Chasing a false positive is otherwise blind: the detector scores audio and discards it, so all
  * that survives is a number in the log. Reading the mic from outside the app is not an option on
@@ -28,7 +30,7 @@ class WakeAudioRing(
     private val dir: File,
     seconds: Int = 10,
     private val rate: Int = 16000,
-    private val maxFiles: Int = 20,
+    private val maxFiles: Int = 60,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     // Even by construction (2 bytes per sample), and every chunk written is an even length, so the

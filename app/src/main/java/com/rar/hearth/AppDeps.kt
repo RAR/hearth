@@ -516,10 +516,15 @@ class AppDeps(context: Context) {
     fun startVoice() {
         scope.launch {
             val voiceSettings = configStore.config
-                .map { VoiceKey(it.voice.enabled, it.voice.wakeWord, it.voice.wakeThreshold, it.voice.captureOnWake) }
+                .map {
+                    VoiceKey(
+                        it.voice.enabled, it.voice.wakeWord, it.voice.wakeThreshold,
+                        it.voice.captureOnWake, it.voice.captureThreshold,
+                    )
+                }
                 .distinctUntilChanged()
             combine(voiceSettings, voiceRestartTick) { s, _ -> s }
-                .collect { (enabled, wakeWord, threshold, captureOnWake) ->
+                .collect { (enabled, wakeWord, threshold, captureOnWake, captureThreshold) ->
                     // Tear down any running instance first so a config change fully restarts it.
                     voiceNsd.unregister()
                     satellite.stop()
@@ -553,6 +558,7 @@ class AppDeps(context: Context) {
                             detector = detector,
                             wakeWord = wakeWord,
                             audioRing = audioRing,
+                            captureThresholdPct = captureThreshold,
                         )
                         voiceNsd.register()
                     } else {
@@ -677,4 +683,5 @@ private data class VoiceKey(
     val wakeWord: String,
     val threshold: Int,
     val captureOnWake: Boolean,
+    val captureThreshold: Int,
 )

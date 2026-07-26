@@ -151,6 +151,16 @@ data class VoiceSettings(
      *  [com.rar.hearth.voice.WakeAudioRing]). Off by default: it writes room audio to flash, and
      *  is meant to be switched on only while investigating a specific false positive. */
     val captureOnWake: Boolean = false,
+    /**
+     * Score floor (percent) for capturing, deliberately BELOW [wakeThreshold].
+     *
+     * Capture is decoupled from firing: the score is computed on every chunk regardless of the
+     * threshold, so we can collect near-misses without triggering a wake session for each one.
+     * Audio scoring 40-70 is the most useful training material there is — hard negatives sitting
+     * right at the decision boundary — and gathering it this way costs the user no interruptions.
+     * Only consulted when [captureOnWake] is on.
+     */
+    val captureThreshold: Int = 40,
 ) {
     /** Normalize the timer-alarm fields: trim + unknown/blank tone falls to "argon",
      *  volumes coerced into 0..100. Wake word clamps to the bundled set (unknown -> okay_nabu);
@@ -162,6 +172,7 @@ data class VoiceSettings(
         wakeSoundVolume = wakeSoundVolume.coerceIn(0, 100),
         wakeWord = wakeWord.trim().let { if (it in WAKE_WORDS) it else "okay_nabu" },
         wakeThreshold = wakeThreshold.coerceIn(10, 95),
+        captureThreshold = captureThreshold.coerceIn(10, 95),
     )
 
     companion object {

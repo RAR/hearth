@@ -56,6 +56,10 @@ class SatelliteServer(
         private const val BIND_RETRY_MS = 5_000L
         private const val TICK_MS = 500L
         private const val DETECTOR_QUEUE_MAX = 8
+
+        /** Gap between captures. Half the ring, so consecutive dumps of one long noisy passage
+         *  overlap by at most half rather than filling the directory with near-duplicates. */
+        private const val CAPTURE_REFRACTORY_MS = 5_000L
         private val RESET_MARKER = Any()
 
         /** Name of the optional second wake head that silences a ringing timer alarm. This is
@@ -91,6 +95,7 @@ class SatelliteServer(
     @Volatile private var wakeWord: String = "okay_nabu"
     // Opt-in false-positive capture; null when voice.captureOnWake is off.
     @Volatile private var audioRing: WakeAudioRing? = null
+    @Volatile private var captureThresholdPct: Int = 40
     private val detectorQueue = LinkedBlockingDeque<Any>()
     private val droppedChunks = java.util.concurrent.atomic.AtomicInteger(0)
     @Volatile private var detectorThread: Thread? = null
@@ -100,12 +105,14 @@ class SatelliteServer(
         detector: WakeDetector? = null,
         wakeWord: String = "okay_nabu",
         audioRing: WakeAudioRing? = null,
+        captureThresholdPct: Int = 40,
     ) {
         if (acceptJob?.isActive == true) return
         session = SatelliteSession(appVersion, name, localWake, followUp = followUp)
         this.detector = if (localWake) detector else null
         this.wakeWord = wakeWord
         this.audioRing = if (localWake) audioRing else null
+        this.captureThresholdPct = captureThresholdPct
         startDetectorThread()
         acceptJob = scope.launch(Dispatchers.IO) {
             while (isActive) {
@@ -281,6 +288,7 @@ class SatelliteServer(
             var windowStart = System.currentTimeMillis()
             var windowMaxRms = 0L
             var windowChunks = 0
+            var lastCaptureMs = 0L
             try {
                 while (true) {
                     val item = detectorQueue.take()
@@ -319,14 +327,19 @@ class SatelliteServer(
                         windowChunks = 0
                         windowStart = nowW
                     }
-                    if (fired.isNotEmpty()) {
-                        // Before the connection check below: a false positive is worth keeping even
-                        // when HA is away, and that is exactly when nobody notices one happened.
-                        audioRing?.let { ring ->
-                            val name = fired.first()
-                            val file = ring.dump(name, det.lastScoreOf(name))
+                    // Capture is deliberately NOT gated on `fired`, nor on the connection check
+                    // below. Near-misses below the wake threshold are the most useful training
+                    // material (hard negatives at the decision boundary), and collecting them by
+                    // lowering the wake threshold instead would trigger a real wake session for
+                    // every one. Its own refractory keeps one acoustic event to one file.
+                    audioRing?.let { ring ->
+                        if (score > captureThresholdPct / 100f && nowW - lastCaptureMs >= CAPTURE_REFRACTORY_MS) {
+                            lastCaptureMs = nowW
+                            val file = ring.dump(wakeWord, score)
                             if (file != null) Log.i(TAG, "captured wake audio -> ${file.name}")
                         }
+                    }
+                    if (fired.isNotEmpty()) {
                         synchronized(lock) {
                             val conn = active
                             // Mic is only armed while connected, so requiring conn holds for stop too.

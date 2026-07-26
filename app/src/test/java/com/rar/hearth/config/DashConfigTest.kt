@@ -482,6 +482,18 @@ class DashConfigTest {
     }
 
     @Test
+    fun captureThresholdDefaultsBelowTheWakeThresholdAndClamps() {
+        // The whole point of the separate floor: capture must be able to sit under the wake
+        // threshold, so near-misses are collected without firing.
+        assertEquals(40, DashConfig().voice.captureThreshold)
+        assertTrue(DashConfig().voice.captureThreshold < DashConfig().voice.wakeThreshold)
+        assertEquals(95, DashConfig(voice = VoiceSettings(captureThreshold = 200)).clamped().voice.captureThreshold)
+        assertEquals(10, DashConfig(voice = VoiceSettings(captureThreshold = 1)).clamped().voice.captureThreshold)
+        val cfg = DashConfig(voice = VoiceSettings(captureThreshold = 55))
+        assertEquals(55, decodeConfig(ConfigJson.json.encodeToString(DashConfig.serializer(), cfg)).voice.captureThreshold)
+    }
+
+    @Test
     fun notificationsDefaults() {
         val n = DashConfig().notifications
         assertEquals(null, n.nwsAlerts)

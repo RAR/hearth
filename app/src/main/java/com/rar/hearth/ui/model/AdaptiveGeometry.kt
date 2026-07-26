@@ -42,15 +42,15 @@ private const val TOP_ROW = 70
 private const val CLOCK_BLOCK_H = 110
 // Breathing room kept between the bottom of the notification stack and the top of the clock block.
 private const val NOTIF_CLOCK_GAP = 14
-// The Claude usage card, which sits in the bottom strip between the clock block and the
-// next-event pill. Its width is fixed (the content is two short bars, not a growable region).
-// 216 is set by the Show 5, the only screen where the card can reach the card column: that
-// column's left edge is 787 − 28 − 248 = 511, and 278 + 216 = 494 clears it by 17dp. A wider
-// card overlaps the bottom EV/solar card there — 240 did, by 7dp.
-const val USAGE_CARD_W = 216
 // Gap kept on either side of the usage card — from the clock block on its left, and from the
 // next-event pill on its right.
 private const val USAGE_GAP = 20
+// Width the next-event pill is guaranteed while the usage card shares the strip. The pill
+// ellipsizes and the card does not, so the pill is the one that yields.
+private const val NEXT_EVENT_MIN_W = 240
+// The usage card never grows past this. Past ~360dp two short bars stop looking like a card and
+// start looking like a stretched banner; the EV cards top out at 320 for the same reason.
+private const val USAGE_CARD_MAX_W = 360
 // Home overlay end pad (the next-event card is right-aligned at 28dp).
 private const val END_PAD = 28
 // Worst-case width of the bottom-left clock's date line (a long weekday + full date).
@@ -114,9 +114,9 @@ fun homeOverlayCaps(
     // pill's width. Its floor drops 240 -> 200 while the card is on: the Show 5's bottom strip is
     // only 787dp wide and the clock block, card, and pill together need every dp of it. Trimming
     // the pill (it ellipsizes) beats overlapping it.
-    val usage = if (reserveUsageCard) USAGE_CARD_W + USAGE_GAP else 0
+    val usage = if (reserveUsageCard) usageCardWidthDp(screenWidthDp) + USAGE_GAP else 0
     val nextEventW = floorDp(screenWidthDp - END_PAD - CLOCK_BLOCK_W - CLOCK_CLEAR - usage)
-        .coerceIn(if (reserveUsageCard) 200 else 240, 640)
+        .coerceIn(if (reserveUsageCard) 200 else NEXT_EVENT_MIN_W, 640)
     val cardColH = floorDp(screenHeightDp - CARD_COLUMN_TOP - NEXT_EVENT_BLOCK).coerceAtLeast(120)
     return HomeOverlayCaps(notifW, notifH, nextEventW, cardColH)
 }
@@ -126,6 +126,24 @@ fun homeOverlayCaps(
  * a gap. Screen-independent — the clock block does not grow, so neither does this.
  */
 fun usageCardStartDp(): Int = HOME_START_PAD + CLOCK_BLOCK_W + USAGE_GAP
+
+/**
+ * Usage-card width: the bottom strip's leftover, between the clock block and whichever right-hand
+ * neighbour reaches furthest left. Two neighbours can, and the tighter one wins:
+ *
+ *  - the EV/solar card column, which is right-aligned and hangs low enough to reach this strip;
+ *  - the next-event pill, holding its [NEXT_EVENT_MIN_W] floor.
+ *
+ * On the Show 5 the column binds and the card stays narrow (213dp); on the Show 8 it grows to
+ * 335dp, which is what stops it looking stubby in a strip with room to spare.
+ */
+fun usageCardWidthDp(screenWidthDp: Float): Int {
+    val screen = floorDp(screenWidthDp)
+    val columnLeftEdge = screen - END_PAD - homeCardWidthDp(screenWidthDp)
+    val pillLeftEdge = screen - END_PAD - NEXT_EVENT_MIN_W
+    val rightLimit = minOf(columnLeftEdge, pillLeftEdge)
+    return (rightLimit - usageCardStartDp() - USAGE_GAP).coerceIn(200, USAGE_CARD_MAX_W)
+}
 
 /**
  * Now-playing takeover split: a square art card sized by the smaller of the height budget and a

@@ -118,8 +118,8 @@ import com.rar.hearth.ui.model.WeatherPill
 import com.rar.hearth.ui.model.eventTimeLabel
 import com.rar.hearth.ui.model.homeCardWidthDp
 import com.rar.hearth.ui.model.homeOverlayCaps
-import com.rar.hearth.ui.model.USAGE_CARD_W
 import com.rar.hearth.ui.model.usageCardStartDp
+import com.rar.hearth.ui.model.usageCardWidthDp
 import com.rar.hearth.ui.model.miniPlayerVisible
 import com.rar.hearth.ui.model.nextEventCard
 import com.rar.hearth.ui.model.pageCardCount
@@ -497,7 +497,7 @@ fun HomeView(
                     .align(Alignment.BottomStart)
                     .padding(start = usageCardStartDp().dp, bottom = 20.dp),
             ) {
-                claudeUsage?.let { ClaudeUsageCardView(it) }
+                claudeUsage?.let { ClaudeUsageCardView(it, usageCardWidthDp(maxWidth.value).dp) }
             }
 
             // Next-event card: bottom-right, diagonal from the clock. Width-capped by
@@ -1060,10 +1060,10 @@ private fun QuickButtonCell(
  * cap so the strip's three occupants never overlap.
  */
 @Composable
-private fun ClaudeUsageCardView(card: ClaudeUsageCard) {
+private fun ClaudeUsageCardView(card: ClaudeUsageCard, cardWidth: Dp) {
     Column(
         Modifier
-            .width(USAGE_CARD_W.dp)
+            .width(cardWidth)
             .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
             .padding(horizontal = 16.dp, vertical = 10.dp),
         // 4dp, matching EvCardView — its title/gauge/stats stack uses the same rhythm.

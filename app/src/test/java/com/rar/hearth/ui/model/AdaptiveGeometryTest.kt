@@ -74,16 +74,29 @@ class AdaptiveGeometryTest {
 
     @Test
     fun usageCardReserveTakesItsWidthOutOfTheNextEventPill() {
-        // Show 8: 594 − 236 = 358. Only nextEventMaxWidthDp moves; the other three are untouched.
+        // Show 8: 594 − (335 + 20) = 239. Only nextEventMaxWidthDp moves; the others are untouched.
         assertEquals(
-            HomeOverlayCaps(582, 407, 358, 503),
+            HomeOverlayCaps(582, 407, 239, 503),
             homeOverlayCaps(961f, 601f, reserveCardColumn = true, reserveUsageCard = true),
         )
-        // Tab M9: 1340 − 28 − 230 − 109 − 236 = 737, still over the 640 ceiling.
+        // Tab M9: 1340 − 28 − 230 − 109 − (360 + 20) = 593.
         assertEquals(
-            HomeOverlayCaps(700, 606, 640, 702),
+            HomeOverlayCaps(700, 606, 593, 702),
             homeOverlayCaps(1340f, 800f, reserveCardColumn = true, reserveUsageCard = true),
         )
+    }
+
+    /**
+     * The card takes the strip's leftover rather than a fixed width — a constant sized for the
+     * Show 5's card column left it stubby on every larger screen.
+     */
+    @Test
+    fun usageCardWidthGrowsWithTheStripAndCapsOut() {
+        assertEquals("Show 5: card column binds at 511", 213, usageCardWidthDp(787f))
+        assertEquals("Show 8: card column binds at 633", 335, usageCardWidthDp(961f))
+        assertEquals("Tab M9: hits the 360 ceiling", 360, usageCardWidthDp(1340f))
+        // A screen narrow enough that the leftover goes negative still floors to something usable.
+        assertEquals(200, usageCardWidthDp(500f))
     }
 
     /**
@@ -95,7 +108,7 @@ class AdaptiveGeometryTest {
     fun bottomStripOccupantsDoNotOverlapOnTheShow5() {
         val caps = homeOverlayCaps(787f, 394f, reserveCardColumn = true, reserveUsageCard = true)
         assertEquals(200, caps.nextEventMaxWidthDp)          // floored, not the raw 160
-        val cardRightEdge = usageCardStartDp() + USAGE_CARD_W // 278 + 240 = 518
+        val cardRightEdge = usageCardStartDp() + usageCardWidthDp(787f) // 278 + 213 = 491
         val pillLeftEdge = 787 - 28 - caps.nextEventMaxWidthDp // right-aligned at the 28dp end pad
         assertTrue(
             "usage card ($cardRightEdge) must end before the next-event pill ($pillLeftEdge)",
@@ -119,9 +132,9 @@ class AdaptiveGeometryTest {
         for ((w, label) in listOf(787f to "Show 5", 961f to "Show 8", 1340f to "Tab M9")) {
             val columnLeftEdge = w.toInt() - 28 - homeCardWidthDp(w)
             assertTrue(
-                "$label: usage card ends at ${usageCardStartDp() + USAGE_CARD_W}, " +
+                "$label: usage card ends at ${usageCardStartDp() + usageCardWidthDp(w)}, " +
                     "card column starts at $columnLeftEdge",
-                usageCardStartDp() + USAGE_CARD_W < columnLeftEdge,
+                usageCardStartDp() + usageCardWidthDp(w) < columnLeftEdge,
             )
         }
     }

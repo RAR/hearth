@@ -30,7 +30,11 @@ class WakeAudioRing(
     private val dir: File,
     seconds: Int = 10,
     private val rate: Int = 16000,
-    private val maxFiles: Int = 60,
+    // 400 x ~320 KB = ~128 MB, against 2.4 GB free on the smallest device carrying this.
+    // Sized for multi-day collection: rotation drops the OLDEST first, so a cap that binds
+    // partway through a run silently discards the early samples, and losing variety is worse
+    // for a retrain than losing volume.
+    private val maxFiles: Int = 400,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     // Even by construction (2 bytes per sample), and every chunk written is an even length, so the

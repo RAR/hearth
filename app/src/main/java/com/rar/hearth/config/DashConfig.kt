@@ -104,6 +104,28 @@ data class QuickButtonConfig(
     val entity: String? = null,
 )
 
+/**
+ * The Claude subscription-usage card's sensors, as published by the `hass_claude_usage` integration.
+ *
+ * Every slot is optional: the card renders whatever it can read and drops the rest, because the
+ * integration's own sensors come and go (a bucket the API stops reporting — e.g. a model you haven't
+ * used this week — goes `unavailable` rather than disappearing). Reset slots are timestamp sensors
+ * paired with their percentage; a percentage with no reset sensor simply renders without the suffix.
+ */
+@Serializable
+data class ClaudeUsageConfig(
+    val session: String? = null,
+    val sessionReset: String? = null,
+    val week: String? = null,
+    val weekReset: String? = null,
+    val pace: String? = null,
+) {
+    fun ids(): List<String> = listOfNotNull(session, sessionReset, week, weekReset, pace)
+
+    /** True once either percentage is set — the reset and pace slots are garnish on their own. */
+    fun configured(): Boolean = session != null || week != null
+}
+
 @Serializable
 data class Entities(
     val tempSensor: String? = null,
@@ -118,6 +140,7 @@ data class Entities(
     val evs: List<EvConfig> = emptyList(),
     val calendars: List<CalendarConfig> = emptyList(),
     val quickButtons: List<QuickButtonConfig> = emptyList(),
+    val claudeUsage: ClaudeUsageConfig = ClaudeUsageConfig(),
 )
 
 @Serializable
@@ -296,6 +319,7 @@ data class DashConfig(
         entities.doorbells.forEach { d -> d.trigger?.let { add(it) } }
         entities.evs.forEach { addAll(it.ids()) }
         entities.quickButtons.forEach { qb -> qb.entity?.let { add(it) } }
+        addAll(entities.claudeUsage.ids())
         media.companionEntity?.let { add(it) }
         notifications.nwsAlerts?.let { add(it) }
     }.distinct()
@@ -380,6 +404,18 @@ data class DashConfig(
                     .map { it.copy(name = it.name.trim(), entity = it.entity?.trim()?.ifBlank { null }) }
                     .filter { it.entity != null }
                     .take(4),
+                // Same blank-slot trim as every other picker: the web config writes "" for a
+                // cleared field, and a "" entity id would be watched and never resolve.
+                claudeUsage = entities.claudeUsage.let { c ->
+                    fun clean(s: String?) = s?.trim()?.ifBlank { null }
+                    ClaudeUsageConfig(
+                        session = clean(c.session),
+                        sessionReset = clean(c.sessionReset),
+                        week = clean(c.week),
+                        weekReset = clean(c.weekReset),
+                        pace = clean(c.pace),
+                    )
+                },
             ),
             home = home.copy(
                 idleReturnSeconds = home.idleReturnSeconds.coerceIn(15, 3600),

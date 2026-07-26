@@ -41,6 +41,10 @@ private const val TOP_ROW = 70
 private const val CLOCK_BLOCK_H = 110
 // Breathing room kept between the bottom of the notification stack and the top of the clock block.
 private const val NOTIF_CLOCK_GAP = 14
+// The Claude usage card sitting between the notification stack and the clock: two bars + the pace
+// line + card padding, plus the 10dp gap above it. Reserved out of the notification stack's height
+// ONLY when the card is configured, so an unconfigured device keeps today's layout exactly.
+private const val USAGE_CARD_BLOCK = 84 + 10
 // Home overlay end pad (the next-event card is right-aligned at 28dp).
 private const val END_PAD = 28
 // Worst-case width of the bottom-left clock's date line (a long weekday + full date).
@@ -95,10 +99,17 @@ fun homeOverlayCaps(
     screenWidthDp: Float,
     screenHeightDp: Float,
     reserveCardColumn: Boolean,
+    reserveUsageCard: Boolean = false,
 ): HomeOverlayCaps {
     val reserve = if (reserveCardColumn) homeCardWidthDp(screenWidthDp) + CARD_GAP else 0
+    val usage = if (reserveUsageCard) USAGE_CARD_BLOCK else 0
     val notifW = floorDp(screenWidthDp - EDGE_PADS - reserve).coerceIn(300, 700)
-    val notifH = floorDp(screenHeightDp - TOP_ROW - CLOCK_BLOCK_H - NOTIF_CLOCK_GAP).coerceAtLeast(120)
+    // The notification floor drops when the usage card is on. On the Show 5 the pills-to-clock
+    // budget is only 200dp; holding the 120dp floor AND adding a 94dp card would total 214 and eat
+    // the clock gap. Yielding ~1 notification row is the better trade, and it costs nothing on the
+    // taller screens (they clear the 120 floor with the card reserved anyway).
+    val notifH = floorDp(screenHeightDp - TOP_ROW - CLOCK_BLOCK_H - NOTIF_CLOCK_GAP - usage)
+        .coerceAtLeast(if (reserveUsageCard) 96 else 120)
     val nextEventW = floorDp(screenWidthDp - END_PAD - CLOCK_BLOCK_W - CLOCK_CLEAR).coerceIn(240, 640)
     val cardColH = floorDp(screenHeightDp - CARD_COLUMN_TOP - NEXT_EVENT_BLOCK).coerceAtLeast(120)
     return HomeOverlayCaps(notifW, notifH, nextEventW, cardColH)

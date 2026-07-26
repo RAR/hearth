@@ -1,6 +1,7 @@
 package com.rar.hearth.config
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -726,6 +727,62 @@ class DashConfigTest {
         // old configs (no key) decode to an empty list
         val old = decodeConfig("""{"version":1}""")
         assertEquals(emptyList<QuickButtonConfig>(), old.entities.quickButtons)
+    }
+
+    @Test
+    fun claudeUsageRoundTripsAndDefaultsEmpty() {
+        val cfg = DashConfig(
+            entities = Entities(
+                claudeUsage = ClaudeUsageConfig(
+                    session = "sensor.claude_session",
+                    sessionReset = "sensor.claude_session_reset",
+                    week = "sensor.claude_week",
+                    weekReset = "sensor.claude_week_reset",
+                    pace = "sensor.claude_pace",
+                ),
+            ),
+        )
+        assertEquals(cfg, decodeConfig(ConfigJson.json.encodeToString(DashConfig.serializer(), cfg)))
+        // A config written before this feature decodes to an unconfigured card, not a crash.
+        val old = decodeConfig("""{"version":1}""")
+        assertEquals(ClaudeUsageConfig(), old.entities.claudeUsage)
+        assertFalse(old.entities.claudeUsage.configured())
+    }
+
+    @Test
+    fun claudeUsageIsConfiguredOnEitherPercentageAndWatchesEverySlot() {
+        assertFalse(ClaudeUsageConfig().configured())
+        assertFalse("reset alone is not a card", ClaudeUsageConfig(sessionReset = "sensor.r").configured())
+        assertTrue(ClaudeUsageConfig(session = "sensor.s").configured())
+        assertTrue(ClaudeUsageConfig(week = "sensor.w").configured())
+        // Every configured slot must reach the EntityHub watch set, or its row silently never fills.
+        val cfg = DashConfig(
+            entities = Entities(
+                claudeUsage = ClaudeUsageConfig(
+                    session = "sensor.s", sessionReset = "sensor.sr",
+                    week = "sensor.w", weekReset = "sensor.wr", pace = "sensor.p",
+                ),
+            ),
+        )
+        assertEquals(
+            listOf("sensor.s", "sensor.sr", "sensor.w", "sensor.wr", "sensor.p"),
+            cfg.referencedEntityIds(),
+        )
+    }
+
+    @Test
+    fun clampedClaudeUsageDropsBlankSlots() {
+        val cleaned = DashConfig(
+            entities = Entities(
+                claudeUsage = ClaudeUsageConfig(
+                    session = "  sensor.s  ",
+                    sessionReset = "   ",   // web config writes "" for a cleared picker
+                    week = "",
+                    pace = null,
+                ),
+            ),
+        ).clamped().entities.claudeUsage
+        assertEquals(ClaudeUsageConfig(session = "sensor.s"), cleaned)
     }
 
     @Test

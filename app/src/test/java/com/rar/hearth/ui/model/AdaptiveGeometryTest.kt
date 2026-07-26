@@ -63,6 +63,41 @@ class AdaptiveGeometryTest {
         assertEquals(HomeOverlayCaps(300, 120, 240, 202), homeOverlayCaps(500f, 300f, reserveCardColumn = true))
     }
 
+    /** The golden rule: an unconfigured usage card must not move a single dp. */
+    @Test
+    fun usageCardReserveIsOffByDefaultAndMatchesTheGoldenRow() {
+        assertEquals(
+            homeOverlayCaps(787f, 394f, reserveCardColumn = true),
+            homeOverlayCaps(787f, 394f, reserveCardColumn = true, reserveUsageCard = false),
+        )
+    }
+
+    @Test
+    fun usageCardReserveTakesItsHeightOutOfTheNotificationStack() {
+        // Show 8: 407 − 94 = 313. Only notifMaxHeightDp moves; the other three are untouched.
+        assertEquals(
+            HomeOverlayCaps(582, 313, 594, 503),
+            homeOverlayCaps(961f, 601f, reserveCardColumn = true, reserveUsageCard = true),
+        )
+        // Tab M9: 606 − 94 = 512.
+        assertEquals(
+            HomeOverlayCaps(700, 512, 640, 702),
+            homeOverlayCaps(1340f, 800f, reserveCardColumn = true, reserveUsageCard = true),
+        )
+    }
+
+    /**
+     * The Show 5 is the tight one: 200dp of pills-to-clock budget, and the card wants 94. The
+     * notification floor drops to 96 so the pair fits inside the budget instead of overflowing
+     * into the clock — 106 + 94 = 200 exactly.
+     */
+    @Test
+    fun usageCardAndNotificationsFitTheShow5BudgetExactly() {
+        val caps = homeOverlayCaps(787f, 394f, reserveCardColumn = true, reserveUsageCard = true)
+        assertEquals(106, caps.notifMaxHeightDp)
+        assertEquals(200, caps.notifMaxHeightDp + 94)
+    }
+
     // ---- visibleCardCount: fit math + chip reservation ----
 
     @Test

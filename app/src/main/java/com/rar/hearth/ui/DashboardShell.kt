@@ -28,8 +28,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import android.text.format.DateFormat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import java.time.ZoneId
 import com.rar.hearth.camera.StreamResolver
 import com.rar.hearth.config.DashConfig
 import com.rar.hearth.ha.ConnState
@@ -38,6 +41,7 @@ import com.rar.hearth.ha.RegistryIndex
 import com.rar.hearth.sendspin.MaLibraryState
 import com.rar.hearth.sendspin.musicassistant.MaQueueItem
 import com.rar.hearth.ui.model.CalendarEvent
+import com.rar.hearth.ui.model.claudeUsageCard
 import com.rar.hearth.ui.model.NotificationItem
 import com.rar.hearth.ui.model.PUSH_KEY_PREFIX
 import com.rar.hearth.ui.model.aqiPill
@@ -282,6 +286,18 @@ fun DashboardShell(
                     val quickBtns = remember(entities, config.entities.quickButtons) {
                         quickButtons(config.entities.quickButtons, entities)
                     }
+                    val is24 = clockIs24(
+                        config.home.clockFormat, DateFormat.is24HourFormat(LocalContext.current),
+                    )
+                    // Keyed on entities like evCards: the usage sensors repoll every ~5 min, and
+                    // the only now-dependent piece is the today-vs-weekday reset label, so a tick
+                    // of its own would buy nothing.
+                    val usageCard = remember(entities, config.entities.claudeUsage, is24) {
+                        claudeUsageCard(
+                            config.entities.claudeUsage, entities,
+                            System.currentTimeMillis(), ZoneId.systemDefault(), is24,
+                        )
+                    }
                     HomeView(
                         photos = if (config.home.slideshowEnabled) photos else emptyList(),
                         slideshowSeconds = config.home.slideshowSeconds,
@@ -295,9 +311,11 @@ fun DashboardShell(
                         onQuickButton = onQuickButton,
                         notifications = notifications,
                         onDismiss = dismissKey,
+                        claudeUsage = usageCard,
                         // CONFIG presence, not current card visibility, so the notification width
                         // never jumps when a card fades in/out. ids() is public on both configs.
                         reserveCardColumn = config.entities.evs.isNotEmpty() || config.entities.solar.ids().isNotEmpty(),
+                        reserveUsageCard = config.entities.claudeUsage.configured(),
                         calendarEvents = calendarEvents,
                         onOpenCalendar = { onSelect(DashView.CALENDAR) },
                         clockFormat = config.home.clockFormat,

@@ -378,6 +378,7 @@ function render() {
   renderPanels();
   renderHome();
   renderNight();
+  renderClaudeUsage();
   renderSensors();
   renderThermostats();
   renderLightGroups();
@@ -715,6 +716,29 @@ function renderQuickButtons() {
     "Up to four tappable buttons on the home screen, below the EV and solar cards. Switches, lights, " +
     "and input booleans toggle and show live on/off; buttons, scripts, and scenes fire on tap. " +
     "Blank name uses the entity's name. Empty slots are dropped on save."));
+}
+
+function renderClaudeUsage() {
+  const host = document.getElementById("claudeusage");
+  clear(host);
+  const e = config.entities;
+  if (!e.claudeUsage) e.claudeUsage = {};
+  const c = e.claudeUsage;
+  const slots = [
+    ["session", "Session usage %"],
+    ["sessionReset", "Session reset time"],
+    ["week", "Week usage %"],
+    ["weekReset", "Week reset time"],
+    ["pace", "Week pace %"],
+  ];
+  slots.forEach(([key, label]) => {
+    host.appendChild(labeledRow(label, entityPicker(["sensor"], c[key], v => c[key] = v)));
+  });
+  host.appendChild(el("div", "muted",
+    "Claude subscription usage, shown on the home screen between the notifications and the clock. " +
+    "Sensors come from the hass_claude_usage integration. Set at least one of the two usage " +
+    "percentages; reset and pace are optional. A sensor that reads unavailable drops its row " +
+    "rather than showing 0%."));
 }
 
 function renderCameras() {

@@ -103,6 +103,7 @@ import com.rar.hearth.sendspin.musicassistant.MaQueueItem
 import com.rar.hearth.ui.model.AqiPill
 import com.rar.hearth.ui.model.BattFlow
 import com.rar.hearth.ui.model.CalendarEvent
+import com.rar.hearth.ui.model.ClaudeUsageCard
 import com.rar.hearth.ui.model.EvCard
 import com.rar.hearth.ui.model.NotificationItem
 import com.rar.hearth.ui.model.QuickButton
@@ -110,6 +111,7 @@ import com.rar.hearth.ui.model.QuickButtonIcon
 import com.rar.hearth.ui.model.QuickButtonKind
 import com.rar.hearth.ui.model.RainPill
 import com.rar.hearth.ui.model.SolarCard
+import com.rar.hearth.ui.model.UsageBar
 import com.rar.hearth.ui.model.SolarFlowGraph
 import com.rar.hearth.ui.model.WeatherIcon
 import com.rar.hearth.ui.model.WeatherPill
@@ -197,9 +199,13 @@ fun HomeView(
     onQuickButton: (QuickButton) -> Unit = {},
     notifications: List<NotificationItem> = emptyList(),
     onDismiss: (String) -> Unit = {},
+    claudeUsage: ClaudeUsageCard? = null,
     // CONFIG presence of EV/solar cards (not current visibility): reserves the card column in the
     // notification width cap so a card fading in never makes the notification stack jump width.
     reserveCardColumn: Boolean = false,
+    // Likewise CONFIG presence, not current readability: the usage card's height comes out of the
+    // notification cap, and a sensor going unavailable must not resize the stack underneath it.
+    reserveUsageCard: Boolean = false,
     clockFormat: ClockFormat,
     connState: ConnState,
     configUrl: String,
@@ -268,7 +274,9 @@ fun HomeView(
         // Per-screen sizing from the measured canvas (787×394 on the Show 5). Cheap; recomputed only
         // when the constraints or card-config presence change.
         val cardWidth = homeCardWidthDp(maxWidth.value).dp
-        val caps = homeOverlayCaps(maxWidth.value, maxHeight.value, reserveCardColumn)
+        val caps = homeOverlayCaps(
+            maxWidth.value, maxHeight.value, reserveCardColumn, reserveUsageCard,
+        )
 
         Crossfade(targetState = takeoverVisible, animationSpec = tween(1000), label = "home-backdrop") { active ->
             if (active) {
@@ -450,29 +458,40 @@ fun HomeView(
                 }
             }
 
-            // Notification stack: just below the weather/AQI pill row (top = 70dp). Rows beyond
-            // the height cap scroll under it (clipToBounds); the width cap keeps it clear of the
-            // card column on the opposite edge.
-            AnimatedVisibility(
-                visible = notifications.isNotEmpty(),
-                enter = fadeIn(tween(600)),
-                exit = fadeOut(tween(600)),
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 28.dp, top = 70.dp),
+            // Left column: notification stack just below the weather/AQI pill row (top = 70dp),
+            // then the Claude usage card beneath it. Sharing one Column means the usage card rides
+            // up to meet the pills when there are no notifications, instead of leaving a hole; the
+            // stack's height cap already reserves the card's block, so the pair clears the clock.
+            Column(
+                Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 70.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                // Guarded so NotificationArea's "empty lists should not be rendered by the caller"
-                // contract holds (visible can lag the list emptying by one exit animation).
-                if (notifications.isNotEmpty()) {
-                    NotificationArea(
-                        notifications = notifications,
-                        nowMs = now,
-                        onDismiss = onDismiss,
-                        modifier = Modifier
-                            .widthIn(max = caps.notifMaxWidthDp.dp)
-                            .heightIn(max = caps.notifMaxHeightDp.dp)
-                            .clipToBounds(),
-                    )
+                AnimatedVisibility(
+                    visible = notifications.isNotEmpty(),
+                    enter = fadeIn(tween(600)),
+                    exit = fadeOut(tween(600)),
+                ) {
+                    // Guarded so NotificationArea's "empty lists should not be rendered by the
+                    // caller" contract holds (visible can lag the list emptying by one exit
+                    // animation).
+                    if (notifications.isNotEmpty()) {
+                        NotificationArea(
+                            notifications = notifications,
+                            nowMs = now,
+                            onDismiss = onDismiss,
+                            modifier = Modifier
+                                .widthIn(max = caps.notifMaxWidthDp.dp)
+                                .heightIn(max = caps.notifMaxHeightDp.dp)
+                                .clipToBounds(),
+                        )
+                    }
+                }
+                AnimatedVisibility(
+                    visible = claudeUsage != null,
+                    enter = fadeIn(tween(600)),
+                    exit = fadeOut(tween(600)),
+                ) {
+                    claudeUsage?.let { ClaudeUsageCardView(it, caps.notifMaxWidthDp.dp) }
                 }
             }
 
@@ -1029,6 +1048,77 @@ private fun QuickButtonCell(
         )
     }
 }
+
+/**
+ * Claude subscription usage: one bar per readable quota bucket, plus the pace line. Sits in the
+ * left column between the notification stack and the clock; its height is reserved out of the
+ * notification cap by AdaptiveGeometry (USAGE_CARD_BLOCK) so the two never collide.
+ */
+@Composable
+private fun ClaudeUsageCardView(card: ClaudeUsageCard, maxWidth: Dp) {
+    Column(
+        Modifier
+            .widthIn(max = maxWidth)
+            .width(USAGE_CARD_W)
+            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        card.bars.forEach { bar -> UsageBarRow(bar) }
+        card.paceText?.let {
+            Text(it, color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun UsageBarRow(bar: UsageBar) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            bar.label, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp,
+            maxLines = 1, modifier = Modifier.width(52.dp),
+        )
+        Box(
+            Modifier
+                .weight(1f)
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(Color.White.copy(alpha = 0.15f)),
+        ) {
+            // Zero-width fill is legal and renders nothing — a 0% bucket shows an empty track
+            // rather than a stub, which is the honest reading of "used none of it".
+            Box(
+                Modifier
+                    .fillMaxWidth(bar.percent / 100f)
+                    .fillMaxHeight()
+                    .background(usageTint(bar.percent)),
+            )
+        }
+        Text(
+            "${bar.percent}%", color = Color.White, fontSize = 12.sp,
+            maxLines = 1, textAlign = TextAlign.End, modifier = Modifier.width(34.dp),
+        )
+        bar.resetLabel?.let {
+            Text(it, color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp, maxLines = 1)
+        }
+    }
+}
+
+/** Ember below 60%, amber from 60, red from 85 — the thresholds the bar tints at. */
+private fun usageTint(percent: Int): Color = when {
+    percent >= 85 -> UsageBarHot
+    percent >= 60 -> UsageBarWarm
+    else -> UsageBarCool
+}
+
+// Brand ember, then the web config's --accent-hi amber, then a red that still reads on the scrim.
+private val UsageBarCool = Color(0xFFEF6A17)
+private val UsageBarWarm = Color(0xFFF8B62D)
+private val UsageBarHot = Color(0xFFE0453A)
+private val USAGE_CARD_W = 300.dp
 
 // Lights-panel palette: on / PRESS-flash blue, off / PRESS-idle dark.
 private val QuickChipOn = Color(0xFF3A6EA5)

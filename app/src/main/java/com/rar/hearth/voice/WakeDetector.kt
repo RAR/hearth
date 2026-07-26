@@ -53,6 +53,16 @@ class WakeDetector(
     fun lastScoreOf(name: String): Float = lastScores[name] ?: 0f
 
     /**
+     * False until the warm-up window has passed, i.e. while [lastScore] is still meaningless.
+     *
+     * The rings start zero-filled and produce garbage embeddings, which score arbitrarily high —
+     * [processChunk] already refuses to fire on them. Anything else that reads a score (audio
+     * capture, logging, tuning) has to make the same check, or it will treat startup noise as a
+     * detection.
+     */
+    val isWarm: Boolean get() = chunksProcessed > WARMUP_CHUNKS
+
+    /**
      * Feed a mic PCM chunk. Returns the names of the heads that fired during this call, in head
      * order (usually empty; occasionally one). All heads run on every chunk against the same
      * embedding ring, so more than one can fire on the same chunk.

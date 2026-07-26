@@ -123,6 +123,27 @@ class WakeDetectorTest {
     }
 
     @Test
+    fun isWarmTracksTheSameWindowThatSuppressesFiring() {
+        val d = detector(zeros256(), zeros96(), score(0.9f), 50) { 0L }
+        assertTrue(!d.isWarm)                                // nothing processed yet
+        d.process(pcm(1280 * 16, 1))
+        assertTrue(!d.isWarm)                                // still inside the suppressed window
+        d.process(pcm(1280, 1))
+        assertTrue(d.isWarm)                                 // the chunk that may fire is warm
+    }
+
+    @Test
+    fun resetMakesTheDetectorColdAgain() {
+        // The live bug this guards: a satellite restart re-zeroes the rings, which score ~1.0.
+        // Anything reading lastScore (audio capture) must see isWarm go false again.
+        val d = detector(zeros256(), zeros96(), score(0.9f), 50) { 0L }
+        d.process(pcm(1280 * 17, 1))
+        assertTrue(d.isWarm)
+        d.reset()
+        assertTrue(!d.isWarm)
+    }
+
+    @Test
     fun detectionIsStrictlyAboveThreshold() {
         val d = detector(zeros256(), zeros96(), score(0.5f), 50) { 0L }
         assertTrue(d.process(pcm(1280 * 17, 1)).isEmpty())   // 0.5 is not > 0.5

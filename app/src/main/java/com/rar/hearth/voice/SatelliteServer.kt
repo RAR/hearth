@@ -333,7 +333,13 @@ class SatelliteServer(
                     // lowering the wake threshold instead would trigger a real wake session for
                     // every one. Its own refractory keeps one acoustic event to one file.
                     audioRing?.let { ring ->
-                        if (score > captureThresholdPct / 100f && nowW - lastCaptureMs >= CAPTURE_REFRACTORY_MS) {
+                        // det.isWarm is not optional: the zero-filled rings score ~1.0 for the
+                        // first 16 chunks after every start/reset, so without it each restart
+                        // writes a garbage capture of whatever fraction of a second it had.
+                        if (det.isWarm &&
+                            score > captureThresholdPct / 100f &&
+                            nowW - lastCaptureMs >= CAPTURE_REFRACTORY_MS
+                        ) {
                             lastCaptureMs = nowW
                             val file = ring.dump(wakeWord, score)
                             if (file != null) Log.i(TAG, "captured wake audio -> ${file.name}")

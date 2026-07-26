@@ -2,6 +2,7 @@ package com.rar.hearth.ui.model
 
 import com.rar.hearth.config.ClaudeUsageConfig
 import com.rar.hearth.ha.EntityState
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -14,7 +15,7 @@ import kotlin.math.roundToInt
 data class UsageBar(
     val label: String,      // "Session" / "Week"
     val percent: Int,       // 0..100, drives both the fill fraction and the "%" text
-    val resetLabel: String?, // "7:30p" today, "Sun" later, null when unreadable/unconfigured
+    val resetLabel: String?, // "7:30p" when near, "Sun" when far, null when unreadable/unconfigured
 )
 
 /**
@@ -93,19 +94,31 @@ private fun readNumber(state: EntityState?): Double? {
 }
 
 /**
- * "7:30p" when the reset lands on today's local date, otherwise the weekday ("Sun"). The date
- * comparison is done in [zone] — the sensors publish UTC instants, and a reset at 09:00Z is
- * "yesterday evening" or "this morning" depending on where you are.
+ * A clock time ("7:30p") for a reset within [NEAR_RESET_HOURS], otherwise the weekday ("Sun").
+ *
+ * Proximity, not calendar date. The 5-hour session window routinely resets after midnight, and
+ * keying off the local date rendered a reset five hours away as "Mon" — which reads as days out.
+ * The weekday form only earns its place when the reset really is far enough that a time of day
+ * tells you nothing, which in practice means the weekly bucket.
+ *
+ * Still zone-dependent: the sensors publish UTC instants, and the weekday of 04:30Z differs by
+ * where you are.
  */
 private fun formatReset(state: EntityState?, nowMs: Long, zone: ZoneId, is24: Boolean): String? {
     val raw = state?.state?.trim() ?: return null
     if (raw.lowercase(Locale.US) in DEAD_STATES) return null
     val instant = runCatching { OffsetDateTime.parse(raw).toInstant() }.getOrNull() ?: return null
     val at = instant.atZone(zone)
-    val today = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
-    return if (at.toLocalDate() == today) clockLabel(at.hour, at.minute, is24)
+    val hoursAway = Duration.between(Instant.ofEpochMilli(nowMs), instant).toHours()
+    return if (hoursAway < NEAR_RESET_HOURS) clockLabel(at.hour, at.minute, is24)
     else weekdayLabel(at.toLocalDate())
 }
+
+/**
+ * How far out a reset can be and still read as a time. 18 hours covers any session window
+ * (max 5) plus a full night, while leaving the 7-day weekly bucket on the weekday form.
+ */
+private const val NEAR_RESET_HOURS = 18L
 
 private fun clockLabel(hour: Int, minute: Int, is24: Boolean): String =
     if (is24) String.format(Locale.US, "%d:%02d", hour, minute)

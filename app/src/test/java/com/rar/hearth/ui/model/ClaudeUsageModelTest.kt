@@ -41,8 +41,8 @@ class ClaudeUsageModelTest {
     }
 
     @Test
-    fun resetTodayRendersAsTimeAndLaterAsWeekday() {
-        // 23:30Z on the 26th is 19:30 in New York — same local day as the 14:00 local "now".
+    fun nearResetRendersAsTimeAndFarOneAsWeekday() {
+        // 23:30Z on the 26th is 19:30 in New York — 5.5h from the 14:00 local "now".
         val card = claudeUsageCard(cfg, live(), ms("2026-07-26T18:00:00+00:00"), ny, is24 = false)!!
         assertEquals("7:30p", card.bars[0].resetLabel)
         // The weekly reset is a week out, so it degrades to a weekday name.
@@ -56,17 +56,36 @@ class ClaudeUsageModelTest {
     }
 
     /**
-     * The zone is not decoration: 09:00Z is 05:00 in New York, so a reset stamped for Aug 2 is
-     * still Aug 2 locally — but one stamped 02:00Z would be Aug 1. Guards the .toLocalDate()
-     * comparison being done in `zone` rather than UTC.
+     * The live bug this guards: the 5-hour window rolled at 7:30pm and the next reset landed at
+     * 00:30 the NEXT local day, which a same-date rule rendered as "Mon" for something five hours
+     * away. Proximity decides the form, not the calendar date.
      */
     @Test
-    fun todayIsDecidedInTheSuppliedZoneNotUtc() {
+    fun aResetAfterMidnightButHoursAwayStillReadsAsATime() {
         val entities = live() + ("sensor.session_reset" to
-            st("sensor.session_reset", "2026-07-27T02:00:00+00:00"))
-        // 02:00Z on the 27th is 22:00 on the 26th in New York — the same local day as now.
+            st("sensor.session_reset", "2026-07-27T04:30:00+00:00"))
+        // 04:30Z is 00:30 Mon in New York; "now" is 19:39 Sun — a different date, 4.85h away.
+        val card = claudeUsageCard(cfg, entities, ms("2026-07-26T23:39:00+00:00"), ny, is24 = false)
+        assertEquals("12:30a", card!!.bars[0].resetLabel)
+    }
+
+    @Test
+    fun aResetPastTheNearWindowFallsBackToTheWeekday() {
+        // 19h out — just past the 18h boundary, so the weekday form takes over.
+        val entities = live() + ("sensor.session_reset" to
+            st("sensor.session_reset", "2026-07-27T14:00:00+00:00"))
+        val card = claudeUsageCard(cfg, entities, ms("2026-07-26T19:00:00+00:00"), ny, is24 = false)
+        assertEquals("Mon", card!!.bars[0].resetLabel)
+    }
+
+    /** The zone still decides which weekday a far-out UTC instant lands on. */
+    @Test
+    fun weekdayIsResolvedInTheSuppliedZoneNotUtc() {
+        // 01:00Z Monday is still Sunday evening in New York.
+        val entities = live() + ("sensor.week_reset" to
+            st("sensor.week_reset", "2026-08-03T01:00:00+00:00"))
         val card = claudeUsageCard(cfg, entities, ms("2026-07-26T18:00:00+00:00"), ny, is24 = false)
-        assertEquals("10:00p", card!!.bars[0].resetLabel)
+        assertEquals("Sun", card!!.bars[1].resetLabel)
     }
 
     @Test
@@ -144,8 +163,9 @@ class ClaudeUsageModelTest {
 
     @Test
     fun midnightResetRendersAsTwelveNotZero() {
-        // 04:00Z is 00:00 New York on the 27th; "now" is 01:00 local the same day, so this takes
-        // the same-day branch and the 12-hour label must read "12:00a", not "0:00a".
+        // 04:00Z is 00:00 New York on the 27th; "now" is 01:00 local, so the reset is an hour
+        // PAST — still inside the near window, and the 12-hour label must read "12:00a", not
+        // "0:00a". Guards the hour%12 mapping, which is where a naive format prints 0.
         val entities = live() + ("sensor.session_reset" to
             st("sensor.session_reset", "2026-07-27T04:00:00+00:00"))
         val card = claudeUsageCard(cfg, entities, ms("2026-07-27T05:00:00+00:00"), ny, false)!!

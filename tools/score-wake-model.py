@@ -42,7 +42,7 @@ def read_wav_16k(path):
 mel = graph(f"{ASSETS}/melspectrogram.tflite")  # pre-patched to [1,1760]
 emb = graph(f"{ASSETS}/embedding_model.tflite")
 
-def score(samples, head_paths):
+def score(samples, head_paths, lead=24000):
     heads = {p.split("/")[-1]: graph(p) for p in head_paths}
     audio = np.zeros(1760, dtype=np.float32)
     melring = np.zeros((76, 32), dtype=np.float32)
@@ -51,7 +51,7 @@ def score(samples, head_paths):
     # Lead with >16 chunks of silence so the word lands AFTER the 16-chunk warm-up
     # WakeDetector masks (zero-filled rings produce garbage embeddings), then mask
     # warm-up scores exactly like the Kotlin code does.
-    s = np.concatenate([np.zeros(24000, np.float32), samples, np.zeros(8000, np.float32)])
+    s = np.concatenate([np.zeros(lead, np.float32), samples, np.zeros(8000, np.float32)])
     chunk_i = 0
     for off in range(0, len(s) - 1280 + 1, 1280):
         audio[:480] = audio[1280:]
@@ -75,5 +75,27 @@ def score(samples, head_paths):
 heads = [p for p in (f"{ASSETS}/{n}.tflite" for n in
                      ("stop", "ok_ember", "okay_nabu", "alexa", "hey_jarvis"))
          if os.path.exists(p)]
+
+
+def score_any_alignment(samples, head_paths, steps=8):
+    """Max score over every chunk alignment, not just one.
+
+    The device scores a continuous stream, so its 1280-sample chunk boundaries fall wherever
+    the mic happened to start; replaying a clip from offset 0 picks ONE arbitrary alignment.
+    That is not a detail: on a real near-miss capture, ok_ember scored 0.101 to 0.658 across
+    the eight alignments of the same audio, and only offset 640 reproduced the 0.48 the device
+    logged. Sweeping and taking the max answers the question that actually matters — "can this
+    audio trigger this model?" — instead of "did it trigger at one alignment we chose".
+    """
+    hop = 1280 // steps
+    maxes = {p.split("/")[-1]: 0.0 for p in head_paths}
+    for k in range(steps):
+        for name, v in score(samples, head_paths, lead=24000 + k * hop).items():
+            if v > maxes[name]:
+                maxes[name] = v
+    return maxes
+
+
 for wav in sys.argv[1:]:
-    print(wav, "->", {k: round(v, 3) for k, v in score(read_wav_16k(wav), heads).items()})
+    result = score_any_alignment(read_wav_16k(wav), heads)
+    print(wav, "->", {k: round(v, 3) for k, v in sorted(result.items(), key=lambda kv: -kv[1])})

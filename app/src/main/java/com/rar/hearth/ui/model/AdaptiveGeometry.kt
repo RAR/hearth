@@ -33,6 +33,7 @@ data class TakeoverLayout(
 
 // Home overlays draw at a 28dp start pad and a 28dp end pad; 56 is both edges.
 private const val EDGE_PADS = 56
+private const val HOME_START_PAD = 28
 // Gap between the notification stack's right edge and the EV/solar card column.
 private const val CARD_GAP = 23
 // The pills row plus its top pad — the notification stack's top offset today (padding top = 70dp).
@@ -41,10 +42,12 @@ private const val TOP_ROW = 70
 private const val CLOCK_BLOCK_H = 110
 // Breathing room kept between the bottom of the notification stack and the top of the clock block.
 private const val NOTIF_CLOCK_GAP = 14
-// The Claude usage card sitting between the notification stack and the clock: two bars + the pace
-// line + card padding, plus the 10dp gap above it. Reserved out of the notification stack's height
-// ONLY when the card is configured, so an unconfigured device keeps today's layout exactly.
-private const val USAGE_CARD_BLOCK = 84 + 10
+// The Claude usage card, which sits in the bottom strip between the clock block and the
+// next-event pill. Its width is fixed (the content is two short bars, not a growable region).
+const val USAGE_CARD_W = 240
+// Gap kept on either side of the usage card — from the clock block on its left, and from the
+// next-event pill on its right.
+private const val USAGE_GAP = 20
 // Home overlay end pad (the next-event card is right-aligned at 28dp).
 private const val END_PAD = 28
 // Worst-case width of the bottom-left clock's date line (a long weekday + full date).
@@ -102,18 +105,24 @@ fun homeOverlayCaps(
     reserveUsageCard: Boolean = false,
 ): HomeOverlayCaps {
     val reserve = if (reserveCardColumn) homeCardWidthDp(screenWidthDp) + CARD_GAP else 0
-    val usage = if (reserveUsageCard) USAGE_CARD_BLOCK else 0
     val notifW = floorDp(screenWidthDp - EDGE_PADS - reserve).coerceIn(300, 700)
-    // The notification floor drops when the usage card is on. On the Show 5 the pills-to-clock
-    // budget is only 200dp; holding the 120dp floor AND adding a 94dp card would total 214 and eat
-    // the clock gap. Yielding ~1 notification row is the better trade, and it costs nothing on the
-    // taller screens (they clear the 120 floor with the card reserved anyway).
-    val notifH = floorDp(screenHeightDp - TOP_ROW - CLOCK_BLOCK_H - NOTIF_CLOCK_GAP - usage)
-        .coerceAtLeast(if (reserveUsageCard) 96 else 120)
-    val nextEventW = floorDp(screenWidthDp - END_PAD - CLOCK_BLOCK_W - CLOCK_CLEAR).coerceIn(240, 640)
+    val notifH = floorDp(screenHeightDp - TOP_ROW - CLOCK_BLOCK_H - NOTIF_CLOCK_GAP).coerceAtLeast(120)
+    // The usage card shares the bottom strip with the next-event pill, so it comes out of that
+    // pill's width. Its floor drops 240 -> 200 while the card is on: the Show 5's bottom strip is
+    // only 787dp wide and the clock block, card, and pill together need every dp of it. Trimming
+    // the pill (it ellipsizes) beats overlapping it.
+    val usage = if (reserveUsageCard) USAGE_CARD_W + USAGE_GAP else 0
+    val nextEventW = floorDp(screenWidthDp - END_PAD - CLOCK_BLOCK_W - CLOCK_CLEAR - usage)
+        .coerceIn(if (reserveUsageCard) 200 else 240, 640)
     val cardColH = floorDp(screenHeightDp - CARD_COLUMN_TOP - NEXT_EVENT_BLOCK).coerceAtLeast(120)
     return HomeOverlayCaps(notifW, notifH, nextEventW, cardColH)
 }
+
+/**
+ * Left offset of the bottom-strip usage card: clear of the clock block's worst-case date line, plus
+ * a gap. Screen-independent — the clock block does not grow, so neither does this.
+ */
+fun usageCardStartDp(): Int = HOME_START_PAD + CLOCK_BLOCK_W + USAGE_GAP
 
 /**
  * Now-playing takeover split: a square art card sized by the smaller of the height budget and a

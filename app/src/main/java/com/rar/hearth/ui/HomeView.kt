@@ -118,6 +118,8 @@ import com.rar.hearth.ui.model.WeatherPill
 import com.rar.hearth.ui.model.eventTimeLabel
 import com.rar.hearth.ui.model.homeCardWidthDp
 import com.rar.hearth.ui.model.homeOverlayCaps
+import com.rar.hearth.ui.model.USAGE_CARD_W
+import com.rar.hearth.ui.model.usageCardStartDp
 import com.rar.hearth.ui.model.miniPlayerVisible
 import com.rar.hearth.ui.model.nextEventCard
 import com.rar.hearth.ui.model.pageCardCount
@@ -458,41 +460,44 @@ fun HomeView(
                 }
             }
 
-            // Left column: notification stack just below the weather/AQI pill row (top = 70dp),
-            // then the Claude usage card beneath it. Sharing one Column means the usage card rides
-            // up to meet the pills when there are no notifications, instead of leaving a hole; the
-            // stack's height cap already reserves the card's block, so the pair clears the clock.
-            Column(
-                Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 70.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+            // Notification stack: just below the weather/AQI pill row (top = 70dp). Rows beyond
+            // the height cap scroll under it (clipToBounds); the width cap keeps it clear of the
+            // card column on the opposite edge.
+            AnimatedVisibility(
+                visible = notifications.isNotEmpty(),
+                enter = fadeIn(tween(600)),
+                exit = fadeOut(tween(600)),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 28.dp, top = 70.dp),
             ) {
-                AnimatedVisibility(
-                    visible = notifications.isNotEmpty(),
-                    enter = fadeIn(tween(600)),
-                    exit = fadeOut(tween(600)),
-                ) {
-                    // Guarded so NotificationArea's "empty lists should not be rendered by the
-                    // caller" contract holds (visible can lag the list emptying by one exit
-                    // animation).
-                    if (notifications.isNotEmpty()) {
-                        NotificationArea(
-                            notifications = notifications,
-                            nowMs = now,
-                            onDismiss = onDismiss,
-                            modifier = Modifier
-                                .widthIn(max = caps.notifMaxWidthDp.dp)
-                                .heightIn(max = caps.notifMaxHeightDp.dp)
-                                .clipToBounds(),
-                        )
-                    }
+                // Guarded so NotificationArea's "empty lists should not be rendered by the caller"
+                // contract holds (visible can lag the list emptying by one exit animation).
+                if (notifications.isNotEmpty()) {
+                    NotificationArea(
+                        notifications = notifications,
+                        nowMs = now,
+                        onDismiss = onDismiss,
+                        modifier = Modifier
+                            .widthIn(max = caps.notifMaxWidthDp.dp)
+                            .heightIn(max = caps.notifMaxHeightDp.dp)
+                            .clipToBounds(),
+                    )
                 }
-                AnimatedVisibility(
-                    visible = claudeUsage != null,
-                    enter = fadeIn(tween(600)),
-                    exit = fadeOut(tween(600)),
-                ) {
-                    claudeUsage?.let { ClaudeUsageCardView(it, caps.notifMaxWidthDp.dp) }
-                }
+            }
+
+            // Claude usage: bottom strip, parked to the right of the clock block. Its left offset
+            // clears the clock's worst-case date line, and its width is reserved out of the
+            // next-event pill's cap, so the three share the strip without overlapping.
+            AnimatedVisibility(
+                visible = claudeUsage != null,
+                enter = fadeIn(tween(600)),
+                exit = fadeOut(tween(600)),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = usageCardStartDp().dp, bottom = 20.dp),
+            ) {
+                claudeUsage?.let { ClaudeUsageCardView(it) }
             }
 
             // Next-event card: bottom-right, diagonal from the clock. Width-capped by
@@ -1051,15 +1056,14 @@ private fun QuickButtonCell(
 
 /**
  * Claude subscription usage: one bar per readable quota bucket, plus the pace line. Sits in the
- * left column between the notification stack and the clock; its height is reserved out of the
- * notification cap by AdaptiveGeometry (USAGE_CARD_BLOCK) so the two never collide.
+ * bottom strip beside the clock; AdaptiveGeometry reserves its width out of the next-event pill's
+ * cap so the strip's three occupants never overlap.
  */
 @Composable
-private fun ClaudeUsageCardView(card: ClaudeUsageCard, maxWidth: Dp) {
+private fun ClaudeUsageCardView(card: ClaudeUsageCard) {
     Column(
         Modifier
-            .widthIn(max = maxWidth)
-            .width(USAGE_CARD_W)
+            .width(USAGE_CARD_W.dp)
             .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -1118,7 +1122,6 @@ private fun usageTint(percent: Int): Color = when {
 private val UsageBarCool = Color(0xFFEF6A17)
 private val UsageBarWarm = Color(0xFFF8B62D)
 private val UsageBarHot = Color(0xFFE0453A)
-private val USAGE_CARD_W = 300.dp
 
 // Lights-panel palette: on / PRESS-flash blue, off / PRESS-idle dark.
 private val QuickChipOn = Color(0xFF3A6EA5)

@@ -73,29 +73,40 @@ class AdaptiveGeometryTest {
     }
 
     @Test
-    fun usageCardReserveTakesItsHeightOutOfTheNotificationStack() {
-        // Show 8: 407 − 94 = 313. Only notifMaxHeightDp moves; the other three are untouched.
+    fun usageCardReserveTakesItsWidthOutOfTheNextEventPill() {
+        // Show 8: 594 − 260 = 334. Only nextEventMaxWidthDp moves; the other three are untouched.
         assertEquals(
-            HomeOverlayCaps(582, 313, 594, 503),
+            HomeOverlayCaps(582, 407, 334, 503),
             homeOverlayCaps(961f, 601f, reserveCardColumn = true, reserveUsageCard = true),
         )
-        // Tab M9: 606 − 94 = 512.
+        // Tab M9: 1340 − 28 − 230 − 109 − 260 = 713, still over the 640 ceiling.
         assertEquals(
-            HomeOverlayCaps(700, 512, 640, 702),
+            HomeOverlayCaps(700, 606, 640, 702),
             homeOverlayCaps(1340f, 800f, reserveCardColumn = true, reserveUsageCard = true),
         )
     }
 
     /**
-     * The Show 5 is the tight one: 200dp of pills-to-clock budget, and the card wants 94. The
-     * notification floor drops to 96 so the pair fits inside the budget instead of overflowing
-     * into the clock — 106 + 94 = 200 exactly.
+     * The bottom strip is the tight one on the Show 5. Its three occupants — clock block, usage
+     * card, next-event pill — plus their gaps must fit inside 787dp, which is why the pill's floor
+     * drops to 200 while the card is on. Guards the actual no-overlap arithmetic, not just the cap.
      */
     @Test
-    fun usageCardAndNotificationsFitTheShow5BudgetExactly() {
+    fun bottomStripOccupantsDoNotOverlapOnTheShow5() {
         val caps = homeOverlayCaps(787f, 394f, reserveCardColumn = true, reserveUsageCard = true)
-        assertEquals(106, caps.notifMaxHeightDp)
-        assertEquals(200, caps.notifMaxHeightDp + 94)
+        assertEquals(200, caps.nextEventMaxWidthDp)          // floored, not the raw 160
+        val cardRightEdge = usageCardStartDp() + USAGE_CARD_W // 278 + 240 = 518
+        val pillLeftEdge = 787 - 28 - caps.nextEventMaxWidthDp // right-aligned at the 28dp end pad
+        assertTrue(
+            "usage card ($cardRightEdge) must end before the next-event pill ($pillLeftEdge)",
+            cardRightEdge < pillLeftEdge,
+        )
+    }
+
+    @Test
+    fun usageCardStartsClearOfTheClockBlock() {
+        // 28dp start pad + the clock's 230dp worst-case date line + a 20dp gap.
+        assertEquals(278, usageCardStartDp())
     }
 
     // ---- visibleCardCount: fit math + chip reservation ----

@@ -74,14 +74,14 @@ class AdaptiveGeometryTest {
 
     @Test
     fun usageCardReserveTakesItsWidthOutOfTheNextEventPill() {
-        // Show 8: 594 − (335 + 20) = 239. Only nextEventMaxWidthDp moves; the others are untouched.
+        // Show 8: 594 − (280 + 20) = 294. Only nextEventMaxWidthDp moves; the others are untouched.
         assertEquals(
-            HomeOverlayCaps(582, 407, 239, 503),
+            HomeOverlayCaps(582, 407, 294, 503),
             homeOverlayCaps(961f, 601f, reserveCardColumn = true, reserveUsageCard = true),
         )
-        // Tab M9: 1340 − 28 − 230 − 109 − (360 + 20) = 593.
+        // Tab M9: 1340 − 28 − 230 − 109 − (280 + 20) = 673, back over the 640 ceiling.
         assertEquals(
-            HomeOverlayCaps(700, 606, 593, 702),
+            HomeOverlayCaps(700, 606, 640, 702),
             homeOverlayCaps(1340f, 800f, reserveCardColumn = true, reserveUsageCard = true),
         )
     }
@@ -93,8 +93,8 @@ class AdaptiveGeometryTest {
     @Test
     fun usageCardWidthGrowsWithTheStripAndCapsOut() {
         assertEquals("Show 5: card column binds at 511", 213, usageCardWidthDp(787f))
-        assertEquals("Show 8: card column binds at 633", 335, usageCardWidthDp(961f))
-        assertEquals("Tab M9: hits the 360 ceiling", 360, usageCardWidthDp(1340f))
+        assertEquals("Show 8: hits the 280 ceiling", 280, usageCardWidthDp(961f))
+        assertEquals("Tab M9: hits the 280 ceiling", 280, usageCardWidthDp(1340f))
         // A screen narrow enough that the leftover goes negative still floors to something usable.
         assertEquals(200, usageCardWidthDp(500f))
     }

@@ -48,9 +48,12 @@ private const val USAGE_GAP = 20
 // Width the next-event pill is guaranteed while the usage card shares the strip. The pill
 // ellipsizes and the card does not, so the pill is the one that yields.
 private const val NEXT_EVENT_MIN_W = 240
-// The usage card never grows past this. Past ~360dp two short bars stop looking like a card and
-// start looking like a stretched banner; the EV cards top out at 320 for the same reason.
-private const val USAGE_CARD_MAX_W = 360
+// The usage card never grows past this. Set by what it costs its neighbour, not by the card: at
+// 335 on the Show 8 the next-event pill fell to 239dp and truncated "Trash Pickup" to "Tras…".
+// 280 leaves the pill ~294dp, which fits a typical "<weekday> All day <title>" line, and is still
+// far from stubby. A long enough event title will always ellipsize — that is the pill's own
+// behaviour, and the point here is not to cause it at ordinary lengths.
+private const val USAGE_CARD_MAX_W = 280
 // Home overlay end pad (the next-event card is right-aligned at 28dp).
 private const val END_PAD = 28
 // Worst-case width of the bottom-left clock's date line (a long weekday + full date).

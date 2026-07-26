@@ -47,6 +47,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.BatteryStd
+import androidx.compose.material.icons.outlined.DataUsage
 import androidx.compose.material.icons.outlined.ElectricMeter
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.Home
@@ -1069,6 +1070,17 @@ private fun ClaudeUsageCardView(card: ClaudeUsageCard, cardWidth: Dp) {
         // 4dp, matching EvCardView — its title/gauge/stats stack uses the same rhythm.
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
+        // Same header shape as the solar card: 18dp icon, 6dp gap, 16sp Medium title.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                Icons.Outlined.DataUsage, contentDescription = null,
+                tint = Color.White, modifier = Modifier.size(18.dp),
+            )
+            Text("Claude Usage", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+        }
         card.bars.forEach { bar -> UsageBarRow(bar) }
         // Same size and alpha as the EV card's charge/eta stats line.
         card.paceText?.let {

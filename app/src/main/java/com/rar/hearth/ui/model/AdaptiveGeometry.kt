@@ -43,8 +43,8 @@ private const val CLOCK_BLOCK_H = 110
 // Breathing room kept between the bottom of the notification stack and the top of the clock block.
 private const val NOTIF_CLOCK_GAP = 14
 // The Claude usage card, parked at the bottom of the notification column just above the clock.
-// Two label rows, two 8dp gauges, and the pace line inside a 10dp-padded card.
-private const val USAGE_CARD_H = 110
+// Icon+title header, two label rows, two 8dp gauges, and the pace line, inside a 10dp-padded card.
+private const val USAGE_CARD_H = 133
 // Clearance between the bottom of the notification stack and the top of the usage card.
 private const val USAGE_STACK_GAP = 10
 // Home overlay end pad (the next-event card is right-aligned at 28dp).
@@ -106,12 +106,14 @@ fun homeOverlayCaps(
     val reserve = if (reserveCardColumn) homeCardWidthDp(screenWidthDp) + CARD_GAP else 0
     val notifW = floorDp(screenWidthDp - EDGE_PADS - reserve).coerceIn(300, 700)
     // The usage card is bottom-anchored in this same column, so it comes out of the stack's height.
-    // The floor drops 120 -> 80 while the card is on: the Show 5 has only 200dp between the pills
-    // and the clock, and 80 + 120 uses it exactly. That is about one notification row there — the
-    // honest cost of putting a second element in that column on the smallest screen.
+    // The floor drops 120 -> 56 while the card is on. The Show 5 has only 200dp between the pills
+    // and the clock and the card takes 143 of it, so anything above 57 would overlap the card
+    // rather than shrink the stack — the floor has to be lower than the tightest screen's leftover
+    // or it defeats the reserve entirely. On the Show 5 that leaves about one notification row:
+    // the honest cost of a second element in that column, and why the card is opt-in per device.
     val usage = if (reserveUsageCard) USAGE_CARD_H + USAGE_STACK_GAP else 0
     val notifH = floorDp(screenHeightDp - TOP_ROW - CLOCK_BLOCK_H - NOTIF_CLOCK_GAP - usage)
-        .coerceAtLeast(if (reserveUsageCard) 80 else 120)
+        .coerceAtLeast(if (reserveUsageCard) 56 else 120)
     val nextEventW = floorDp(screenWidthDp - END_PAD - CLOCK_BLOCK_W - CLOCK_CLEAR).coerceIn(240, 640)
     val cardColH = floorDp(screenHeightDp - CARD_COLUMN_TOP - NEXT_EVENT_BLOCK).coerceAtLeast(120)
     return HomeOverlayCaps(notifW, notifH, nextEventW, cardColH)

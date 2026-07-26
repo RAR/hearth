@@ -74,28 +74,29 @@ class AdaptiveGeometryTest {
 
     @Test
     fun usageCardReserveTakesItsHeightOutOfTheNotificationStack() {
-        // Show 8: 407 - 120 = 287. Only notifMaxHeightDp moves; the other three are untouched.
+        // Show 8: 407 - 143 = 264. Only notifMaxHeightDp moves; the other three are untouched.
         assertEquals(
-            HomeOverlayCaps(582, 287, 594, 503),
+            HomeOverlayCaps(582, 264, 594, 503),
             homeOverlayCaps(961f, 601f, reserveCardColumn = true, reserveUsageCard = true),
         )
-        // Tab M9: 606 - 120 = 486.
+        // Tab M9: 606 - 143 = 463.
         assertEquals(
-            HomeOverlayCaps(700, 486, 640, 702),
+            HomeOverlayCaps(700, 463, 640, 702),
             homeOverlayCaps(1340f, 800f, reserveCardColumn = true, reserveUsageCard = true),
         )
     }
 
     /**
      * The Show 5 is where the column is tightest: 200dp between the pills and the clock, and the
-     * card takes 120 of it. The stack floor drops to 80 so the pair uses the budget EXACTLY rather
-     * than spilling into the clock — the arithmetic that keeps them from overlapping.
+     * card takes 143 of it. The leftover must land ABOVE the floor, or the floor would win and the
+     * stack would overlap the card instead of shrinking — the arithmetic the reserve depends on.
      */
     @Test
     fun usageCardAndNotificationStackUseTheShow5ColumnExactly() {
         val caps = homeOverlayCaps(787f, 394f, reserveCardColumn = true, reserveUsageCard = true)
-        assertEquals(80, caps.notifMaxHeightDp)
-        assertEquals(200, caps.notifMaxHeightDp + 110 + 10)
+        assertEquals(57, caps.notifMaxHeightDp)
+        assertEquals(200, caps.notifMaxHeightDp + 133 + 10)
+        assertTrue("leftover must clear the floor, else the reserve is defeated", 57 >= 56)
     }
 
     @Test

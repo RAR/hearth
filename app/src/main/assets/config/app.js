@@ -675,6 +675,7 @@ function renderHomeCards() {
   ordered.forEach((key, idx) => {
     const c = cards[key];
     const row = el("div", "panel-row" + (c.enabled ? "" : " off"));
+    row.appendChild(el("span", "ptile"));
     row.appendChild(el("span", "panel-name", label(key)));
 
     // The head of the order is guaranteed a slot even when it alone would overflow the column.

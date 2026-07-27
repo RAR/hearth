@@ -1,6 +1,10 @@
 package com.rar.hearth.device
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import com.rar.hearth.device.KioskController.Companion.AUTO_SETTLE_MS
+import com.rar.hearth.device.KioskController.Companion.RAMP_DOWN_MS_PER_PCT
+import com.rar.hearth.device.KioskController.Companion.RAMP_STEP_MS
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -32,6 +36,12 @@ class KioskControllerTest {
     private fun settings(jsonText: String): JsonObject =
         Json.parseToJsonElement(jsonText).jsonObject
 
+    /** Run past any pending brightness settle plus a full-range ramp. */
+    private fun TestScope.finishBrightness() {
+        advanceTimeBy(AUTO_SETTLE_MS + 100 * RAMP_DOWN_MS_PER_PCT + 1_000)
+        runCurrent()
+    }
+
     @Test
     fun appliesScreenSettingsToDevice() = runTest {
         val device = FakeDevice()
@@ -60,9 +70,10 @@ class KioskControllerTest {
     fun autoBrightnessFollowsLightLevel() = runTest {
         val device = FakeDevice()
         val kiosk = KioskController(this, device)
-        kiosk.onLightLevel(0f)
-        kiosk.onLightLevel(400f)
+        kiosk.onLightLevel(0f)                             // first sample: applied at once
         assertTrue(device.calls.contains("brightness:10"))
+        kiosk.onLightLevel(400f)
+        finishBrightness()
         assertTrue(device.calls.contains("brightness:100"))
         device.calls.clear()
         kiosk.applySettings(settings("""{"screen_auto_brightness":false}"""))
@@ -195,9 +206,11 @@ class KioskControllerTest {
         val device = FakeDevice()
         val kiosk = KioskController(this, device)
         kiosk.onLightLevel(400f)                           // lastLux = 400 -> brightness:100
-        kiosk.setNightDim(true, 0)                         // brightness:0
+        kiosk.setNightDim(true, 0)                         // ramps down to 0
+        finishBrightness()
         device.calls.clear()
         kiosk.setNightDim(false, 0)
+        finishBrightness()
         assertTrue("auto reapplies formula from lastLux", device.calls.contains("brightness:100"))
         kiosk.cancelTimers()
 
@@ -205,9 +218,11 @@ class KioskControllerTest {
         val device2 = FakeDevice()
         val kiosk2 = KioskController(this, device2)
         kiosk2.applySettings(settings("""{"screen_auto_brightness":false,"screen_brightness":35}"""))
-        kiosk2.setNightDim(true, 0)                        // brightness:0
+        kiosk2.setNightDim(true, 0)                        // ramps down to 0
+        finishBrightness()
         device2.calls.clear()
         kiosk2.setNightDim(false, 0)
+        finishBrightness()
         assertTrue("manual reapplies stored value", device2.calls.contains("brightness:35"))
         kiosk2.cancelTimers()
     }
@@ -217,11 +232,13 @@ class KioskControllerTest {
         val device = FakeDevice()
         val kiosk = KioskController(this, device)
         kiosk.applySettings(settings("""{"screen_auto_brightness":false}"""))  // manual mode
-        kiosk.setNightDim(true, 0)                         // brightness:0
+        kiosk.setNightDim(true, 0)                         // ramps down to 0
+        finishBrightness()
         device.calls.clear()
         kiosk.applySettings(settings("""{"screen_brightness":40}"""))          // stored, NOT applied
         assertTrue("no brightness applied while night-dim", device.calls.none { it.startsWith("brightness:") })
         kiosk.setNightDim(false, 0)                        // manual -> stored 40 applied
+        finishBrightness()
         assertTrue(device.calls.contains("brightness:40"))
         kiosk.cancelTimers()
     }
@@ -234,6 +251,7 @@ class KioskControllerTest {
         kiosk.onLightLevel(400f)                           // suppressed, but must still record lastLux
         device.calls.clear()
         kiosk.setNightDim(false, 0)
+        finishBrightness()
         assertTrue("clear reapplies auto formula from lux seen during suppression",
             device.calls.contains("brightness:100"))
         kiosk.cancelTimers()
@@ -261,6 +279,81 @@ class KioskControllerTest {
         kiosk.setNightDim(false, 0)                        // first-composition mirror fires this
         assertTrue("must not force autoPercent(0)=10% at startup",
             device.calls.none { it.startsWith("brightness:") })
+        kiosk.cancelTimers()
+    }
+
+    private fun brightnessValues(device: FakeDevice): List<Int> =
+        device.calls.filter { it.startsWith("brightness:") }.map { it.removePrefix("brightness:").toInt() }
+
+    @Test
+    fun dimmingWaitsOutTheSettleWindow() = runTest {
+        val device = FakeDevice()
+        val kiosk = KioskController(this, device)
+        kiosk.onLightLevel(400f)                           // first sample: immediate 100
+        device.calls.clear()
+        kiosk.onLightLevel(0f)                             // dark: must not touch the screen yet
+        advanceTimeBy(AUTO_SETTLE_MS - 500)
+        runCurrent()
+        assertTrue("dimming must wait out the settle window",
+            device.calls.none { it.startsWith("brightness:") })
+        finishBrightness()
+        assertEquals(10, brightnessValues(device).last())
+        kiosk.cancelTimers()
+    }
+
+    @Test
+    fun aTransientShadowNeverReachesTheBacklight() = runTest {
+        val device = FakeDevice()
+        val kiosk = KioskController(this, device)
+        kiosk.onLightLevel(400f)                           // first sample: immediate 100
+        device.calls.clear()
+        kiosk.onLightLevel(0f)                             // someone walks past the sensor
+        advanceTimeBy(1_000)
+        runCurrent()
+        kiosk.onLightLevel(400f)                           // ...and is gone again
+        finishBrightness()
+        assertTrue("a shadow inside the window must not move the backlight",
+            device.calls.none { it.startsWith("brightness:") })
+        kiosk.cancelTimers()
+    }
+
+    @Test
+    fun brighteningIsNotDelayed() = runTest {
+        val device = FakeDevice()
+        val kiosk = KioskController(this, device)
+        kiosk.onLightLevel(0f)                             // first sample: immediate 10
+        device.calls.clear()
+        kiosk.onLightLevel(400f)                           // lamp switched on
+        advanceTimeBy(RAMP_STEP_MS)
+        runCurrent()
+        assertTrue("brightening starts at once, no settle", brightnessValues(device).isNotEmpty())
+        kiosk.cancelTimers()
+    }
+
+    @Test
+    fun brightnessRampsInStepsRatherThanJumping() = runTest {
+        val device = FakeDevice()
+        val kiosk = KioskController(this, device)
+        kiosk.onLightLevel(400f)                           // immediate 100
+        device.calls.clear()
+        kiosk.setNightDim(true, 0)                         // night entry: fade 100 -> 0
+        finishBrightness()
+        val values = brightnessValues(device)
+        assertTrue("a fade is many steps, not one jump: got $values", values.size > 10)
+        assertEquals("ends exactly on target", 0, values.last())
+        assertTrue("monotonically decreasing: $values",
+            values.zipWithNext().all { (a, b) -> b <= a })
+        kiosk.cancelTimers()
+    }
+
+    @Test
+    fun explicitBrightnessStillLandsImmediately() = runTest {
+        val device = FakeDevice()
+        val kiosk = KioskController(this, device)
+        kiosk.applySettings(settings("""{"screen_auto_brightness":false}"""))
+        device.calls.clear()
+        kiosk.applySettings(settings("""{"screen_brightness":80}"""))
+        assertTrue("slider drags must not fade", device.calls.contains("brightness:80"))
         kiosk.cancelTimers()
     }
 }

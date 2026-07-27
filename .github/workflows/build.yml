@@ -29,8 +29,42 @@ jobs:
           java-version: '17'
           cache: gradle
 
+      # Without this the APK is signed with a key Gradle generates on the spot -- a
+      # different one on every runner -- so no CI build can install over any other or
+      # over a flashed device. Fork PRs get no secrets and fall back to that generated
+      # key, which still builds and still tests; its output just isn't installable.
+      - name: Decode signing keystore
+        id: keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.HEARTH_KEYSTORE }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "no keystore secret (fork PR?) -- falling back to a generated debug key"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/hearth.jks"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
       - name: Build + unit tests
+        env:
+          HEARTH_KEYSTORE: ${{ steps.keystore.outputs.signed == 'true' && format('{0}/hearth.jks', runner.temp) || '' }}
+          HEARTH_KEYSTORE_PASSWORD: ${{ secrets.HEARTH_KEYSTORE_PASSWORD }}
         run: ./gradlew test assembleDebug --no-daemon --stacktrace
+
+      # The whole point of the keystore is a stable signature; assert it rather than
+      # trusting that the wiring above stayed correct.
+      - name: Verify APK signer
+        if: steps.keystore.outputs.signed == 'true'
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | tail -1)
+          GOT=$("$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/app-debug.apk \
+                | grep -m1 -i "certificate SHA-256" | awk '{print $NF}')
+          echo "signer: $GOT"
+          if [ "$GOT" != "1179d10d7aeb35970cd677e8711c68cb7b450a72dc9fc199aac6a505157f9a53" ]; then
+            echo "::error::APK is not signed with the Hearth keystore -- it cannot update a device in place"
+            exit 1
+          fi
 
       - name: Android Lint
         run: ./gradlew lintDebug --no-daemon --stacktrace

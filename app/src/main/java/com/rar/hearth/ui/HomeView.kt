@@ -97,6 +97,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rar.hearth.config.ClockFormat
+import com.rar.hearth.config.HomeCards
 import com.rar.hearth.ha.ConnState
 import com.rar.hearth.media.ArtBitmaps
 import com.rar.hearth.media.NowPlayingState
@@ -106,6 +107,7 @@ import com.rar.hearth.ui.model.BattFlow
 import com.rar.hearth.ui.model.CalendarEvent
 import com.rar.hearth.ui.model.ClaudeUsageCard
 import com.rar.hearth.ui.model.EvCard
+import com.rar.hearth.ui.model.HomeCardKind
 import com.rar.hearth.ui.model.NotificationItem
 import com.rar.hearth.ui.model.QuickButton
 import com.rar.hearth.ui.model.QuickButtonIcon
@@ -122,6 +124,7 @@ import com.rar.hearth.ui.model.homeOverlayCaps
 import com.rar.hearth.ui.model.usageCardBottomDp
 import com.rar.hearth.ui.model.miniPlayerVisible
 import com.rar.hearth.ui.model.nextEventCard
+import com.rar.hearth.ui.model.orderedHomeCards
 import com.rar.hearth.ui.model.pageCardCount
 import com.rar.hearth.ui.model.solarFlowCard
 import com.rar.hearth.ui.model.solarStatsCompact
@@ -199,6 +202,9 @@ fun HomeView(
     solarGraph: SolarFlowGraph? = null,
     quickButtons: List<QuickButton> = emptyList(),
     onQuickButton: (QuickButton) -> Unit = {},
+    // User-controlled order and visibility for the right-hand card column. Defaults reproduce the
+    // pre-feature sequence, so an old config renders identically.
+    homeCards: HomeCards = HomeCards(),
     notifications: List<NotificationItem> = emptyList(),
     onDismiss: (String) -> Unit = {},
     claudeUsage: ClaudeUsageCard? = null,
@@ -410,7 +416,9 @@ fun HomeView(
             // SET changes so a new music session / plugged-in EV resurfaces the top-priority page and
             // the page never rests out of range.
             var cardPage by remember { mutableIntStateOf(0) }
-            LaunchedEffect(showMiniPlayer, evs.size, solar != null, quickButtons.isNotEmpty()) { cardPage = 0 }
+            LaunchedEffect(
+                showMiniPlayer, evs.size, solar != null, quickButtons.isNotEmpty(), homeCards,
+            ) { cardPage = 0 }
             AnimatedVisibility(
                 visible = evs.isNotEmpty() || solar != null || quickButtons.isNotEmpty() || showMiniPlayer,
                 enter = fadeIn(tween(600)),
@@ -432,29 +440,45 @@ fun HomeView(
                         pageStart = page,
                         onMoreTap = { cardPage = it },
                     ) {
-                        // Now-playing card sits above the EV/solar cards when a session is up.
-                        if (showMiniPlayer) {
-                            NowPlayingCardView(
-                                title = nowPlaying.title?.takeIf { it.isNotBlank() } ?: "Now playing",
-                                artist = nowPlaying.artist,
-                                playing = nowPlaying.playing,
-                                cardWidth = cardWidth,
-                                onPlayPause = { if (nowPlaying.playing) onMediaPause() else onMediaPlay() },
-                                onNext = onMediaNext,
-                                onOpenTakeover = onTakeoverRestore,
-                            )
-                        }
-                        evs.forEach { EvCardView(it, cardWidth) }
-                        // The 300dp+ tiers (Show 8 / Tab M9) show the animated flow diagram; the Show 5
-                        // (248dp) fails solarFlowCard() and keeps the compact pill byte-for-byte.
-                        if (solarFlowCard(cardWidth.value.toInt()) && solarGraph != null) {
-                            SolarFlowCardView(solarGraph, cardWidth)
-                        } else if (solar != null) {
-                            SolarCardView(solar, cardWidth)
-                        }
-                        // Quick buttons sit below the EV/solar cards on every tier (opt-in via config).
-                        if (quickButtons.isNotEmpty()) {
-                            QuickButtonsCardView(quickButtons, cardWidth, onQuickButton)
+                        // Order and visibility come from config; whether a card has anything to
+                        // show stays with its own model. Enabling a card gates it, never forces it.
+                        orderedHomeCards(homeCards).forEach { kind ->
+                            when (kind) {
+                                HomeCardKind.NOW_PLAYING ->
+                                    if (showMiniPlayer) {
+                                        NowPlayingCardView(
+                                            title = nowPlaying.title?.takeIf { it.isNotBlank() }
+                                                ?: "Now playing",
+                                            artist = nowPlaying.artist,
+                                            playing = nowPlaying.playing,
+                                            cardWidth = cardWidth,
+                                            onPlayPause = {
+                                                if (nowPlaying.playing) onMediaPause() else onMediaPlay()
+                                            },
+                                            onNext = onMediaNext,
+                                            onOpenTakeover = onTakeoverRestore,
+                                        )
+                                    }
+                                // Match on the CONFIG SLOT, not the list position: evCards()
+                                // compacts, so evs[0] can be the second car.
+                                HomeCardKind.EV1 ->
+                                    evs.firstOrNull { it.slot == 0 }?.let { EvCardView(it, cardWidth) }
+                                HomeCardKind.EV2 ->
+                                    evs.firstOrNull { it.slot == 1 }?.let { EvCardView(it, cardWidth) }
+                                // The 300dp+ tiers (Show 8 / Tab M9) show the animated flow diagram;
+                                // the Show 5 (248dp) fails solarFlowCard() and keeps the compact pill
+                                // byte-for-byte.
+                                HomeCardKind.SOLAR ->
+                                    if (solarFlowCard(cardWidth.value.toInt()) && solarGraph != null) {
+                                        SolarFlowCardView(solarGraph, cardWidth)
+                                    } else if (solar != null) {
+                                        SolarCardView(solar, cardWidth)
+                                    }
+                                HomeCardKind.QUICK_BUTTONS ->
+                                    if (quickButtons.isNotEmpty()) {
+                                        QuickButtonsCardView(quickButtons, cardWidth, onQuickButton)
+                                    }
+                            }
                         }
                     }
                 }

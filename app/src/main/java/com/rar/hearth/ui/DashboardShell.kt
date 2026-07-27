@@ -309,6 +309,7 @@ fun DashboardShell(
                         solarGraph = solarGraph,
                         quickButtons = quickBtns,
                         onQuickButton = onQuickButton,
+                        homeCards = config.homeCards,
                         notifications = notifications,
                         onDismiss = dismissKey,
                         claudeUsage = usageCard,

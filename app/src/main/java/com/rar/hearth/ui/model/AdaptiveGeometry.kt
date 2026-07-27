@@ -148,8 +148,10 @@ fun agendaDayCount(panelContentWidthDp: Float): Int =
  * How many leading cards (top-priority first, [cardHeights] in px) fit within [maxHeightPx],
  * counting [gapPx] between adjacent cards. If not all fit, room for the "+N more" chip
  * ([overflowChipHeightPx] + one gap) is reserved at the bottom, so the returned count shrinks to
- * leave space for it. Always returns at least 1 when there is a card (the top card is the protected
- * now-playing re-entry -- it shows even if it alone would overflow). Returns 0 for an empty list.
+ * leave space for it. Always returns at least 1 when there is a card: whatever card the user ordered
+ * FIRST is protected and shows even if it alone would overflow. The guarantee follows position, not
+ * identity -- it defaulted to the now-playing re-entry only because that card used to be pinned
+ * to the top. Returns 0 for an empty list.
  * The caller shows the chip iff the returned count is less than cardHeights.size.
  */
 fun visibleCardCount(

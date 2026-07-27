@@ -102,11 +102,18 @@ the version falls back to `0.2.1+nogit`.
 
 ## App architecture (`app/src/main/java/com/rar/hearth/`)
 
-- The Kotlin package is `com.rar.hearth`, but the **`applicationId` stays
-  `com.rar.echodash`** (in `app/build.gradle.kts`) so the app updates in place on
-  the fleet and keeps its `filesDir` auth/config/PIN. Never change `applicationId`;
-  only `namespace` tracks the package. The on-device data path is therefore still
-  `/data/data/com.rar.echodash/`.
+- The Kotlin package and the **`applicationId` are both `com.rar.hearth`**, so the
+  on-device data path is `/data/data/com.rar.hearth/`. Changing `applicationId`
+  again would force an uninstall on every device (Android treats it as a different
+  app), which wipes `filesDir` — the HA tokens, the PIN, and the device name. Don't.
+  - **The Kitchen Echo is the exception:** it still runs the pre-rename build under
+    `com.rar.echodash`, deliberately left alone while its wake-capture run finishes.
+    Anything reaching into that device — `run-as`, `pm`, capture pulls — needs the
+    **old** id until it is migrated.
+- Builds are signed with a stable keystore (`~/.hearth/hearth-release.jks`, or the
+  `HEARTH_KEYSTORE` env vars in CI). Without it Gradle mints a throwaway key per
+  machine and per CI run, and nothing can update anything in place. Builds stay
+  debuggable on purpose — `run-as` is how app-private files come off the devices.
 - `App.kt` — `HearthApp` composable (top-level state, screen routing, splash
   overlay); `MainActivity`, `HearthApplication`, `BootReceiver`. Per-session UI
   state must be hoisted here, **above the shell `Crossfade`** — a `remember {}`

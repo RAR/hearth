@@ -65,25 +65,41 @@ They are recorded because two of them invalidate the obvious design.
 
 ## Decisions
 
-### Sign CI builds with the **existing** debug keystore
+### A proper keystore, accepting a one-time reinstall
 
-CI gets the current local debug keystore (`41b71cc0…`) as a base64 GitHub Actions
-secret and uses it for the debug signing config.
+**Decided by the user, overriding this spec's original recommendation.** Shipped in
+`16f608a`.
 
-Rejected: minting a fresh proper release key. It is better practice in the abstract,
-but Android requires a matching signature to update in place, so a new key means
-**uninstall and reinstall on every device** — losing each one's config and its
-Home Assistant OAuth token, and requiring a re-auth per display. Preserving the
-existing key makes the very first release install cleanly over what is already
-flashed, on all four devices, with no migration.
+A dedicated RSA-4096 keystore (`~/.hearth/hearth-release.jks`, alias `hearth`,
+SHA-256 `1179d10d…`, valid to 2053) signs every build. CI receives it as
+`HEARTH_KEYSTORE` / `HEARTH_KEYSTORE_PASSWORD`; resolution falls back to
+`~/.hearth`, then to Gradle's default debug key so a fresh clone and PR builds
+still work.
 
-Accepted risk, stated plainly: this is a debug keystore with the publicly-known
-Android password, committed to nothing but readable by anyone who can read the
-secret. It is not a secret in the cryptographic sense. The protection that matters
-here is that installing over the app requires either LAN access to a PIN-protected
-config server or physical adb access, and the threat model is a home network. If
-that ever stops being true, the fix is a real release key plus a one-time reinstall
-sweep — not a change to this design.
+The original recommendation was to reuse the existing debug key (`41b71cc0…`) to
+avoid a migration. That was rejected in favour of doing it properly once: a debug
+keystore has a publicly-known password and is not a secret in any real sense, and
+the reinstall was going to be paid anyway once the `applicationId` changed.
+
+It overrides the **debug** signing config rather than adding a release build type,
+because every build must stay debuggable: `run-as` is how wake captures and other
+app-private files come off the devices, and a conventional release build would
+silently remove that.
+
+**Consequence — a one-time migration.** Android requires a matching signature to
+update in place, so nothing signed with the new key can update the currently
+flashed apps. Combined with the `applicationId` change below, every device needs an
+uninstall and reinstall. See "Migration" below.
+
+### `applicationId` becomes `com.rar.hearth`
+
+**Decided by the user.** The Kotlin package was renamed to `com.rar.hearth` on
+2026-07-20 while the `applicationId` deliberately stayed `com.rar.echodash` to keep
+the fleet updating in place. The signing change forces a reinstall regardless, so
+the rename costs nothing extra and is taken now.
+
+The Kitchen Echo keeps the old id until its wake-capture run finishes — anything
+reaching into that device needs `com.rar.echodash` until it is migrated.
 
 ### Publish on a tag, not on every push
 
@@ -177,7 +193,7 @@ downloads to app-private storage, then hands the file to `PackageInstaller`.
 grant, which is scriptable once per device rather than a UI errand:
 
 ```
-adb shell appops set com.rar.echodash REQUEST_INSTALL_PACKAGES allow
+adb shell appops set com.rar.hearth REQUEST_INSTALL_PACKAGES allow
 ```
 
 ### Device — endpoints
@@ -190,7 +206,7 @@ adb shell appops set com.rar.echodash REQUEST_INSTALL_PACKAGES allow
 
 `verifying` is a real step, not a spinner: before invoking the installer the device
 reads the staged file with `PackageManager.getPackageArchiveInfo` and refuses it
-unless the package name is `com.rar.echodash` and its `versionCode` satisfies
+unless the package name is `com.rar.hearth` and its `versionCode` satisfies
 `updateAvailable` against the running build. This catches a truncated download, a
 mis-attached asset, and a tag pointing at the wrong artifact — all of which would
 otherwise reach the user as an opaque Android install failure.
@@ -274,8 +290,8 @@ return code checked, plus `node --check app.js` for the JS.
 The end-to-end path cannot be proven by tests — it needs one real release:
 
 1. Tag `v0.2.<n>`, confirm CI publishes a release with the APK attached.
-2. Confirm the published APK's signer is `41b71cc0…` — the same key the devices already
-   carry. **If this fails, nothing else in the flow can work.**
+2. Confirm the published APK's signer is `1179d10d…` — the same key the migrated
+   devices carry. **If this fails, nothing else in the flow can work.**
 3. On crown, confirm the page shows both versions and enables the button.
 4. Press it; confirm the download progresses and the install dialog appears on the
    device; confirm the app relaunches on the new version and its config and HA token
@@ -284,6 +300,39 @@ The end-to-end path cannot be proven by tests — it needs one real release:
 
 Do **not** exercise this on the Kitchen Echo (10.75.1.98) while its wake-capture run is
 in progress.
+
+## Migration (one-time, per device)
+
+The new signing key and the new `applicationId` each independently force an
+uninstall. Uninstall wipes `filesDir`, and **the config export does not cover
+everything that lives there.** `/api/config` carries only `DashConfig`; the
+`SettingsStore` items — HA `baseUrl` and OAuth tokens, `configPin`, `deviceName`,
+`notifyToken`, `duckingVolume`, kiosk settings — are separate and are lost.
+
+Captured 2026-07-27 to `~/hearth-backups/2026-07-27/` before any device was touched:
+`<device>-config.json` (the full `DashConfig`) and `<device>-status.json`, which
+carries `deviceName`, `pin`, `notifyToken`, and `haUrl`. Everything except the OAuth
+tokens is therefore recoverable.
+
+Per device: uninstall the old id → install the new build → complete HA OAuth by hand
+→ `PUT /api/name`, `PUT /api/pin`, `PUT /api/config` from the backup → re-assert the
+kiosk setup (launcher/home is bound to the package name, so `set-home` must be
+re-pointed at `com.rar.hearth`).
+
+| Device | Name | Migrate |
+|---|---|---|
+| crown (10.75.1.139) | Andrew's Desk | yes |
+| freshy (10.75.0.13) | Master Bathroom | yes |
+| Shelly (10.75.0.123) | Lounge | yes |
+| M9 | — | when adb-reachable |
+| **Kitchen (10.75.1.98)** | Kitchen | **no — wake-capture run in progress** |
+
+`notifyToken` is regenerated on reinstall. Any HA-side `rest_command` holding the old
+token needs the new one, or notifications to that device fail silently.
+
+`ANDROID_ID` is scoped per signing key on API 26+, so it changes too. It only feeds
+the *default* device name, and every device has a custom name being restored — but a
+device whose name is not restored will come back as `Hearth (<model> <new suffix>)`.
 
 ## Prerequisite, tracked separately
 
@@ -294,7 +343,7 @@ is a one-line `setprop` per device and not part of this change.
 
 ## Global constraints
 
-- `minSdk` 27, `targetSdk` 34, `applicationId` `com.rar.echodash` — all unchanged.
+- `minSdk` 27, `targetSdk` 34, `applicationId` `com.rar.hearth` — the id changed once, with the keystore; see AGENTS.md.
 - **No new app dependencies.** OkHttp is already present; the downloader follows
   `AndroidPhotoDownloader`.
 - Pure `update/` modules take no Compose or Android imports.

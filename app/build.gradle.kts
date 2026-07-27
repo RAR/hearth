@@ -32,7 +32,7 @@ val commitCount = git("rev-list", "--count", "HEAD")?.toIntOrNull() ?: 1
 val shortSha = git("rev-parse", "--short", "HEAD") ?: "nogit"
 val dirty = if (git("status", "--porcelain")?.isNotEmpty() == true) ".dirty" else ""
 
-// Signing. Every build stays DEBUGGABLE on purpose -- `run-as com.rar.echodash` is how
+// Signing. Every build stays DEBUGGABLE on purpose -- `run-as com.rar.hearth` is how
 // wake captures and app-private files come off the devices, and a non-debuggable build
 // would take that away. What the keystore below buys is a *stable* signature: without it
 // Gradle mints a throwaway debug key per machine (and a fresh one on every CI runner), so
@@ -55,7 +55,7 @@ android {
     namespace = "com.rar.hearth"
     compileSdk = 34
     defaultConfig {
-        applicationId = "com.rar.echodash"
+        applicationId = "com.rar.hearth"
         minSdk = 27
         targetSdk = 34
         versionCode = commitCount

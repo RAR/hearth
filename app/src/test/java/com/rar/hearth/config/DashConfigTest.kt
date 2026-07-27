@@ -820,4 +820,104 @@ class DashConfigTest {
         )
         assertEquals(listOf("light.desk", "scene.movie"), cfg.referencedEntityIds())
     }
+
+    @Test
+    fun homeCardDefaultsReproduceTodaysColumnOrder() {
+        // The golden rule: a config with no homeCards block renders exactly as it does today --
+        // now-playing, then EV 1, EV 2, then solar, then quick buttons, with nothing hidden.
+        val cfg = decodeConfig("""{"version":1}""")
+        assertEquals(
+            listOf(1, 2, 3, 4, 5),
+            cfg.homeCards.slots().map { it.order },
+        )
+        assertTrue(cfg.homeCards.slots().all { it.enabled })
+    }
+
+    @Test
+    fun homeCardsRoundTripThroughSerialization() {
+        val cfg = DashConfig().copy(
+            homeCards = HomeCards(
+                nowPlaying = HomeCardConfig(enabled = false, order = 5),
+                ev1 = HomeCardConfig(enabled = true, order = 1),
+                ev2 = HomeCardConfig(enabled = false, order = 2),
+                solar = HomeCardConfig(enabled = true, order = 3),
+                quickButtons = HomeCardConfig(enabled = true, order = 4),
+            ),
+        )
+        val back = decodeConfig(ConfigJson.json.encodeToString(DashConfig.serializer(), cfg))
+        assertEquals(cfg.homeCards, back.homeCards)
+    }
+
+    @Test
+    fun clampedRedensifiesSparseOrdersKeepingTheSequence() {
+        // Hand-edited or partially-saved configs can hold sparse orders. Redensifying to 1..5
+        // keeps the same visual sequence while making later swaps predictable.
+        val cards = HomeCards(
+            nowPlaying = HomeCardConfig(true, 40),
+            ev1 = HomeCardConfig(true, 10),
+            ev2 = HomeCardConfig(true, 30),
+            solar = HomeCardConfig(true, 20),
+            quickButtons = HomeCardConfig(true, 50),
+        ).clamped()
+        assertEquals(4, cards.nowPlaying.order)
+        assertEquals(1, cards.ev1.order)
+        assertEquals(3, cards.ev2.order)
+        assertEquals(2, cards.solar.order)
+        assertEquals(5, cards.quickButtons.order)
+    }
+
+    @Test
+    fun clampedBreaksOrderTiesByDeclarationOrder() {
+        // Every card claiming order 0 must produce the declaration sequence, not an arbitrary one.
+        val cards = HomeCards(
+            nowPlaying = HomeCardConfig(true, 0),
+            ev1 = HomeCardConfig(true, 0),
+            ev2 = HomeCardConfig(true, 0),
+            solar = HomeCardConfig(true, 0),
+            quickButtons = HomeCardConfig(true, 0),
+        ).clamped()
+        assertEquals(listOf(1, 2, 3, 4, 5), cards.slots().map { it.order })
+    }
+
+    @Test
+    fun clampedIsIdempotent() {
+        val once = HomeCards(
+            nowPlaying = HomeCardConfig(true, 40),
+            ev1 = HomeCardConfig(false, 10),
+            ev2 = HomeCardConfig(true, 30),
+            solar = HomeCardConfig(true, 20),
+            quickButtons = HomeCardConfig(true, 50),
+        ).clamped()
+        assertEquals(once, once.clamped())
+    }
+
+    @Test
+    fun clampedPreservesEnabledFlags() {
+        // Reordering must never silently re-enable a card the user turned off.
+        val cards = HomeCards(
+            nowPlaying = HomeCardConfig(false, 3),
+            ev1 = HomeCardConfig(true, 1),
+            ev2 = HomeCardConfig(false, 2),
+            solar = HomeCardConfig(true, 4),
+            quickButtons = HomeCardConfig(false, 5),
+        ).clamped()
+        assertEquals(
+            listOf(false, true, false, true, false),
+            cards.slots().map { it.enabled },
+        )
+    }
+
+    @Test
+    fun dashConfigClampedNormalisesTheHomeCardsBlock() {
+        val cfg = DashConfig().copy(
+            homeCards = HomeCards(
+                nowPlaying = HomeCardConfig(true, 90),
+                ev1 = HomeCardConfig(true, 80),
+                ev2 = HomeCardConfig(true, 70),
+                solar = HomeCardConfig(true, 60),
+                quickButtons = HomeCardConfig(true, 50),
+            ),
+        ).clamped()
+        assertEquals(listOf(5, 4, 3, 2, 1), cfg.homeCards.slots().map { it.order })
+    }
 }

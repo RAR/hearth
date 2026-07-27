@@ -20,6 +20,51 @@ data class Panels(
     val calendar: PanelConfig = PanelConfig(true, 7),
 )
 
+/** One home-screen card's placement: whether it renders, and where in the column it sits. */
+@Serializable
+data class HomeCardConfig(val enabled: Boolean = true, val order: Int = 0)
+
+/**
+ * The right-hand home card column, in user-controlled order.
+ *
+ * Defaults are exactly the sequence the column rendered before this block existed -- now-playing,
+ * EV 1, EV 2, solar, quick buttons, nothing hidden -- so a config saved by an older build
+ * deserializes to an identical layout.
+ *
+ * EV rows are POSITIONAL: `ev1` is `entities.evs[0]`, not a particular car. Swapping which car
+ * occupies which slot leaves the ordering attached to the slot.
+ */
+@Serializable
+data class HomeCards(
+    val nowPlaying: HomeCardConfig = HomeCardConfig(true, 1),
+    val ev1: HomeCardConfig = HomeCardConfig(true, 2),
+    val ev2: HomeCardConfig = HomeCardConfig(true, 3),
+    val solar: HomeCardConfig = HomeCardConfig(true, 4),
+    val quickButtons: HomeCardConfig = HomeCardConfig(true, 5),
+) {
+    /** The five cards in DECLARATION order -- which is also the tie-break for equal `order`s. */
+    fun slots(): List<HomeCardConfig> = listOf(nowPlaying, ev1, ev2, solar, quickButtons)
+
+    /**
+     * Rewrite `order` to a dense 1..5 following the current sort, breaking ties by declaration
+     * order. Idempotent. Keeps hand-edited or half-saved configs from accumulating sparse or
+     * duplicated values, which would make the web UI's swap arrows behave unpredictably.
+     * `enabled` is never touched.
+     */
+    fun clamped(): HomeCards {
+        val ranked = slots().withIndex().sortedWith(compareBy({ it.value.order }, { it.index }))
+        val orders = IntArray(slots().size)
+        ranked.forEachIndexed { rank, iv -> orders[iv.index] = rank + 1 }
+        return HomeCards(
+            nowPlaying = nowPlaying.copy(order = orders[0]),
+            ev1 = ev1.copy(order = orders[1]),
+            ev2 = ev2.copy(order = orders[2]),
+            solar = solar.copy(order = orders[3]),
+            quickButtons = quickButtons.copy(order = orders[4]),
+        )
+    }
+}
+
 @Serializable
 data class SolarConfig(
     val pv: String? = null,
@@ -297,6 +342,7 @@ internal fun isValidSendspinAddress(s: String): Boolean {
 data class DashConfig(
     val version: Int = 1,
     val panels: Panels = Panels(),
+    val homeCards: HomeCards = HomeCards(),
     val entities: Entities = Entities(),
     val home: HomeSettings = HomeSettings(),
     val panelOptions: PanelOptions = PanelOptions(),
@@ -369,6 +415,7 @@ data class DashConfig(
             .take(6)
         return copy(
             version = 1,
+            homeCards = homeCards.clamped(),
             entities = entities.copy(
                 tempSensor = entities.tempSensor?.trim()?.ifBlank { null },
                 weather = entities.weather?.trim()?.ifBlank { null },

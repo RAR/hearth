@@ -196,6 +196,26 @@ grant, which is scriptable once per device rather than a UI errand:
 adb shell appops set com.rar.hearth REQUEST_INSTALL_PACKAGES allow
 ```
 
+### The app must restart itself after being replaced
+
+**Measured 2026-07-27, not assumed.** A CI-built APK was installed over a live crown
+(`0.2.517` → `0.2.518`). The update succeeded in place and kept config, PIN, name, and
+the HA session — but afterwards `pidof com.rar.hearth` was **empty**. Android kills the
+app to replace it and does not start it again. Nothing came back until the app was
+launched manually.
+
+For a wall-mounted display that is the difference between an update and an outage: the
+screen stays dead until somebody walks over and touches it. The updater is therefore
+not finished when the install succeeds.
+
+Fix: handle `ACTION_MY_PACKAGE_REPLACED`, which the system delivers to the app's own
+package after replacement, and start `MainActivity` from it. `BootReceiver` already
+exists and does the equivalent job for reboots, so this is the same pattern with a
+second intent filter rather than new machinery.
+
+This must be verified on a device that is **not** adb-reachable-by-habit, since adb is
+exactly the crutch that hides the problem.
+
 ### Device — endpoints
 
 | Endpoint | Behaviour |
@@ -260,6 +280,7 @@ depends on the other's network reachability.
 | Signature mismatch on install | Android rejects it; surfaced verbatim rather than as a generic failure — this is the symptom of the signing prerequisite regressing, and it must not be mistaken for a network fault. |
 | `REQUEST_INSTALL_PACKAGES` not granted | Install returns immediately; the status line names the `appops` command. |
 | Nobody confirms the on-device dialog | State stays `awaiting_confirmation`; no timeout. The APK stays staged. |
+| Install succeeds | The app is killed and **not** restarted by Android — `ACTION_MY_PACKAGE_REPLACED` must bring it back, or the display stays dark. Verified on crown. |
 | Two update requests at once | Second is rejected while one is in flight. |
 | Disk full | Download fails cleanly; app-private storage, so no partial file is left behind. |
 

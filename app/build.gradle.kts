@@ -32,6 +32,25 @@ val commitCount = git("rev-list", "--count", "HEAD")?.toIntOrNull() ?: 1
 val shortSha = git("rev-parse", "--short", "HEAD") ?: "nogit"
 val dirty = if (git("status", "--porcelain")?.isNotEmpty() == true) ".dirty" else ""
 
+// Signing. Every build stays DEBUGGABLE on purpose -- `run-as com.rar.echodash` is how
+// wake captures and app-private files come off the devices, and a non-debuggable build
+// would take that away. What the keystore below buys is a *stable* signature: without it
+// Gradle mints a throwaway debug key per machine (and a fresh one on every CI runner), so
+// no build could ever install over another. Android requires a matching signature to
+// update in place, which is what makes the in-app updater possible at all.
+//
+// Resolution order, first hit wins:
+//   1. HEARTH_KEYSTORE / HEARTH_KEYSTORE_PASSWORD env vars  (CI, from repo secrets)
+//   2. ~/.hearth/hearth-release.jks + keystore-password.txt (this dev box)
+//   3. nothing -> Gradle's default debug key                (fresh clone, PR builds)
+// Case 3 still builds and still runs; its output simply cannot update a device in place.
+val keystoreFile: File? = (System.getenv("HEARTH_KEYSTORE")?.let { File(it) }
+    ?: File(System.getProperty("user.home"), ".hearth/hearth-release.jks"))
+    .takeIf { it.isFile }
+val keystorePassword: String? = System.getenv("HEARTH_KEYSTORE_PASSWORD")
+    ?: File(System.getProperty("user.home"), ".hearth/keystore-password.txt")
+        .takeIf { it.isFile }?.readText()?.trim()
+
 android {
     namespace = "com.rar.hearth"
     compileSdk = 34
@@ -41,6 +60,18 @@ android {
         targetSdk = 34
         versionCode = commitCount
         versionName = "$baseVersion.$commitCount+$shortSha$dirty"
+    }
+    signingConfigs {
+        // Overrides the default debug key only when the keystore actually resolved;
+        // otherwise the debug build type keeps Gradle's generated one (case 3 above).
+        if (keystoreFile != null && keystorePassword != null) {
+            getByName("debug") {
+                storeFile = keystoreFile
+                storePassword = keystorePassword
+                keyAlias = "hearth"
+                keyPassword = keystorePassword
+            }
+        }
     }
     buildFeatures {
         compose = true

@@ -10,6 +10,7 @@ import kotlin.math.roundToInt
 
 /** One EV's card. Fields are pre-formatted display strings; null = omit that line. */
 data class EvCard(
+    val slot: Int,           // 0-based config slot this card came from; survives list compaction
     val name: String,        // config name, or "EV" when blank
     val charging: Boolean,   // true while actually charging: animates the gauge + shows the charge/eta lines
     val socPct: Int?,        // 0..100 for the gauge + "%" text; null hides the gauge row
@@ -30,14 +31,18 @@ private val CHARGING_TRUTHY = setOf("on", "true", "charging", "c")
  * `plugged` entity is plugged-truthy or the `charging` entity is charging-truthy. Order follows
  * config order; slots that are neither plugged nor charging are skipped. The charge line (power ·
  * energy) and eta text are built only while charging — idle readings are noise.
+ *
+ * The returned list is COMPACTED -- slots that are neither plugged nor charging are skipped -- so
+ * each card carries its `slot` index. Consumers that key off the config slot (the home card
+ * ordering) must use `slot`, never the list position.
  */
 fun evCards(cfgs: List<EvConfig>, entities: Map<String, EntityState>, nowMs: Long): List<EvCard> =
-    cfgs.mapNotNull { cfg ->
+    cfgs.mapIndexedNotNull { slot, cfg ->
         val pluggedState = cfg.plugged?.let { entities[it] }?.state?.trim()?.lowercase(Locale.US)
         val chargingState = cfg.charging?.let { entities[it] }?.state?.trim()?.lowercase(Locale.US)
         val charging = chargingState != null && chargingState in CHARGING_TRUTHY
         val plugged = pluggedState != null && pluggedState in PLUGGED_TRUTHY
-        if (!plugged && !charging) return@mapNotNull null
+        if (!plugged && !charging) return@mapIndexedNotNull null
 
         val socPct = cfg.soc?.let { entities[it] }?.state?.toDoubleOrNull()?.roundToInt()?.coerceIn(0, 100)
         val limitPct = cfg.limit?.let { entities[it] }?.state?.toDoubleOrNull()?.roundToInt()?.coerceIn(0, 100)
@@ -54,6 +59,7 @@ fun evCards(cfgs: List<EvConfig>, entities: Map<String, EntityState>, nowMs: Lon
         }
 
         EvCard(
+            slot = slot,
             name = cfg.name.trim().ifBlank { "EV" },
             charging = charging,
             socPct = socPct,

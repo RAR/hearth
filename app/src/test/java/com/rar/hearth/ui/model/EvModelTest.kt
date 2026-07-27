@@ -265,4 +265,40 @@ class EvModelTest {
         ), bothOn, 0L)
         assertEquals(listOf("A", "B"), two.map { it.name })
     }
+
+    @Test
+    fun cardCarriesItsConfigSlotThroughCompaction() {
+        // Slot 0 is unplugged, slot 1 is charging: the single card returned must still report
+        // slot 1, not the index 0 it happens to occupy in the compacted list.
+        val cards = evCards(
+            listOf(
+                EvConfig(name = "First", charging = "binary_sensor.a"),
+                EvConfig(name = "Second", charging = "binary_sensor.b"),
+            ),
+            mapOf(
+                "binary_sensor.a" to st("binary_sensor.a", "off"),
+                "binary_sensor.b" to st("binary_sensor.b", "on"),
+            ),
+            0L,
+        )
+        assertEquals(1, cards.size)
+        assertEquals("Second", cards[0].name)
+        assertEquals(1, cards[0].slot)
+    }
+
+    @Test
+    fun slotsAreAssignedFromConfigPositionNotOutputPosition() {
+        val cards = evCards(
+            listOf(
+                EvConfig(name = "First", charging = "binary_sensor.a"),
+                EvConfig(name = "Second", charging = "binary_sensor.b"),
+            ),
+            mapOf(
+                "binary_sensor.a" to st("binary_sensor.a", "on"),
+                "binary_sensor.b" to st("binary_sensor.b", "on"),
+            ),
+            0L,
+        )
+        assertEquals(listOf(0, 1), cards.map { it.slot })
+    }
 }

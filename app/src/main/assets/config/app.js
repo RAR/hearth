@@ -20,6 +20,15 @@ const PANEL_LABELS = {
   calendar: "Calendar",
 };
 
+const HOME_CARD_KEYS = ["nowPlaying", "ev1", "ev2", "solar", "quickButtons"];
+const HOME_CARD_LABELS = {
+  nowPlaying: "Now playing",
+  ev1: "EV 1",
+  ev2: "EV 2",
+  solar: "Solar",
+  quickButtons: "Quick buttons",
+};
+
 const TONE_OPTIONS = [
   ["argon", "Argon"],
   ["oxygen", "Oxygen"],
@@ -377,6 +386,7 @@ function render() {
   renderDiag();
   renderPanels();
   renderHome();
+  renderHomeCards();
   renderNight();
   renderClaudeUsage();
   renderSensors();
@@ -619,17 +629,80 @@ function renderPanels() {
 
     row.appendChild(reorderButtons(
       idx !== 0, idx !== ordered.length - 1,
-      () => { swapOrder(ordered, idx, idx - 1); renderPanels(); },
-      () => { swapOrder(ordered, idx, idx + 1); renderPanels(); },
+      () => { swapOrder(config.panels, ordered, idx, idx - 1); renderPanels(); },
+      () => { swapOrder(config.panels, ordered, idx, idx + 1); renderPanels(); },
     ));
     host.appendChild(row);
   });
   host.appendChild(el("div", "muted", "The panel bar auto-hides; swipe in from the right edge to bring it back for 8 s."));
 }
 
-function swapOrder(ordered, i, j) {
-  const a = config.panels[ordered[i]], b = config.panels[ordered[j]];
+// `bag` is the object holding the {enabled, order} entries (config.panels, config.homeCards);
+// `ordered` is its keys already sorted by order.
+function swapOrder(bag, ordered, i, j) {
+  const a = bag[ordered[i]], b = bag[ordered[j]];
   const t = a.order; a.order = b.order; b.order = t;
+}
+
+function renderHomeCards() {
+  const host = document.getElementById("homecards");
+  clear(host);
+  // Defensive default for configs saved before this block existed: the pre-feature order.
+  if (!config.homeCards) {
+    config.homeCards = {
+      nowPlaying: { enabled: true, order: 1 },
+      ev1: { enabled: true, order: 2 },
+      ev2: { enabled: true, order: 3 },
+      solar: { enabled: true, order: 4 },
+      quickButtons: { enabled: true, order: 5 },
+    };
+  }
+  const cards = config.homeCards;
+  HOME_CARD_KEYS.forEach((key, i) => {
+    if (!cards[key]) cards[key] = { enabled: true, order: i + 1 };
+  });
+
+  // EV rows carry the user's own car names when set -- "Rivian R1T" beats "EV 1".
+  const evs = (config.entities && config.entities.evs) || [];
+  const label = (key) => {
+    if (key === "ev1" && evs[0] && evs[0].name) return evs[0].name;
+    if (key === "ev2" && evs[1] && evs[1].name) return evs[1].name;
+    return HOME_CARD_LABELS[key];
+  };
+
+  const ordered = HOME_CARD_KEYS.slice().sort((a, b) => cards[a].order - cards[b].order);
+  let firstEnabledSeen = false;
+  ordered.forEach((key, idx) => {
+    const c = cards[key];
+    const row = el("div", "panel-row" + (c.enabled ? "" : " off"));
+    row.appendChild(el("span", "panel-name", label(key)));
+
+    // The head of the order is guaranteed a slot even when it alone would overflow the column.
+    // It marks position, not presence -- a card with nothing to show still renders nothing.
+    if (c.enabled && !firstEnabledSeen) {
+      firstEnabledSeen = true;
+      row.appendChild(el("span", "chip", "Shown first"));
+    }
+
+    const cb = el("input"); cb.type = "checkbox"; cb.checked = c.enabled;
+    cb.setAttribute("aria-label", label(key) + " enabled");
+    cb.addEventListener("change", () => { c.enabled = cb.checked; renderHomeCards(); });
+    row.appendChild(cb);
+
+    row.appendChild(reorderButtons(
+      idx !== 0, idx !== ordered.length - 1,
+      () => { swapOrder(cards, ordered, idx, idx - 1); renderHomeCards(); },
+      () => { swapOrder(cards, ordered, idx, idx + 1); renderHomeCards(); },
+    ));
+    host.appendChild(row);
+  });
+
+  host.appendChild(el("div", "muted",
+    "These are the cards down the right-hand side of the home screen. A card only appears when it " +
+    "has something to show — a car that’s plugged in, music that’s playing — so turning one on " +
+    "does not force it on screen. Hiding a card keeps its entities, so you can bring it back " +
+    "without setting it up again. On a small screen only the first card or two fit; the rest move " +
+    "behind the “+N more” chip."));
 }
 
 function renderSensors() {

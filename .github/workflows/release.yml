@@ -1,0 +1,85 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish signed APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: versionCode is the commit count (app/build.gradle.kts).
+          # A shallow clone would pin the build to versionCode 1 and the tag check below
+          # would fail for the right reason but the wrong cause.
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Decode signing keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.HEARTH_KEYSTORE }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::HEARTH_KEYSTORE is not set -- a release signed with a generated key can never update a device"
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/hearth.jks"
+
+      - name: Build + unit tests
+        env:
+          HEARTH_KEYSTORE: ${{ runner.temp }}/hearth.jks
+          HEARTH_KEYSTORE_PASSWORD: ${{ secrets.HEARTH_KEYSTORE_PASSWORD }}
+        run: ./gradlew test assembleDebug --no-daemon --stacktrace
+
+      - name: Android Lint
+        run: ./gradlew lintDebug --no-daemon --stacktrace
+
+      - name: Verify APK signer
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | tail -1)
+          GOT=$("$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/app-debug.apk \
+                | grep -m1 -i "certificate SHA-256" | awk '{print $NF}')
+          echo "signer: $GOT"
+          if [ "$GOT" != "1179d10d7aeb35970cd677e8711c68cb7b450a72dc9fc199aac6a505157f9a53" ]; then
+            echo "::error::APK is not signed with the Hearth keystore -- it cannot update a device in place"
+            exit 1
+          fi
+
+      # The web UI reads the versionCode out of the TAG. If the tag disagrees with the APK,
+      # the button would either never light up or offer a build it misidentifies. Fail here
+      # rather than publish a release that can never be installed correctly.
+      - name: Verify the tag matches the built versionCode
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          TAG_CODE="${TAG##*.}"
+          # versionCode IS the commit count -- app/build.gradle.kts derives it with exactly
+          # this command. Do not try to read it back out of Gradle: versionCode lives on the
+          # Android extension, not as a Gradle project property, so `gradlew properties`
+          # does not print it.
+          APK_CODE=$(git rev-list --count HEAD)
+          echo "tag=$TAG tag_code=$TAG_CODE apk_code=$APK_CODE"
+          if [ "$TAG_CODE" != "$APK_CODE" ]; then
+            echo "::error::tag $TAG encodes versionCode $TAG_CODE but the build is $APK_CODE"
+            exit 1
+          fi
+
+      - name: Stage the APK under its release name
+        run: cp app/build/outputs/apk/debug/app-debug.apk "hearth-${GITHUB_REF_NAME}.apk"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: hearth-${{ github.ref_name }}.apk
+          generate_release_notes: true

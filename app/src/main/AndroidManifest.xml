@@ -7,6 +7,14 @@
     <!-- In-app update: staging an APK for PackageInstaller. Also needs a per-device grant:
          adb shell appops set com.rar.hearth REQUEST_INSTALL_PACKAGES allow -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Declared SOLELY to obtain Android 10+'s background-activity-start exemption. This app
+         never draws an overlay. Without this (and its appop grant), PackageReplacedReceiver
+         still runs and the process still starts after an update, but ActivityTaskManager
+         blocks its startActivity() call (process state RECEIVER is not exemptable otherwise)
+         and the dashboard stays dark on the system launcher until someone touches the screen.
+         Also needs a per-device grant:
+         adb shell appops set com.rar.hearth SYSTEM_ALERT_WINDOW allow -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- SendSpin (Music Assistant) mDNS discovery acquires a Wi-Fi multicast lock. -->

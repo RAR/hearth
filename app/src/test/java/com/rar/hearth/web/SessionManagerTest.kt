@@ -94,4 +94,67 @@ class SessionManagerTest {
         val afterLockout = m.login("123456", "123456")
         assertTrue(afterLockout is LoginResult.LockedOut)
     }
+
+    @Test
+    fun defaultConstructorProducesDifferentTokensAcrossInstances() {
+        // The default RNG must be a CSPRNG, not the fixed-seed test path: two independently
+        // constructed managers must not derive the same token for the same PIN. This doesn't
+        // (and can't) test statistical quality, only that we're not on the deterministic seam.
+        val a = SessionManager(clock = { now })
+        val b = SessionManager(clock = { now })
+        val tokenA = (a.login("123456", "123456") as LoginResult.Ok).token
+        val tokenB = (b.login("123456", "123456") as LoginResult.Ok).token
+        assertTrue(tokenA != tokenB)
+    }
+
+    @Test
+    fun perClientLockoutDoesNotAffectOtherClients() {
+        val m = mgr()
+        repeat(5) { m.login("000000", "123456", "1.1.1.1") }
+        val lockedOutA = m.login("123456", "123456", "1.1.1.1")
+        assertTrue(lockedOutA is LoginResult.LockedOut)
+
+        // A different address still gets its own budget.
+        val okB = m.login("123456", "123456", "2.2.2.2")
+        assertTrue(okB is LoginResult.Ok)
+    }
+
+    @Test
+    fun globalBackstopFiresWhenFailuresAreSpreadAcrossManyAddresses() {
+        val m = mgr()
+        // 4 failures per address (below the per-client threshold of 5) from 13 different
+        // addresses = 52 consecutive failures overall, tripping the 50-failure global backstop
+        // well before any single address reaches its own 5-attempt lockout.
+        var result: LoginResult = LoginResult.Invalid
+        outer@ for (i in 0 until 13) {
+            for (j in 0 until 4) {
+                result = m.login("000000", "123456", "10.0.0.$i")
+                if (result is LoginResult.LockedOut) break@outer
+            }
+        }
+        assertTrue(result is LoginResult.LockedOut)
+        assertEquals(60L, (result as LoginResult.LockedOut).retryAfterSeconds)
+
+        // Every address is now locked out, including ones that never individually failed.
+        val untouchedAddress = m.login("123456", "123456", "192.168.0.1")
+        assertTrue(untouchedAddress is LoginResult.LockedOut)
+    }
+
+    @Test
+    fun nullOrBlankAddressIsTreatedAsASingleBucket() {
+        val m = mgr()
+        repeat(4) { m.login("000000", "123456", null) }
+        val fifth = m.login("000000", "123456", "")
+        assertTrue(fifth is LoginResult.LockedOut)
+    }
+
+    @Test
+    fun perClientMapDoesNotGrowWithoutBound() {
+        val m = mgr()
+        // Successful logins from many more distinct addresses than the map's cap: each is
+        // immediately evictable (zero failures, no lockout), so the map must stay bounded rather
+        // than growing forever.
+        repeat(500) { i -> m.login("123456", "123456", "203.0.113.$i") }
+        assertTrue(m.trackedClientCountForTest() <= 256)
+    }
 }

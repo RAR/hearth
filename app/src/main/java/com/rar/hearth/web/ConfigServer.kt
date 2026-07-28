@@ -115,9 +115,9 @@ class ConfigServer(
         val pinInput = runCatching {
             (ConfigJson.json.parseToJsonElement(readBody(session)) as JsonObject)["pin"]?.jsonPrimitive?.contentOrNull
         }.getOrNull() ?: ""
-        return when (val r = sessions.login(pinInput, pin())) {
+        return when (val r = sessions.login(pinInput, pin(), session.remoteIpAddress)) {
             is LoginResult.Ok -> ok("""{"ok":true}""").apply {
-                addHeader("Set-Cookie", "session=${r.token}; Path=/; HttpOnly")
+                addHeader("Set-Cookie", "session=${r.token}; Path=/; HttpOnly; SameSite=Strict")
             }
             LoginResult.Invalid -> error(Response.Status.UNAUTHORIZED, "invalid pin")
             is LoginResult.LockedOut -> json(STATUS_429, buildJsonObject {

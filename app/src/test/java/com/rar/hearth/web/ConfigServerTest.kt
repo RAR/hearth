@@ -114,6 +114,15 @@ class ConfigServerTest {
     }
 
     @Test
+    fun successfulLoginCookieIsHttpOnlyAndSameSiteStrict() {
+        login("123456").use { r ->
+            val setCookie = r.header("Set-Cookie")!!
+            assertTrue(setCookie.contains("HttpOnly"))
+            assertTrue(setCookie.contains("SameSite=Strict"))
+        }
+    }
+
+    @Test
     fun loginGetPutEntitiesRoundTrip() {
         val cookie = login("123456").use { r ->
             assertEquals(200, r.code)

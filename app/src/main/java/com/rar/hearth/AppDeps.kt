@@ -157,6 +157,12 @@ class AppDeps(context: Context) {
      */
     val pinState = MutableStateFlow(configPin())
     val pushStore = com.rar.hearth.notify.PushNotificationStore()
+    val apkUpdater = com.rar.hearth.update.ApkUpdater(
+        context = appContext,
+        http = client,
+        scope = scope,
+        currentVersionCode = BuildConfig.VERSION_CODE,
+    )
     val configServer = ConfigServer(
         store = configStore,
         sessions = sessions,
@@ -178,6 +184,9 @@ class AppDeps(context: Context) {
         lux = { lastLux },
         sendspinStatus = { sendspin.status.value.name },
         appVersion = { BuildConfig.VERSION_NAME },
+        appVersionCode = { BuildConfig.VERSION_CODE },
+        startUpdate = { url -> apkUpdater.start(url) },
+        updateStatus = { apkUpdater.status.value },
         logText = { limit -> fileLog.tail(limit) },
         logSizeBytes = { fileLog.sizeBytes() },
         clearLog = { fileLog.clear() },

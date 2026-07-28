@@ -43,6 +43,11 @@ class ConfigServer(
     // Diagnostics: the rolling on-disk log. Defaults keep tests that don't care
     // about logging free of the wiring.
     private val appVersion: () -> String = { "" },
+    private val appVersionCode: () -> Int = { 0 },
+    /** Returns false when the URL is not allowlisted or an update is already running. */
+    private val startUpdate: (String) -> Boolean = { false },
+    private val updateStatus: () -> com.rar.hearth.update.UpdateStatus =
+        { com.rar.hearth.update.UpdateStatus() },
     private val logText: (Int) -> String = { "" },
     private val logSizeBytes: () -> Long = { 0L },
     private val clearLog: () -> Unit = {},
@@ -81,6 +86,8 @@ class ConfigServer(
                 uri == "/api/config" && method == Method.PUT -> handlePutConfig(session)
                 uri == "/api/entities" && method == Method.GET -> ok(entitiesJson())
                 uri == "/api/status" && method == Method.GET -> handleStatus()
+                uri == "/api/update" && method == Method.GET -> ok(updateStatus().toJson())
+                uri == "/api/update" && method == Method.POST -> handleStartUpdate(session)
                 uri == "/api/disconnect" && method == Method.POST -> handleDisconnect()
                 uri == "/api/name" && method == Method.PUT -> handlePutName(session)
                 uri == "/api/pin" && method == Method.PUT -> handlePutPin(session)
@@ -139,8 +146,23 @@ class ConfigServer(
             put("pin", pin())
             put("sendspin", sendspinStatus())
             put("appVersion", appVersion())   // git-derived build string, same value HA shows as sw_version
+            put("appVersionCode", appVersionCode())   // monotonic; what the web UI compares
             put("logBytes", logSizeBytes())   // drives the config page's "Device log (N KB)" line
         }.toString())
+
+    /**
+     * Session-gated. Starts an update from a release URL. The URL is validated inside the
+     * updater (isAllowedApkUrl) rather than here, so the allowlist has exactly one home.
+     */
+    private fun handleStartUpdate(session: IHTTPSession): Response {
+        val obj = runCatching {
+            ConfigJson.json.parseToJsonElement(readBody(session)) as JsonObject
+        }.getOrNull() ?: return error(Response.Status.BAD_REQUEST, "invalid request")
+        val url = obj["url"]?.jsonPrimitive?.contentOrNull
+            ?: return error(Response.Status.BAD_REQUEST, "missing url")
+        return if (startUpdate(url)) ok("""{"ok":true}""")
+        else error(Response.Status.CONFLICT, "update rejected")
+    }
 
     /** Session-gated (see route()). Clears auth device-side and returns the device to setup. */
     private fun handleDisconnect(): Response {

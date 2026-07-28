@@ -100,14 +100,29 @@ class ConfigServerUpdateTest {
     }
 
     @Test
-    fun postReportsRejectionWithoutPretendingItStarted() {
-        // The updater refuses a disallowed URL or a second concurrent request; the endpoint
-        // must surface that as an error, not a 200 the UI would treat as "started".
-        startResult = false
+    fun postRejectsADisallowedUrlWith400WithoutCallingTheUpdater() {
+        // ConfigServer checks isAllowedApkUrl itself now (defense in depth alongside
+        // ApkUpdater.start()'s own check), so a disallowed URL never reaches the updater and is
+        // told apart from "an update is already running" -- a security rejection, not a
+        // concurrency one.
         val c = cookie()
         post("/api/update", c, """{"url":"https://evil.example/x.apk"}""").use { r ->
+            assertEquals(400, r.code)
+        }
+        assertTrue("updater must not be called for a disallowed url", startCalls.isEmpty())
+    }
+
+    @Test
+    fun postReports409WhenAnUpdateIsAlreadyInFlight() {
+        // An allowlisted URL that the updater itself refuses (busy) is a concurrency rejection,
+        // not a security one -- it must surface as 409, distinct from the disallowed-url 400.
+        startResult = false
+        val c = cookie()
+        val url = "https://github.com/RAR/hearth/releases/download/v0.2.515/hearth.apk"
+        post("/api/update", c, """{"url":"$url"}""").use { r ->
             assertEquals(409, r.code)
         }
+        assertEquals(listOf(url), startCalls)
     }
 
     @Test

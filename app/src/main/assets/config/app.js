@@ -1427,7 +1427,7 @@ function parseTagVersionCode(tag) {
   return m ? parseInt(m[1], 10) : null;
 }
 
-async function checkForUpdate(latestEl, btn, msgEl) {
+async function checkForUpdate(latestEl, btn, msgEl, busyRef) {
   let release;
   try {
     const r = await fetch("https://api.github.com/repos/RAR/hearth/releases/latest");
@@ -1441,6 +1441,11 @@ async function checkForUpdate(latestEl, btn, msgEl) {
   const latestCode = parseTagVersionCode(release.tag_name);
   if (latestCode == null) { latestEl.textContent = "unavailable"; return; }
   latestEl.textContent = release.tag_name;
+
+  // The device already has an update in flight (seeded by seedUpdateState): the poll loop it
+  // resumed owns the button and message from here, so a since-arrived GitHub answer must not
+  // re-enable the button or attach a second startUpdate handler underneath it.
+  if (busyRef && busyRef.value) return;
 
   const currentCode = lastStatus && lastStatus.appVersionCode;
   const dirty = !!(lastStatus && lastStatus.appVersion &&
@@ -1466,11 +1471,42 @@ async function startUpdate(url, btn, msgEl) {
   msgEl.textContent = "starting…";
   const r = await api("POST", "/api/update", { url: url });
   if (!r.ok) {
-    msgEl.textContent = "could not start (" + r.status + ")";
+    if (r.status === 409) {
+      // Someone else's update already owns the slot (another tab, or this one raced a reload) --
+      // it is genuinely in flight, so watch it rather than just reporting the rejection.
+      msgEl.textContent = "an update is already in progress";
+      pollUpdate(btn, msgEl, gen);
+      return;
+    }
+    msgEl.textContent = r.status === 400
+      ? "update rejected: URL not allowed"
+      : "could not start (" + r.status + ")";
     btn.disabled = false;
     return;
   }
   pollUpdate(btn, msgEl, gen);
+}
+
+// Seeds button/message state from the device's own /api/update on page load or reload, so a
+// browser refresh mid-download does not present an enabled button and a blank status line (which
+// a click on would then 409). Sets busyRef.value so a concurrently-resolving checkForUpdate can
+// tell not to override what this seed (or the poll it resumes) is showing.
+async function seedUpdateState(btn, msgEl, gen, busyRef) {
+  try {
+    const r = await api("GET", "/api/update");
+    if (gen !== pollGeneration) return;  // superseded by a re-render before this returned
+    if (!r.ok) return;
+    const s = await r.json();
+    if (s.state === "downloading" || s.state === "verifying" || s.state === "awaiting_confirmation") {
+      busyRef.value = true;
+      btn.disabled = true;
+      pollUpdate(btn, msgEl, gen);
+    } else if (s.state === "failed") {
+      msgEl.textContent = "failed: " + (s.error || "unknown");
+      btn.disabled = false;
+    }
+    // idle: nothing to seed -- checkForUpdate's GitHub comparison governs the button.
+  } catch (e) { /* fail soft: falls back to checkForUpdate's GitHub-only view */ }
 }
 
 async function pollUpdate(btn, msgEl, gen) {
@@ -1490,6 +1526,12 @@ async function pollUpdate(btn, msgEl, gen) {
     msgEl.textContent = "failed: " + (s.error || "unknown");
     btn.disabled = false;
     return;
+  } else if (s.state === "idle") {
+    // Idle is a normal resting state (nothing started yet, or the last attempt already finished
+    // and the receiver reset it) -- not an anomaly worth alarming the user about.
+    msgEl.textContent = "";
+    btn.disabled = false;
+    return;
   } else {
     msgEl.textContent = "unexpected state: " + (s.state || "unknown");
     btn.disabled = false;
@@ -1500,6 +1542,7 @@ async function pollUpdate(btn, msgEl, gen) {
 
 function renderDiag() {
   pollGeneration++;  // cancel any stale polls from a prior render
+  const gen = pollGeneration;
   const host = document.getElementById("diag");
   clear(host);
 
@@ -1524,7 +1567,11 @@ function renderDiag() {
   updateRow.appendChild(updateMsg);
   host.appendChild(updateRow);
 
-  checkForUpdate(latest, updateBtn, updateMsg);
+  // Seeded from the device's own state first (it knows if an update is already running); the
+  // GitHub check is independent and only takes over the button/message when the device is idle.
+  const deviceBusy = { value: false };
+  seedUpdateState(updateBtn, updateMsg, gen, deviceBusy);
+  checkForUpdate(latest, updateBtn, updateMsg, deviceBusy);
 
   const size = el("span", "status info", "…");
   size.id = "diag-log-size";

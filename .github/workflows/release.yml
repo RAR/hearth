@@ -20,6 +20,17 @@ jobs:
           # would fail for the right reason but the wrong cause.
           fetch-depth: 0
 
+      # workflow_dispatch is declared for re-running earlier steps by hand, not for publishing --
+      # the tag check below derives TAG_CODE from GITHUB_REF_NAME, which on a manual dispatch is
+      # a branch name, not a tag, and fails there with a confusing "encodes versionCode" message.
+      # Fail fast and clearly instead.
+      - name: Require a v* tag
+        run: |
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "::error::this workflow must be run from a v* tag (got ref_type=$GITHUB_REF_TYPE, ref=$GITHUB_REF_NAME) -- workflow_dispatch is for re-running steps by hand, not for publishing a release"
+            exit 1
+          fi
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -44,6 +55,9 @@ jobs:
         run: ./gradlew test assembleDebug --no-daemon --stacktrace
 
       - name: Android Lint
+        env:
+          HEARTH_KEYSTORE: ${{ runner.temp }}/hearth.jks
+          HEARTH_KEYSTORE_PASSWORD: ${{ secrets.HEARTH_KEYSTORE_PASSWORD }}
         run: ./gradlew lintDebug --no-daemon --stacktrace
 
       - name: Verify APK signer

@@ -151,8 +151,13 @@ class ConfigServer(
         }.toString())
 
     /**
-     * Session-gated. Starts an update from a release URL. The URL is validated inside the
-     * updater (isAllowedApkUrl) rather than here, so the allowlist has exactly one home.
+     * Session-gated. Starts an update from a release URL.
+     *
+     * `isAllowedApkUrl` is checked here too even though `ApkUpdater.start()` also checks it --
+     * deliberate defense in depth, not a duplicate to be trimmed. Checking it here lets a
+     * disallowed URL (a security rejection) be told apart from "an update is already running"
+     * (a concurrency rejection): the former is a client mistake (400), the latter is a transient
+     * state (409). Both used to come back as 409, indistinguishable in the logs and the UI.
      */
     private fun handleStartUpdate(session: IHTTPSession): Response {
         val obj = runCatching {
@@ -160,8 +165,11 @@ class ConfigServer(
         }.getOrNull() ?: return error(Response.Status.BAD_REQUEST, "invalid request")
         val url = obj["url"]?.jsonPrimitive?.contentOrNull
             ?: return error(Response.Status.BAD_REQUEST, "missing url")
+        if (!com.rar.hearth.update.isAllowedApkUrl(url)) {
+            return error(Response.Status.BAD_REQUEST, "url not allowed")
+        }
         return if (startUpdate(url)) ok("""{"ok":true}""")
-        else error(Response.Status.CONFLICT, "update rejected")
+        else error(Response.Status.CONFLICT, "update already in progress")
     }
 
     /** Session-gated (see route()). Clears auth device-side and returns the device to setup. */

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -81,11 +82,17 @@ class ApkUpdater(
         if (code <= currentVersionCode) {
             apk.delete(); fail("APK is version $code, not newer than $currentVersionCode"); return
         }
-        _status.value = _status.value.copy(
-            stage = UpdateStage.AWAITING_CONFIRMATION,
-            versionName = info.versionName,
-        )
-        runCatching { installViaSession(apk) }.onFailure { fail("install failed: ${it.message}") }
+        // Stay in VERIFYING through the whole staging copy: installViaSession does a full file
+        // copy + fsync + commit(), which is seconds of real work with no dialog yet. Only
+        // InstallStatusReceiver's STATUS_PENDING_USER_ACTION branch -- fired once the system has
+        // actually handed back a confirmation Intent -- is allowed to move this to
+        // AWAITING_CONFIRMATION (see onAwaitingConfirmation()). versionName is set now, while it
+        // is known, so it survives whichever stage the UI observes next.
+        _status.value = _status.value.copy(versionName = info.versionName)
+        runCatching { installViaSession(apk) }.onFailure {
+            if (it is CancellationException) throw it
+            fail("install failed: ${it.message}")
+        }
     }
 
     private suspend fun download(url: String): File? = withContext(Dispatchers.IO) {
@@ -115,7 +122,11 @@ class ApkUpdater(
                     }
                 }
             }
-        }.getOrElse { tmp.delete(); return@withContext null }
+        }.getOrElse {
+            tmp.delete()
+            if (it is CancellationException) throw it
+            return@withContext null
+        }
         if (!tmp.renameTo(out)) { tmp.delete(); return@withContext null }
         out
     }
@@ -186,6 +197,19 @@ class ApkUpdater(
 
         private fun registerPendingInstall(updater: ApkUpdater) {
             pendingInstall = updater
+        }
+
+        /**
+         * Called by [com.rar.hearth.InstallStatusReceiver] the moment STATUS_PENDING_USER_ACTION
+         * comes back from `commit()` -- i.e. exactly when Android has a confirmation Intent ready
+         * to show. This is the ONLY place AWAITING_CONFIRMATION is set: staging (the copy/fsync/
+         * commit inside installViaSession) stays reported as VERIFYING so a failure there surfaces
+         * as FAILED to a UI that is still polling, instead of leaving "confirm on the device's
+         * screen" on screen with nothing to confirm.
+         */
+        fun onAwaitingConfirmation() {
+            val updater = pendingInstall ?: return
+            updater._status.value = updater._status.value.copy(stage = UpdateStage.AWAITING_CONFIRMATION)
         }
 
         /**

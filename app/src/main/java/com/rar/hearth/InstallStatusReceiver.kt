@@ -26,6 +26,9 @@ class InstallStatusReceiver : BroadcastReceiver() {
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
             @Suppress("DEPRECATION")
             val confirm = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT) ?: return
+            // This is the genuine moment a confirmation dialog exists -- tell the state machine
+            // before starting it, not before commit() as ApkUpdater.run() used to.
+            ApkUpdater.onAwaitingConfirmation()
             // We are a background receiver, so the dialog needs its own task.
             context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return

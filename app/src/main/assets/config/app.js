@@ -1418,6 +1418,79 @@ function formatBytes(n) {
   return (n / (1024 * 1024)).toFixed(1) + " MB";
 }
 
+// Tags are exactly v<major>.<minor>.<versionCode> -- the last part is the versionCode.
+// Anything else is "unknown", never 0: a 0 would read as older than everything and
+// wrongly enable the button.
+function parseTagVersionCode(tag) {
+  const m = /^v\d+\.\d+\.(\d+)$/.exec(tag || "");
+  return m ? parseInt(m[1], 10) : null;
+}
+
+async function checkForUpdate(latestEl, btn, msgEl) {
+  let release;
+  try {
+    const r = await fetch("https://api.github.com/repos/RAR/hearth/releases/latest");
+    if (!r.ok) throw new Error("http " + r.status);
+    release = await r.json();
+  } catch (e) {
+    // A display with no internet is a valid configuration, not an error state.
+    latestEl.textContent = "unavailable";
+    return;
+  }
+  const latestCode = parseTagVersionCode(release.tag_name);
+  if (latestCode == null) { latestEl.textContent = "unavailable"; return; }
+  latestEl.textContent = release.tag_name;
+
+  const currentCode = lastStatus && lastStatus.appVersionCode;
+  const dirty = !!(lastStatus && lastStatus.appVersion &&
+                   lastStatus.appVersion.endsWith(".dirty"));
+  if (typeof currentCode !== "number") return;
+
+  // A .dirty build at the release's own code is not that release -- offer it anyway.
+  const available = latestCode > currentCode || (latestCode === currentCode && dirty);
+  const asset = (release.assets || []).find(a => (a.name || "").endsWith(".apk"));
+  if (!available) { btn.textContent = "Up to date"; return; }
+  if (!asset) { msgEl.textContent = "release has no APK attached"; return; }
+
+  btn.disabled = false;
+  btn.addEventListener("click", () => startUpdate(asset.browser_download_url, btn, msgEl));
+}
+
+async function startUpdate(url, btn, msgEl) {
+  btn.disabled = true;
+  msgEl.textContent = "starting…";
+  const r = await api("POST", "/api/update", { url: url });
+  if (!r.ok) {
+    msgEl.textContent = "could not start (" + r.status + ")";
+    btn.disabled = false;
+    return;
+  }
+  pollUpdate(btn, msgEl);
+}
+
+async function pollUpdate(btn, msgEl) {
+  const r = await api("GET", "/api/update");
+  if (!r.ok) { msgEl.textContent = "lost contact with the device"; return; }
+  const s = await r.json();
+  if (s.state === "downloading") {
+    msgEl.textContent = "downloading " + (s.progressPct || 0) + "%";
+  } else if (s.state === "verifying") {
+    msgEl.textContent = "verifying…";
+  } else if (s.state === "awaiting_confirmation") {
+    // The one message that matters: the dialog is on the DEVICE, not in this browser.
+    msgEl.textContent = "Confirm the install on the device's screen.";
+    return;
+  } else if (s.state === "failed") {
+    msgEl.textContent = "failed: " + (s.error || "unknown");
+    btn.disabled = false;
+    return;
+  } else {
+    msgEl.textContent = "";
+    return;
+  }
+  setTimeout(() => pollUpdate(btn, msgEl), 1000);
+}
+
 function renderDiag() {
   const host = document.getElementById("diag");
   clear(host);
@@ -1428,6 +1501,22 @@ function renderDiag() {
   version.setAttribute("aria-label", "App version");
   version.addEventListener("focus", () => version.select());
   host.appendChild(labeledRow("App version", version));
+
+  // Latest release. Asked of GitHub by the BROWSER, not the device: api.github.com is
+  // CORS-clean, so this works even when the display itself has no route to the internet.
+  const latest = el("span", "status info", "checking…");
+  host.appendChild(labeledRow("Latest version", latest));
+
+  const updateRow = el("div", "row");
+  const updateBtn = el("button", "ghost", "Update");
+  updateBtn.type = "button";
+  updateBtn.disabled = true;
+  updateRow.appendChild(updateBtn);
+  const updateMsg = el("span", "status info", "");
+  updateRow.appendChild(updateMsg);
+  host.appendChild(updateRow);
+
+  checkForUpdate(latest, updateBtn, updateMsg);
 
   const size = el("span", "status info", "…");
   size.id = "diag-log-size";

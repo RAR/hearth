@@ -6,6 +6,7 @@ let lastStatus = null;  // most recent /api/status body (carries the live lux re
 let statusPollStarted = false;
 let dlSeq = 0;
 let idSeq = 0;
+let pollGeneration = 0; // generation counter to cancel stale polls on re-render
 function nextId(prefix) { return prefix + "-" + (++idSeq); }
 
 // OAuth callback params captured once at load, before any history.replaceState.
@@ -1444,7 +1445,10 @@ async function checkForUpdate(latestEl, btn, msgEl) {
   const currentCode = lastStatus && lastStatus.appVersionCode;
   const dirty = !!(lastStatus && lastStatus.appVersion &&
                    lastStatus.appVersion.endsWith(".dirty"));
-  if (typeof currentCode !== "number") return;
+  if (typeof currentCode !== "number") {
+    msgEl.textContent = "device version unknown";
+    return;
+  }
 
   // A .dirty build at the release's own code is not that release -- offer it anyway.
   const available = latestCode > currentCode || (latestCode === currentCode && dirty);
@@ -1457,6 +1461,7 @@ async function checkForUpdate(latestEl, btn, msgEl) {
 }
 
 async function startUpdate(url, btn, msgEl) {
+  const gen = pollGeneration;
   btn.disabled = true;
   msgEl.textContent = "starting…";
   const r = await api("POST", "/api/update", { url: url });
@@ -1465,10 +1470,11 @@ async function startUpdate(url, btn, msgEl) {
     btn.disabled = false;
     return;
   }
-  pollUpdate(btn, msgEl);
+  pollUpdate(btn, msgEl, gen);
 }
 
-async function pollUpdate(btn, msgEl) {
+async function pollUpdate(btn, msgEl, gen) {
+  if (gen !== pollGeneration) return;  // this poll was superseded by a re-render
   const r = await api("GET", "/api/update");
   if (!r.ok) { msgEl.textContent = "lost contact with the device"; return; }
   const s = await r.json();
@@ -1485,13 +1491,15 @@ async function pollUpdate(btn, msgEl) {
     btn.disabled = false;
     return;
   } else {
-    msgEl.textContent = "";
+    msgEl.textContent = "unexpected state: " + (s.state || "unknown");
+    btn.disabled = false;
     return;
   }
-  setTimeout(() => pollUpdate(btn, msgEl), 1000);
+  setTimeout(() => pollUpdate(btn, msgEl, gen), 1000);
 }
 
 function renderDiag() {
+  pollGeneration++;  // cancel any stale polls from a prior render
   const host = document.getElementById("diag");
   clear(host);
 

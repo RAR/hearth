@@ -157,4 +157,43 @@ class SessionManagerTest {
         repeat(500) { i -> m.login("123456", "123456", "203.0.113.$i") }
         assertTrue(m.trackedClientCountForTest() <= 256)
     }
+
+    @Test
+    fun slowOneFailurePerAddressSweepDoesNotPoisonTheMapOrFallOpen() {
+        val m = mgr()
+        // The adversarial path: one wrong PIN each from ~500 distinct addresses (more than the
+        // 256-entry cap), paced so the attacker rides out the global backstop's 60s lockout rather
+        // than tripping it into blocking their own sweep. Before the stale-entry fix, every one of
+        // these addresses would land at 1 failure with no active lockout and — because nothing ever
+        // decayed a non-zero failure count — become permanently non-evictable, wedging the map full
+        // of "stuck" entries and forcing every subsequent new address down the untracked / fail-open
+        // path for the rest of the process lifetime.
+        var address = 0
+        while (address < 500) {
+            val result = m.login("000000", "123456", "198.51.100.$address")
+            if (result is LoginResult.LockedOut) {
+                // Global backstop tripped (this is always the global one: a brand-new address's
+                // first-ever attempt can't trip its own 5-attempt per-client lockout). Ride it out
+                // and retry the same address rather than counting it as a distinct one.
+                now += 60_001L
+                continue
+            }
+            address++
+        }
+
+        // The map must still be bounded...
+        assertTrue(m.trackedClientCountForTest() <= 256)
+
+        // ...and, critically, the per-client control must not have fallen open: a brand-new address
+        // still gets tracked and still gets its own 5-attempt budget rather than being silently
+        // judged by the global backstop alone. (A successful login first, to zero out whatever
+        // residual global-failure count the sweep left behind, so this assertion isn't muddied by
+        // an unrelated global trip.)
+        assertTrue(m.login("123456", "123456", "reset-address") is LoginResult.Ok)
+        val fresh = "203.0.113.250"
+        repeat(4) { assertEquals(LoginResult.Invalid, m.login("000000", "123456", fresh)) }
+        val fifth = m.login("000000", "123456", fresh)
+        assertTrue(fifth is LoginResult.LockedOut)
+        assertEquals(60L, (fifth as LoginResult.LockedOut).retryAfterSeconds)
+    }
 }

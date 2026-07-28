@@ -15,6 +15,10 @@ sealed interface LoginResult {
 private class ClientState {
     var consecutiveFailures = 0
     var lockoutUntilMs = 0L
+    // Updated on every attempt from this address (touch), independent of outcome. Used both to
+    // decide staleness (a "consecutive" streak more than a lockout-window old is meaningless) and
+    // to pick an eviction victim by recency instead of insertion order.
+    var lastSeenMs = 0L
 }
 
 /** Address bucket used when a client's remote address is null/blank. */
@@ -25,6 +29,14 @@ private const val MAX_TRACKED_CLIENTS = 256
 
 /** Consecutive failures, summed across all clients, that trip the global backstop lockout. */
 private const val GLOBAL_BACKSTOP_THRESHOLD = 50
+
+/**
+ * A client entry not touched for this long has an irrelevant "consecutive" failure streak — it
+ * becomes evictable even with a non-zero [ClientState.consecutiveFailures], so a low-and-slow
+ * one-failure-per-address sweep can't wedge the map into permanent fail-open. Matches the lockout
+ * window so a client can't be forgotten mid-lockout.
+ */
+private const val CLIENT_STALE_MS = 60_000L
 
 /**
  * PIN check + browser sessions for the config server. Tokens are valid until app restart (held in
@@ -38,8 +50,14 @@ private const val GLOBAL_BACKSTOP_THRESHOLD = 50
  *    intentionally not simplified away — see the security brief for finding 3.
  *
  * The per-client map is bounded (see [MAX_TRACKED_CLIENTS]) so an attacker who churns through
- * addresses cannot grow it without bound: expired, zero-failure entries are evicted opportunistically,
- * and once full, new addresses fall back to being judged by the global backstop alone.
+ * addresses cannot grow it without bound, and — importantly — cannot *poison* it into permanent
+ * fail-open either: a failure streak older than the 60 s lockout window decays (see
+ * [CLIENT_STALE_MS]), so an entry sitting at 1-4 failures with no active lockout becomes evictable
+ * again shortly after the attacker stops touching it. If the map is still full and truly nothing is
+ * evictable (every one of the 256 slots is either actively failing within the last minute or still
+ * locked out), the oldest entry by [ClientState.lastSeenMs] is evicted outright rather than falling
+ * back to "untracked" — failing closed (evict someone) beats silently disabling the per-client
+ * control for all new addresses.
  *
  * Thread-safe: `login` and `isValidSession` are both synchronized on a private lock, so this class
  * can be called concurrently from the NanoHTTPD server's request threads without races on the
@@ -55,7 +73,7 @@ class SessionManager(
 ) {
     private val lock = Any()
     private val tokens = HashSet<String>()
-    private val clients = LinkedHashMap<String, ClientState>()
+    private val clients = HashMap<String, ClientState>()
     private var globalConsecutiveFailures = 0
     private var globalLockoutUntilMs = 0L
 
@@ -69,12 +87,12 @@ class SessionManager(
             }
 
             val client = trackedClient(address, now)
-            if (client != null && now < client.lockoutUntilMs) {
+            if (now < client.lockoutUntilMs) {
                 return@synchronized LoginResult.LockedOut(((client.lockoutUntilMs - now + 999) / 1000))
             }
 
             if (pin == correctPin) {
-                client?.consecutiveFailures = 0
+                client.consecutiveFailures = 0
                 globalConsecutiveFailures = 0
                 val token = newToken()
                 tokens += token
@@ -84,14 +102,10 @@ class SessionManager(
                 if (globalConsecutiveFailures >= GLOBAL_BACKSTOP_THRESHOLD) {
                     globalConsecutiveFailures = 0
                     globalLockoutUntilMs = now + 60_000L
-                    client?.consecutiveFailures = 0
+                    // Leave this client's own consecutiveFailures alone: the global backstop
+                    // firing doesn't erase this address's individual progress toward its own
+                    // 5-attempt lockout.
                     return@synchronized LoginResult.LockedOut(60L)
-                }
-
-                if (client == null) {
-                    // Map is full and this address couldn't be tracked: judged by the global
-                    // backstop only.
-                    return@synchronized LoginResult.Invalid
                 }
 
                 client.consecutiveFailures++
@@ -106,25 +120,37 @@ class SessionManager(
         }
 
     /**
-     * Returns the [ClientState] for [address], creating one if there's room. If the map is at
-     * [MAX_TRACKED_CLIENTS], first tries to evict an expired, zero-failure entry to make room; if
-     * none can be evicted, returns null so the caller falls back to the global backstop only.
+     * Returns the [ClientState] for [address], creating one if there's room, and always touches
+     * [ClientState.lastSeenMs] to `now`. If the map is at [MAX_TRACKED_CLIENTS], first tries to
+     * evict an entry that's either clean (no failures, no active lockout) or merely stale (its
+     * streak is older than [CLIENT_STALE_MS], so it's meaningless even if non-zero). If literally
+     * nothing qualifies — every one of the [MAX_TRACKED_CLIENTS] slots is both fresh and either
+     * failing or locked out — evicts the least-recently-seen entry outright. This always returns a
+     * real, trackable [ClientState]: the per-client control never silently falls open just because
+     * the map is full.
      */
-    private fun trackedClient(address: String, now: Long): ClientState? {
-        clients[address]?.let { return it }
-
-        if (clients.size >= MAX_TRACKED_CLIENTS) {
-            val evictable = clients.entries.firstOrNull { (_, s) ->
-                s.consecutiveFailures == 0 && s.lockoutUntilMs <= now
-            }
-            if (evictable != null) {
-                clients.remove(evictable.key)
-            } else {
-                return null
-            }
+    private fun trackedClient(address: String, now: Long): ClientState {
+        clients[address]?.let {
+            it.lastSeenMs = now
+            return it
         }
 
-        return ClientState().also { clients[address] = it }
+        if (clients.size >= MAX_TRACKED_CLIENTS) {
+            // "Oldest" is by lastSeenMs, not insertion order — a LinkedHashMap's iteration order
+            // never refreshes for entries that keep getting touched, which would misidentify an
+            // actively-attacked address as an eviction candidate just because it was created early.
+            val evictable = clients.entries
+                .filter { (_, s) -> (s.consecutiveFailures == 0 && s.lockoutUntilMs <= now) ||
+                    (now - s.lastSeenMs > CLIENT_STALE_MS) }
+                .minByOrNull { (_, s) -> s.lastSeenMs }
+                ?: clients.entries.minByOrNull { (_, s) -> s.lastSeenMs }
+            // The fallback above cannot be null: clients.size >= MAX_TRACKED_CLIENTS > 0 here, so
+            // there is always at least one entry to evict. Failing closed by evicting the
+            // least-recently-seen client beats returning null and disabling per-client tracking.
+            clients.remove(evictable!!.key)
+        }
+
+        return ClientState().also { it.lastSeenMs = now; clients[address] = it }
     }
 
     fun isValidSession(token: String?): Boolean = synchronized(lock) {

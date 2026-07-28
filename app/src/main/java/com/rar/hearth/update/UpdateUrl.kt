@@ -22,8 +22,11 @@ fun isAllowedApkUrl(url: String): Boolean {
     if (uri.host?.lowercase() != ALLOWED_HOST) return false
     val path = uri.rawPath ?: return false
     if (!path.startsWith(ALLOWED_PATH_PREFIX)) return false
-    // Reject traversal in both raw and percent-decoded form.
-    val decoded = runCatching { java.net.URLDecoder.decode(path, "UTF-8") }.getOrNull() ?: return false
+    // Reject traversal in both raw and percent-decoded form. Use uri.path (RFC-3986 decoded)
+    // instead of URLDecoder (form-encoded), which incorrectly converts + to space.
+    val decoded = uri.path ?: return false
     if (path.contains("..") || decoded.contains("..")) return false
+    // Reject double-encoded inputs: after correct RFC-3986 decode, a surviving % means multiply encoded.
+    if (decoded.contains("%")) return false
     return decoded.endsWith(".apk")
 }

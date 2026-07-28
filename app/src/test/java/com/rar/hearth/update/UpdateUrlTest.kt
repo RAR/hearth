@@ -60,4 +60,19 @@ class UpdateUrlTest {
         assertFalse(isAllowedApkUrl(
             "https://github.com/RAR/hearth/releases/download/v0.2.514/notes.txt"))
     }
+
+    @Test
+    fun rejectsDoubleEncodedTraversal() {
+        // %252e%252e%252f decodes to %2e%2e%2f, which decodes to ../
+        // After URI's RFC-3986 decode, the surviving % marks this as multiply-encoded.
+        assertFalse(isAllowedApkUrl(
+            "https://github.com/RAR/hearth/releases/download/v1/%252e%252e%252fevil.apk"))
+    }
+
+    @Test
+    fun acceptsPathWithLiteralPlusInVersionTag() {
+        // Literal + should not be corrupted to space. This URL is otherwise valid.
+        assertTrue(isAllowedApkUrl(
+            "https://github.com/RAR/hearth/releases/download/v1.0+build/hearth.apk"))
+    }
 }

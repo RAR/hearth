@@ -516,6 +516,30 @@ class SatelliteSessionTest {
     }
 
     @Test
+    fun wakeInsideThePreviousRunsDismissWindowStillRecoversAtTheWatchdog() {
+        // Regression (Kitchen, 2026-07-27 16:03): a wake landing inside the previous run's 3 s
+        // FAILED window left that run's dismissAtMs armed. The stale dismiss blanked the overlay
+        // to HIDDEN while wakeState was STREAMING, so the new run's watchdog took the `else`
+        // branch, disarmed itself, and the detector was never fed again — the device went deaf
+        // until the process restarted (19 h, in the field).
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("ok_ember", nowMs = 1_000)                    // watchdog @ 31_000
+        s.onTick(nowMs = 31_000)                                       // FAILED, dismiss @ 34_000
+        assertEquals(VoiceOverlayPhase.FAILED, s.overlay.phase)
+
+        s.onWakeDetected("ok_ember", nowMs = 33_800)                   // 200 ms before that dismiss
+        assertEquals(VoiceOverlayPhase.LISTENING, s.overlay.phase)
+        s.onTick(nowMs = 34_000)                                       // stale dismiss must not fire
+        assertEquals("stale dismiss blanked the new run", VoiceOverlayPhase.LISTENING, s.overlay.phase)
+
+        val fired = s.onTick(nowMs = 63_800)                           // new watchdog @ 33_800+30_000
+        assertTrue("watchdog did not stop streaming", sends(fired).map { it.type }.contains("streaming-stopped"))
+        assertTrue("watchdog did not re-arm the detector", fired.contains(SatelliteAction.ResetDetector))
+        assertEquals(SatelliteAction.FeedDetector(ByteArray(960) { 5 }), s.onMicChunk(ByteArray(960) { 5 }).first())
+    }
+
+    @Test
     fun watchdogInThinkingReArmedByTranscriptFires() {
         val s = session()
         s.onEvent(event("run-satellite"), nowMs = 0)

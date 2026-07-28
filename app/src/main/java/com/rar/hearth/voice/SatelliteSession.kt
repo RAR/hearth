@@ -286,6 +286,11 @@ class SatelliteSession(
         followUpActive = false
         followUpRound = 0
         followUpDeadlineAtMs = null
+        // Disarm the PREVIOUS run's auto-dismiss. A wake can land inside its window (3 s after a
+        // FAILED flash, 4 s after playback), and a leftover deadline would then fire against THIS
+        // run and blank the overlay to HIDDEN while we stream — which used to strand the watchdog
+        // on its `else` branch and leave the device deaf until restart.
+        dismissAtMs = null
         lastResponseText = ""
         watchdogAtMs = nowMs + WATCHDOG_MS
         val actions = mutableListOf<SatelliteAction>(

@@ -28,6 +28,7 @@ DRY=0
 VERIFY=0
 FORCE=0
 DO_INSTALL=1
+DO_DEBLOAT=1
 DEV=""
 
 # Devices that must not be touched without --force, and why. The Kitchen Echo is
@@ -45,6 +46,7 @@ while [ $# -gt 0 ]; do
     --verify)     VERIFY=1; shift ;;
     --force)      FORCE=1; shift ;;
     --no-install) DO_INSTALL=0; shift ;;
+    --no-debloat) DO_DEBLOAT=0; shift ;;
     -h|--help)    sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*)           die "unknown option: $1" ;;
     *)            DEV="$1"; shift ;;
@@ -180,6 +182,19 @@ run "appop SYSTEM_ALERT_WINDOW (restart itself after an update)" \
     "sh_ appops get $PKG SYSTEM_ALERT_WINDOW" "allow" \
     adb -s "$DEV" shell appops set "$PKG" SYSTEM_ALERT_WINDOW allow || FAILED=1
 
+# The voice satellite is dead without this, and it is a runtime permission, so
+# without granting it here a human has to tap the mic dialog on the device before
+# wake-word detection works at all. Two layers: the permission grant, and the
+# appop that gates it -- a "granted" permission whose appop is denied still
+# returns silence, which looks exactly like broken hardware.
+run "RECORD_AUDIO granted" \
+    "adb -s $DEV shell dumpsys package $PKG 2>/dev/null | grep -c 'android.permission.RECORD_AUDIO: granted=true'" "1" \
+    adb -s "$DEV" shell pm grant "$PKG" android.permission.RECORD_AUDIO || FAILED=1
+
+run "appop RECORD_AUDIO" \
+    "sh_ appops get $PKG RECORD_AUDIO" "allow" \
+    adb -s "$DEV" shell appops set "$PKG" RECORD_AUDIO allow || FAILED=1
+
 # --- 3. kiosk behaviour -------------------------------------------------------
 
 # Set HOME before disabling any stock launcher, so the device is never home-less.
@@ -209,7 +224,71 @@ else
   fi
 fi
 
-# --- 5. per-device quirks -----------------------------------------------------
+# --- 5. display + kiosk behaviour ---------------------------------------------
+#
+# NOTE ON THE NAME COLLISION, because it will otherwise waste someone's afternoon:
+# the `doze_*` secure settings below are AMBIENT DISPLAY (always-on screen, pulse
+# on pick-up / double-tap). They are NOT the same thing as the `deviceidle
+# whitelist` step above, which is Doze battery management. Turning these off stops
+# the screen doing its own thing; the whitelist keeps the app alive. Both are
+# wanted, and neither substitutes for the other.
+
+# 30 minutes. The app manages its own screen state (night mode, timeouts) on top
+# of this; the platform timeout just must not fight it.
+run "screen_off_timeout = 30 min" \
+    "sh_ settings get system screen_off_timeout" "1800000" \
+    adb -s "$DEV" shell settings put system screen_off_timeout 1800000 || FAILED=1
+
+# The dashboard is a dark UI; a light system theme flashes on transitions.
+run "system dark mode" \
+    "sh_ cmd uimode night" "yes" \
+    adb -s "$DEV" shell cmd uimode night yes || FAILED=1
+
+for s in screensaver_enabled screensaver_activate_on_sleep screensaver_activate_on_dock; do
+  run "screensaver off ($s)" \
+      "sh_ settings get secure $s" "0" \
+      adb -s "$DEV" shell settings put secure "$s" 0 || FAILED=1
+done
+
+for s in doze_enabled doze_always_on doze_pulse_on_pick_up doze_pulse_on_double_tap; do
+  run "ambient display off ($s)" \
+      "sh_ settings get secure $s" "0" \
+      adb -s "$DEV" shell settings put secure "$s" 0 || FAILED=1
+done
+
+# No read-back for this one, so it is reported as applied rather than verified.
+# Harmless to repeat; fails loudly if a credential is actually set.
+if [ "$VERIFY" = 1 ]; then
+  note "[?]       lockscreen disabled (no read-back -- cannot verify)"
+elif [ "$DRY" = 1 ]; then
+  note "[would]   lockscreen disabled  ->  locksettings set-disabled true"
+elif adb -s "$DEV" shell locksettings set-disabled true >/dev/null 2>&1; then
+  note "[set]     lockscreen disabled (applied; not verifiable)"
+else
+  note "[FAILED]  lockscreen disabled -- a PIN/pattern may be set on the device"
+  FAILED=1
+fi
+
+# --- 6. debloat ---------------------------------------------------------------
+# Stock apps a wall dashboard has no use for, and which can steal focus. Only
+# packages actually present are touched, so this list is safe across the fleet's
+# very different ROMs (LineageOS on the Echos, Unisoc stock on the Shelly).
+# `pm disable` throws SecurityException for shell; `disable-user` is the one that
+# works. Reversible: `pm enable <pkg>`.
+DEBLOAT="${HEARTH_DEBLOAT:-com.android.contacts org.lineageos.recorder com.android.calculator2 org.lineageos.eleven org.lineageos.etar}"
+
+if [ "$DO_DEBLOAT" = 1 ]; then
+  for pkg in $DEBLOAT; do
+    if [ -z "$(sh_ pm path "$pkg")" ]; then
+      continue   # not on this ROM; nothing to say
+    fi
+    run "disabled $pkg" \
+        "sh_ pm list packages -d | grep -c '^package:$pkg$'" "1" \
+        adb -s "$DEV" shell pm disable-user --user 0 "$pkg" || FAILED=1
+  done
+fi
+
+# --- 7. per-device quirks -----------------------------------------------------
 
 case "$DEVNAME$MODEL" in
   *Pegasus*|*pegasus*|*Shelly*|*shelly*)

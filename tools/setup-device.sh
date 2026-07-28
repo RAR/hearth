@@ -99,7 +99,7 @@ echo "adb uid: $([ "$IS_ROOT" = 1 ] && echo root || echo shell)"
 # grant. Say so up front rather than letting it look like a mystery failure.
 SAW_MIN_CODE=533
 VCODE=$(echo "${VERSION:-}" | sed -n 's/^[0-9]*\.[0-9]*\.\([0-9]*\).*/\1/p')
-if [ -n "$VCODE" ] && [ "$VCODE" -lt "$SAW_MIN_CODE" ] 2>/dev/null; then
+if [ -n "$VCODE" ] && [ "$VCODE" -lt "$SAW_MIN_CODE" ] && [ "${SDK:-0}" -ge 29 ] 2>/dev/null; then
   echo "warn:    installed build ($VERSION) predates the SYSTEM_ALERT_WINDOW declaration"
   echo "         (added in versionCode $SAW_MIN_CODE). That appop cannot be granted until this"
   echo "         device is updated -- install a current APK first, then re-run."
@@ -178,9 +178,16 @@ run "appop REQUEST_INSTALL_PACKAGES (in-app updater can stage an APK)" \
 # Without this the app updates fine but never comes back on screen: Android 10+
 # refuses to let a RECEIVER-state process start an Activity, so the display sits
 # on the launcher until somebody touches it. The app draws no overlays.
-run "appop SYSTEM_ALERT_WINDOW (restart itself after an update)" \
-    "sh_ appops get $PKG SYSTEM_ALERT_WINDOW" "allow" \
-    adb -s "$DEV" shell appops set "$PKG" SYSTEM_ALERT_WINDOW allow || FAILED=1
+# Background-activity-start landed in API 29, so on older devices the receiver's
+# startActivity is simply allowed and this grant is meaningless -- skip it rather
+# than set an op for a restriction that does not exist.
+if [ "${SDK:-0}" -ge 29 ] 2>/dev/null; then
+  run "appop SYSTEM_ALERT_WINDOW (restart itself after an update)" \
+      "sh_ appops get $PKG SYSTEM_ALERT_WINDOW" "allow" \
+      adb -s "$DEV" shell appops set "$PKG" SYSTEM_ALERT_WINDOW allow || FAILED=1
+else
+  note "[n/a]     appop SYSTEM_ALERT_WINDOW -- API $SDK predates background-activity-start limits"
+fi
 
 # The voice satellite is dead without this, and it is a runtime permission, so
 # without granting it here a human has to tap the mic dialog on the device before

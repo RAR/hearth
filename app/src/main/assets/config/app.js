@@ -552,6 +552,15 @@ function renderPin() {
     "This PIN protects the configuration page and is shown on the device screen. Choose 4 to 8 " +
     "digits, or reset to a new random 6-digit PIN. Changes take effect immediately — you stay " +
     "signed in on this browser, but the new PIN is required next time."));
+
+  // Sizing note, deliberately factual rather than nagging: this page can now trigger an app
+  // update, so PIN length matters more than it used to. It is still bounded -- the update path
+  // only accepts a signed Hearth release and needs a tap on the device -- so a short PIN is a
+  // reasonable choice on a home LAN, not a mistake.
+  host.appendChild(el("div", "muted",
+    "Longer is stronger: this page can also install a Hearth update, so a 4-digit PIN is worth " +
+    "reconsidering if your network is shared. An update can only ever be an official signed " +
+    "Hearth release, and still has to be confirmed on the device's own screen."));
 }
 
 async function changePin(input, currentEl, err) {

@@ -54,18 +54,39 @@ fun solarFlowGraph(cfg: SolarConfig, entities: Map<String, EntityState>): SolarF
     val pvW = (pv?.let { powerWatts(it) } ?: 0.0).coerceAtLeast(0.0)
     val chargeW = (battWatts ?: 0.0).let { if (it < 0) -it else 0.0 }
     val dischargeW = (battWatts ?: 0.0).coerceAtLeast(0.0)
+    val loadW = (load?.let { powerWatts(it) } ?: 0.0).coerceAtLeast(0.0)
     val importW = (gridWatts ?: 0.0).coerceAtLeast(0.0)
     val exportW = (gridWatts ?: 0.0).let { if (it < 0) -it else 0.0 }
 
-    val solarToBattery = minOf(pvW, chargeW)
-    val solarToGrid = minOf(pvW - solarToBattery, exportW)
-    val solarToHome = (pvW - solarToBattery - solarToGrid).coerceAtLeast(0.0)
-    val batteryToHome = dischargeW
-    // Capped by importW: the grid can't deliver more than it imports. When disagreeing sensors
-    // report a charge the import can't cover (seen live: charge 7.5 kW vs import 112 W), the
-    // uncapped difference drew a physically impossible heavy grid→battery flow.
-    val gridToBattery = minOf((chargeW - solarToBattery).coerceAtLeast(0.0), importW)
-    val gridToHome = (importW - gridToBattery).coerceAtLeast(0.0)
+    // Greedy source-priority attribution. Each sink is filled in turn from the sources it may
+    // physically draw on, and every source is capped by what it has left -- so a sink can never be
+    // credited with power a source did not produce. Charging and discharging are mutually
+    // exclusive, as are import and export, so at most one of each pair is ever non-zero.
+    //
+    // Sinks are filled battery-charge, then house, then export; within a sink, solar is spent
+    // before the battery, and the grid is the last resort. The battery must be able to reach the
+    // grid: force-discharging to the grid (seen live 2026-07-29) otherwise credited the whole
+    // export to the sun and drew the discharge as if it were all feeding the house.
+    var solarLeft = pvW
+    var battLeft = dischargeW
+    var importLeft = importW
+    fun draw(available: Double, need: Double): Double = minOf(available, need)
+
+    // Battery charge: solar first, then the grid. Capped by importW via importLeft -- the grid
+    // can't deliver more than it imports. When disagreeing sensors report a charge the import
+    // can't cover (seen live: charge 7.5 kW vs import 112 W), the uncapped difference drew a
+    // physically impossible heavy grid→battery flow.
+    val solarToBattery = draw(solarLeft, chargeW).also { solarLeft -= it }
+    val gridToBattery = draw(importLeft, chargeW - solarToBattery).also { importLeft -= it }
+
+    // House load: solar, then the battery, then imported grid power.
+    val solarToHome = draw(solarLeft, loadW).also { solarLeft -= it }
+    val batteryToHome = draw(battLeft, loadW - solarToHome).also { battLeft -= it }
+    val gridToHome = draw(importLeft, loadW - solarToHome - batteryToHome).also { importLeft -= it }
+
+    // Export: whatever solar and the battery have left, solar first.
+    val solarToGrid = draw(solarLeft, exportW).also { solarLeft -= it }
+    val batteryToGrid = draw(battLeft, exportW - solarToGrid).also { battLeft -= it }
 
     val solarP = pv != null
     val homeP = load != null
@@ -78,6 +99,7 @@ fun solarFlowGraph(cfg: SolarConfig, entities: Map<String, EntityState>): SolarF
         edge(FlowNodeId.SOLAR, FlowNodeId.GRID, solarToGrid, solarP, gridP)
         edge(FlowNodeId.SOLAR, FlowNodeId.HOME, solarToHome, solarP, homeP)
         edge(FlowNodeId.BATTERY, FlowNodeId.HOME, batteryToHome, batteryPresent, homeP)
+        edge(FlowNodeId.BATTERY, FlowNodeId.GRID, batteryToGrid, batteryPresent, gridP)
         edge(FlowNodeId.GRID, FlowNodeId.BATTERY, gridToBattery, gridP, batteryPresent)
         edge(FlowNodeId.GRID, FlowNodeId.HOME, gridToHome, gridP, homeP)
     }

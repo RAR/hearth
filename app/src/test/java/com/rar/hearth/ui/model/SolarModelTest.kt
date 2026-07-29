@@ -179,6 +179,53 @@ class SolarModelTest {
     }
 
     @Test
+    fun forceDischargeToGridDerivation() {
+        // Force-discharging the batteries to the grid: pv 1 kW, load 1.5 kW, discharge 9 kW
+        // (batt +9000), export 8.5 kW (grid -8500). Solar covers what it can of the house; the
+        // battery covers the rest and the whole export. Reported live 2026-07-29: the export was
+        // drawn as coming from the sun, and no battery->grid line existed at all.
+        val cfg = SolarConfig(pv = "sensor.pv", load = "sensor.load", grid = "sensor.grid",
+            battPower = "sensor.batt")
+        val g = solarFlowGraph(cfg, mapOf(
+            "sensor.pv" to st("sensor.pv", "1000", "W"),
+            "sensor.load" to st("sensor.load", "1500", "W"),
+            "sensor.grid" to st("sensor.grid", "-8500", "W"),
+            "sensor.batt" to st("sensor.batt", "9000", "W"),
+        ))!!
+        assertEquals(
+            listOf(
+                FlowEdge(FlowNodeId.SOLAR, FlowNodeId.HOME, 1000.0),
+                FlowEdge(FlowNodeId.BATTERY, FlowNodeId.HOME, 500.0),
+                FlowEdge(FlowNodeId.BATTERY, FlowNodeId.GRID, 8500.0),
+            ),
+            g.edges,
+        )
+        assertEquals(BattFlow.DISCHARGING, g.battFlow)
+    }
+
+    @Test
+    fun exportExceedingDischargeSplitsBetweenSolarAndBattery() {
+        // pv 4 kW, load 1 kW, discharge 2 kW, export 5 kW. Solar covers the house, then both
+        // sources feed the export -- solar's 3 kW surplus first, the battery's 2 kW after.
+        val cfg = SolarConfig(pv = "sensor.pv", load = "sensor.load", grid = "sensor.grid",
+            battPower = "sensor.batt")
+        val g = solarFlowGraph(cfg, mapOf(
+            "sensor.pv" to st("sensor.pv", "4000", "W"),
+            "sensor.load" to st("sensor.load", "1000", "W"),
+            "sensor.grid" to st("sensor.grid", "-5000", "W"),
+            "sensor.batt" to st("sensor.batt", "2000", "W"),
+        ))!!
+        assertEquals(
+            listOf(
+                FlowEdge(FlowNodeId.SOLAR, FlowNodeId.GRID, 3000.0),
+                FlowEdge(FlowNodeId.SOLAR, FlowNodeId.HOME, 1000.0),
+                FlowEdge(FlowNodeId.BATTERY, FlowNodeId.GRID, 2000.0),
+            ),
+            g.edges,
+        )
+    }
+
+    @Test
     fun deadbandEdgeThreshold() {
         // pv-only, no batt/grid: S→H = pvW. 49 W absent, 51 W present.
         val cfg = SolarConfig(pv = "sensor.pv", load = "sensor.load")

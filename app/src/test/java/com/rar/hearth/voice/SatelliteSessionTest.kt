@@ -782,6 +782,58 @@ class SatelliteSessionTest {
         assertTrue(s.onOverlayTapped(nowMs = 4_500).isEmpty())
     }
 
+    /**
+     * Regression, wedge of 2026-07-29. Every path that abandons an in-flight run must terminate
+     * HA's audio stream with "audio-stop" BEFORE "streaming-stopped" -- HA discards the latter as
+     * an unexpected event, and its no-speech timeout is audio-clocked, so a run abandoned without
+     * audio-stop blocks on its audio queue for the life of the connection. That orphaned run then
+     * poisons every later session, which is what left the Kitchen deaf for six hours across eight
+     * consecutive wakes. Ordering matters: the terminator must precede the bookkeeping event.
+     */
+    @Test
+    fun abandoningAnInFlightRunAlwaysSendsAudioStopFirst() {
+        fun typesFor(abandon: (SatelliteSession) -> List<SatelliteAction>): List<String> {
+            val s = followUpSession()
+            s.onEvent(event("run-satellite"), nowMs = 0)
+            s.onWakeDetected("alexa", nowMs = 0)
+            driveToResponse(s, "Which room?", nowMs = 1_000)
+            s.onPlaybackFinished(nowMs = 2_000)                        // follow-up mic reopened
+            return sends(abandon(s)).map { it.type }
+        }
+        // The field seed: the 10 s follow-up deadline expiring on silence.
+        val deadline = typesFor { it.onTick(nowMs = 12_000) }
+        assertTrue("deadline must send audio-stop", deadline.contains("audio-stop"))
+        assertTrue(deadline.indexOf("audio-stop") < deadline.indexOf("streaming-stopped"))
+        // Tap-to-cancel and a mid-run error take the same quiet-dismiss path.
+        val tapped = typesFor { it.onOverlayTapped(nowMs = 3_000) }
+        assertTrue("tap must send audio-stop", tapped.contains("audio-stop"))
+        assertTrue(tapped.indexOf("audio-stop") < tapped.indexOf("streaming-stopped"))
+        // Pausing mid-stream orphans a run the same way.
+        val paused = typesFor { it.onEvent(event("pause-satellite"), nowMs = 3_000) }
+        assertTrue("pause must send audio-stop", paused.contains("audio-stop"))
+        assertTrue(paused.indexOf("audio-stop") < paused.indexOf("streaming-stopped"))
+    }
+
+    /** The watchdog abandons a stalled run mid-stream; same terminator requirement. */
+    @Test
+    fun watchdogFailureSendsAudioStopButNotWhenAlreadyReArmed() {
+        val s = followUpSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        s.onWakeDetected("alexa", nowMs = 0)
+        val fired = sends(s.onTick(nowMs = SatelliteSession.WATCHDOG_MS)).map { it.type }
+        assertTrue("watchdog must terminate the stream", fired.contains("audio-stop"))
+        assertTrue(fired.indexOf("audio-stop") < fired.indexOf("streaming-stopped"))
+
+        // A failure once the transcript already arrived (state DETECTING, HA's VAD closed the
+        // stream itself) must NOT send a spurious terminator.
+        val t = followUpSession()
+        t.onEvent(event("run-satellite"), nowMs = 0)
+        t.onWakeDetected("alexa", nowMs = 0)
+        t.onEvent(event("transcript", """{"text":"hello"}"""), nowMs = 1_000)
+        val late = sends(t.onTick(nowMs = 1_000 + SatelliteSession.WATCHDOG_MS)).map { it.type }
+        assertTrue("no stream open, no terminator", !late.contains("audio-stop"))
+    }
+
     @Test
     fun freshWakeResetsFollowUpChain() {
         val s = followUpSession()

@@ -141,12 +141,16 @@ class SatelliteSession(
             followUpActive = false
             followUpDeadlineAtMs = null
             if (localWake) {
+                // Same orphaned-run defect as failActions: pausing mid-stream must terminate HA's
+                // audio stream, not just stop feeding it.
+                val wasStreaming = wakeState == WakeState.STREAMING
                 wakeState = WakeState.PAUSED
-                listOf(
-                    SatelliteAction.Send(WyomingEvent("streaming-stopped")),
-                    SatelliteAction.ResetDetector,
-                    SatelliteAction.StopMic,
-                )
+                buildList {
+                    if (wasStreaming) add(SatelliteAction.Send(audioStopEvent()))
+                    add(SatelliteAction.Send(WyomingEvent("streaming-stopped")))
+                    add(SatelliteAction.ResetDetector)
+                    add(SatelliteAction.StopMic)
+                }
             } else {
                 streaming = false
                 listOf(SatelliteAction.StopMic, SatelliteAction.Send(WyomingEvent("streaming-stopped")))
@@ -486,6 +490,8 @@ class SatelliteSession(
         dismissAtMs = null
         wakeState = WakeState.DETECTING
         return listOf(
+            // Terminate HA's audio stream first: this is the seed path for the permanent wedge.
+            SatelliteAction.Send(audioStopEvent()),
             SatelliteAction.Send(WyomingEvent("streaming-stopped")),
             SatelliteAction.ResetDetector,
             overlayAction(VoiceOverlayState()),
@@ -523,8 +529,15 @@ class SatelliteSession(
         dismissAtMs = nowMs + FAILED_MS
         watchdogAtMs = null
         val cleanup = if (localWake) {
+            // Only STREAMING means HA still has an open audio stream to terminate; a THINKING-phase
+            // failure re-arms from DETECTING, where HA's own VAD already closed it.
+            val wasStreaming = wakeState == WakeState.STREAMING
             wakeState = WakeState.DETECTING
-            listOf(SatelliteAction.Send(WyomingEvent("streaming-stopped")), SatelliteAction.ResetDetector)
+            buildList {
+                if (wasStreaming) add(SatelliteAction.Send(audioStopEvent()))
+                add(SatelliteAction.Send(WyomingEvent("streaming-stopped")))
+                add(SatelliteAction.ResetDetector)
+            }
         } else {
             emptyList()
         }
@@ -538,6 +551,20 @@ class SatelliteSession(
 
     private fun textOf(event: WyomingEvent): String =
         (event.data["text"] as? JsonPrimitive)?.contentOrNull ?: ""
+
+    /**
+     * Wyoming stream terminator. This is the ONLY client event HA accepts as the end of an ASR
+     * audio stream — "streaming-stopped" is satellite bookkeeping it logs as an unexpected event
+     * and discards. Abandoning a run without this leaves HA's pipeline blocked on its audio queue
+     * indefinitely: its no-speech timeout is audio-clocked (counted down per consumed chunk), so
+     * once we stop sending, the timeout can never fire. Every path that drops an in-flight run
+     * must send it, or the run is orphaned for the life of the connection (wedge of 2026-07-29,
+     * seeded by the 10 s follow-up deadline; see docs/wedge-evidence.md).
+     */
+    private fun audioStopEvent() = WyomingEvent(
+        "audio-stop",
+        buildJsonObject { put("timestamp", micTimestampMs) },
+    )
 
     private fun audioChunkEvent(pcm: ByteArray, timestampMs: Long) = WyomingEvent(
         "audio-chunk",

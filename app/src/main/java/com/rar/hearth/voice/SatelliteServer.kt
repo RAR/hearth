@@ -77,6 +77,37 @@ class SatelliteServer(
 
     private class Connection(val socket: Socket, val out: OutputStream)
 
+    // Streaming-path twin of the detector heartbeat. The detector's "wake max score=... rms=..."
+    // line only accumulates while DETECTING, so when a session produced no transcript there was no
+    // way to tell whether chunks stopped being sent or were sent as silence -- the central unknown
+    // in the 2026-07-29 wedge. Logged only while chunks actually flow, so it is silent at idle.
+    private var streamWindowStart = 0L
+    private var streamWindowMaxRms = 0L
+    private var streamWindowChunks = 0
+
+    /** Must be called while holding [lock] (dispatch does). */
+    private fun noteStreamedChunk(pcm: ByteArray) {
+        var sumSq = 0L
+        var i = 0
+        while (i + 1 < pcm.size) {
+            val s = (((pcm[i + 1].toInt() shl 8) or (pcm[i].toInt() and 0xFF)).toShort()).toInt()
+            sumSq += s.toLong() * s
+            i += 2
+        }
+        val samples = (pcm.size / 2).coerceAtLeast(1)
+        val rms = kotlin.math.sqrt(sumSq.toDouble() / samples).toLong()
+        if (rms > streamWindowMaxRms) streamWindowMaxRms = rms
+        streamWindowChunks++
+        val now = System.currentTimeMillis()
+        if (streamWindowStart == 0L) streamWindowStart = now
+        if (now - streamWindowStart >= 5_000L) {
+            Log.d(TAG, "stream max rms=$streamWindowMaxRms chunks=$streamWindowChunks (5s)")
+            streamWindowMaxRms = 0
+            streamWindowChunks = 0
+            streamWindowStart = now
+        }
+    }
+
     @Volatile var boundPort: Int = -1
         private set
 
@@ -248,7 +279,9 @@ class SatelliteServer(
         for (a in actions) when (a) {
             is SatelliteAction.Send ->
                 if (conn != null) {
-                    if (a.event.type != "audio-chunk" && a.event.type != "pong") {
+                    if (a.event.type == "audio-chunk") {
+                        noteStreamedChunk(a.event.payload)
+                    } else if (a.event.type != "pong") {
                         Log.d(TAG, "send ${a.event.type} ${a.event.data}")
                     }
                     try { WyomingCodec.write(a.event, conn.out) } catch (e: Exception) { Log.w(TAG, "write failed", e) }

@@ -11,7 +11,10 @@ from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.service import async_extract_referenced_entity_ids
+from homeassistant.helpers.target import (
+    TargetSelection,
+    async_extract_referenced_entity_ids,
+)
 from homeassistant.helpers.typing import ConfigType
 
 from .client import HearthClient
@@ -66,7 +69,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     def _clients_for(call: ServiceCall) -> list[HearthClient]:
         ent_reg = er.async_get(hass)
-        selected = async_extract_referenced_entity_ids(hass, call)
+        selected = async_extract_referenced_entity_ids(hass, TargetSelection(call.data))
         entity_ids = selected.referenced | selected.indirectly_referenced
         entry_ids: set[str] = set()
         for entity_id in entity_ids:

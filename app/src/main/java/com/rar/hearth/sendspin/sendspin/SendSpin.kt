@@ -1157,6 +1157,13 @@ class SendSpin(
                 if (isNormalClosure && !userInitiatedDisconnect.get()) {
                     Log.i(TAG, "Server closed connection normally (code 1000) - session ended")
                 }
+                // No reconnect is coming, so nothing will restart the session: tear the
+                // time-sync loop down here. It is otherwise left running against a dead
+                // transport, bursting sendClientTime() into a closed socket every few
+                // seconds for the life of the process (3x "Cannot send text: not
+                // connected" + "No time sync responses received in burst", forever).
+                // The reconnecting paths already stop it themselves.
+                stopTimeSync()
                 reconnecting.set(false)
                 _connectionState.value = TransportState.Idle
             }
@@ -1190,6 +1197,8 @@ class SendSpin(
                     _connectionState.value = TransportState.Idle
                 }
             } else {
+                // Terminal failure -- same leak as the onClosed terminal branch above.
+                stopTimeSync()
                 reconnecting.set(false)
                 _connectionState.value = TransportState.Failed(classifyFailureReason(throwable = error))
             }

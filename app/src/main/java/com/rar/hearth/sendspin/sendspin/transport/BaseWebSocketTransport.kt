@@ -4,6 +4,7 @@ import com.rar.hearth.sendspin.shared.log.Log
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readBytes
 import io.ktor.websocket.readText
@@ -50,6 +51,26 @@ abstract class BaseWebSocketTransport(
             pingIntervalSeconds: Long = 30,
             connectTimeoutMs: Long = 5000
         ): HttpClient = createWebSocketHttpClient(pingIntervalSeconds, connectTimeoutMs)
+
+        /**
+         * RFC 6455 §7.4.1 1006: "connection was closed abnormally, without a Close
+         * frame being sent". Ktor completes `closeReason` with null in exactly that
+         * case -- a Wi-Fi blip, a server process dying, a half-open TCP socket.
+         */
+        const val CLOSE_CODE_ABNORMAL = 1006
+
+        /**
+         * Resolve the close code for a session that ended without throwing.
+         *
+         * A null [reason] means no Close frame ever arrived, which is NOT a normal
+         * closure -- defaulting it to 1000 made a dropped socket indistinguishable
+         * from a graceful server shutdown, so SendSpin's onClosed gate classified it
+         * as "session ended" and never reconnected. The link then stayed dead for
+         * good while the time-sync loop kept bursting into it. Report 1006 so the
+         * abnormal-closure path (and its reconnect) runs.
+         */
+        fun resolveCloseCode(reason: CloseReason?): Int =
+            reason?.code?.toInt() ?: CLOSE_CODE_ABNORMAL
     }
 
     private val _state = AtomicReference(TransportState.Disconnected)
@@ -218,9 +239,10 @@ abstract class BaseWebSocketTransport(
 
                     senderJob.cancel()
 
-                    // Session ended normally
+                    // Session ended without throwing -- either a real Close frame or a
+                    // socket that just went away (null reason -> 1006, see resolveCloseCode).
                     val reason = closeReason.await()
-                    val code = reason?.code?.toInt() ?: 1000
+                    val code = resolveCloseCode(reason)
                     val msg = reason?.message ?: ""
                     Log.d(tag, "WebSocket closed: $code $msg")
                     _state.set(TransportState.Closed)

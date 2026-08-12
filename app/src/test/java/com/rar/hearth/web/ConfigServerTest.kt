@@ -137,13 +137,13 @@ class ConfigServerTest {
             }
 
         // PUT config (valid) -> 200 stored, persisted
-        val putBody = """{"version":1,"home":{"photoFolder":"nas","photoCacheCap":9000}}"""
+        val putBody = """{"version":1,"home":{"photoFolder":"nas","photoBufferDepth":9000}}"""
         http.newCall(Request.Builder().url("$base/api/config").header("Cookie", cookie)
             .put(putBody.toRequestBody(json)).build()).execute().use { r ->
                 assertEquals(200, r.code)
                 val text = r.body!!.string()
                 assertTrue(text.contains("\"photoFolder\":\"nas\""))
-                assertTrue(text.contains("\"photoCacheCap\":500")) // clamped
+                assertTrue(text.contains("\"photoBufferDepth\":100")) // clamped
             }
         assertEquals("nas", store.config.value.home.photoFolder)
 
@@ -215,7 +215,7 @@ class ConfigServerTest {
         // corrupt it. Evict the pooled connection so the POST below starts on a fresh socket.
         http.connectionPool.evictAll()
 
-        val putBody = """{"version":1,"home":{"photoFolder":"nas","photoCacheCap":9000}}"""
+        val putBody = """{"version":1,"home":{"photoFolder":"nas","photoBufferDepth":9000}}"""
         http.newCall(Request.Builder().url("$base/api/config")
             .post(putBody.toRequestBody(json)).build()).execute().use { r ->
                 assertTrue(r.code == 401 || r.code == 404)

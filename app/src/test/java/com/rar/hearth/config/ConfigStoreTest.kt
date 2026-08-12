@@ -23,10 +23,10 @@ class ConfigStoreTest {
         val dir = tempDir()
         val store = ConfigStore(dir)
         val stored = store.update(
-            DashConfig(home = HomeSettings(idleReturnSeconds = 5, photoCacheCap = 9000))
+            DashConfig(home = HomeSettings(idleReturnSeconds = 5, photoBufferDepth = 9000))
         )
         assertEquals(15, stored.home.idleReturnSeconds)   // clamped
-        assertEquals(500, stored.home.photoCacheCap)      // clamped
+        assertEquals(100, stored.home.photoBufferDepth)   // clamped
         assertEquals(stored, store.config.value)
         assertEquals(stored, ConfigStore(dir).config.value) // survives reload
     }

@@ -17,6 +17,7 @@ import com.rar.hearth.ha.ConnState
 import com.rar.hearth.ha.EntityHub
 import com.rar.hearth.ha.HaWebSocket
 import com.rar.hearth.photos.AndroidPhotoDownloader
+import com.rar.hearth.photos.PhotoLedger
 import com.rar.hearth.photos.PhotoStore
 import com.rar.hearth.photos.photoCacheDirName
 import com.rar.hearth.photos.photoTarget
@@ -138,7 +139,11 @@ class AppDeps(context: Context) {
         stalePhotoCacheDirs(names, dir.name).forEach { File(appContext.cacheDir, it).deleteRecursively() }
     }
     private val photoDownloader = AndroidPhotoDownloader(ws, client, { settings.baseUrl }, photoCacheDir, screenTarget)
-    val photoStore = PhotoStore(ws, photoDownloader, photoCacheDir, scope, configStore.config)
+    // The seen-ledger lives in filesDir, not cacheDir: the cache dir is subject to Android's
+    // storage-pressure eviction and to the stale-resolution wipe above, and its listing is the
+    // prefetch buffer inventory -- a stray file there would be read as a photo.
+    private val photoLedger = PhotoLedger(File(appContext.filesDir, "photo-seen.txt"))
+    val photoStore = PhotoStore(ws, photoDownloader, photoCacheDir, scope, configStore.config, photoLedger)
 
     val sessions = SessionManager()
     val setupEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)

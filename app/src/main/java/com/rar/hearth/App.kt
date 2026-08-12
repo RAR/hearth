@@ -113,7 +113,7 @@ fun HearthApp(deps: AppDeps) {
                     LaunchedEffect(Unit) { deps.startDashboard() }
                     val entities by deps.entityHub.entities.collectAsStateWithLifecycle()
                     val registry by deps.entityHub.registry.collectAsStateWithLifecycle()
-                    val photos by deps.photoStore.photos.collectAsStateWithLifecycle()
+                    val photo by deps.photoStore.current.collectAsStateWithLifecycle()
                     val config by deps.configStore.config.collectAsStateWithLifecycle()
                     val nowPlayingState by deps.nowPlaying.state.collectAsStateWithLifecycle()
                     val art by deps.artFetcher.art.collectAsStateWithLifecycle()
@@ -308,7 +308,9 @@ fun HearthApp(deps: AppDeps) {
                         entities = entities,
                         registry = registry,
                         connState = connState,
-                        photos = photos,
+                        photo = photo,
+                        onPhotoAdvance = { deps.photoStore.advance() },
+                        onPhotoBack = { deps.photoStore.back() },
                         nowPlaying = nowPlayingState,
                         art = art,
                         takeoverVisible = takeoverVisible,

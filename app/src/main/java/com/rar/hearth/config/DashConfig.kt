@@ -194,7 +194,16 @@ data class HomeSettings(
     val clockFormat: ClockFormat = ClockFormat.AUTO,
     val slideshowEnabled: Boolean = true,
     val photoFolder: String = "echo-frame",
-    val photoCacheCap: Int = 50,
+    /**
+     * How many not-yet-displayed photos to keep prefetched. This is a buffer, not a library: a
+     * photo is deleted shortly after it is shown, so on-disk residency is roughly this plus the
+     * short back-swipe history. Replaces the old photoCacheCap, which sized a rotating cache that
+     * WAS the visible universe and so guaranteed repeats. Old configs carrying photoCacheCap parse
+     * fine and fall back to this default -- ConfigJson sets ignoreUnknownKeys.
+     */
+    val photoBufferDepth: Int = 20,
+    /** How often to re-browse the HA folder for newly added photos. */
+    val photoSyncIntervalMinutes: Int = 360,
     val slideshowSeconds: Int = 300,
 )
 
@@ -466,7 +475,8 @@ data class DashConfig(
             ),
             home = home.copy(
                 idleReturnSeconds = home.idleReturnSeconds.coerceIn(15, 3600),
-                photoCacheCap = home.photoCacheCap.coerceIn(5, 500),
+                photoBufferDepth = home.photoBufferDepth.coerceIn(5, 100),
+                photoSyncIntervalMinutes = home.photoSyncIntervalMinutes.coerceIn(15, 1440),
                 slideshowSeconds = home.slideshowSeconds.coerceIn(10, 3600),
             ),
             panelOptions = panelOptions.copy(

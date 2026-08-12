@@ -192,7 +192,9 @@ private fun PhotoBackdrop(file: File?) {
 /** Home: photo backdrop + 35% scrim + clock/date/weather pill; offline dot + long-press menu. */
 @Composable
 fun HomeView(
-    photos: List<File>,
+    photo: File?,
+    onPhotoAdvance: () -> Unit,
+    onPhotoBack: () -> Unit,
     slideshowSeconds: Int,
     pill: WeatherPill?,
     aqi: AqiPill?,
@@ -252,14 +254,14 @@ fun HomeView(
     var menuOpen by remember { mutableStateOf(false) }
     val now by rememberMinuteTicker()
 
-    val order = remember(photos) { photos.shuffled() }
-    var photoIndex by remember(order) { mutableIntStateOf(0) }
-    // Keying on photoIndex re-arms the countdown, so a manual swipe restarts the timer. Keying on
+    // The cursor lives in PhotoStore, not here: the prefetch buffer changes underneath the
+    // display, and a remember() keyed on a changing list would reset its index on every refill.
+    // Keying on `photo` re-arms the countdown, so a manual swipe restarts the timer. Keying on
     // takeoverVisible pauses advancing while the now-playing takeover is showing and resumes after.
-    LaunchedEffect(order, photoIndex, slideshowSeconds, takeoverVisible) {
-        if (order.size > 1 && !takeoverVisible) {
+    LaunchedEffect(photo, slideshowSeconds, takeoverVisible) {
+        if (photo != null && !takeoverVisible) {
             delay(slideshowSeconds * 1000L)
-            photoIndex += 1
+            onPhotoAdvance()
         }
     }
 
@@ -267,13 +269,13 @@ fun HomeView(
         modifier
             .fillMaxSize()
             .pointerInput(Unit) { detectTapGestures(onLongPress = { menuOpen = true }) }
-            .pointerInput(order) {
+            .pointerInput(photo) {
                 var dx = 0f
                 detectHorizontalDragGestures(
                     onDragStart = { dx = 0f },
                     onDragEnd = {
-                        if (order.size > 1 && abs(dx) > 60.dp.toPx()) {
-                            photoIndex += if (dx < 0) 1 else -1
+                        if (photo != null && abs(dx) > 60.dp.toPx()) {
+                            if (dx < 0) onPhotoAdvance() else onPhotoBack()
                         }
                     },
                 ) { _, dragAmount -> dx += dragAmount }
@@ -309,7 +311,7 @@ fun HomeView(
                 )
             } else {
                 Box(Modifier.fillMaxSize()) {
-                    PhotoBackdrop(order.getOrNull(Math.floorMod(photoIndex, maxOf(order.size, 1))))
+                    PhotoBackdrop(photo)
                     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
                 }
             }

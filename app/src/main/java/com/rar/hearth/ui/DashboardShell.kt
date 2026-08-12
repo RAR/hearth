@@ -87,7 +87,9 @@ fun DashboardShell(
     entities: Map<String, EntityState>,
     registry: RegistryIndex,
     connState: ConnState,
-    photos: List<File>,
+    photo: File?,
+    onPhotoAdvance: () -> Unit,
+    onPhotoBack: () -> Unit,
     nowPlaying: NowPlayingState,
     art: ArtBitmaps?,
     takeoverVisible: Boolean,
@@ -299,7 +301,9 @@ fun DashboardShell(
                         )
                     }
                     HomeView(
-                        photos = if (config.home.slideshowEnabled) photos else emptyList(),
+                        photo = if (config.home.slideshowEnabled) photo else null,
+                        onPhotoAdvance = onPhotoAdvance,
+                        onPhotoBack = onPhotoBack,
                         slideshowSeconds = config.home.slideshowSeconds,
                         pill = pill,
                         aqi = aqi,

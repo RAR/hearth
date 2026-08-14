@@ -296,6 +296,15 @@ class SatelliteServer(
             is SatelliteAction.Timers -> out.onTimers(a.state)
             is SatelliteAction.Earcon -> out.onEarcon(a.kind)
             is SatelliteAction.FeedDetector -> enqueueDetector(a.pcm)
+            SatelliteAction.DropConnection -> {
+                // Closing the socket makes the reader thread's blocking read throw, which unwinds
+                // handle() into its finally: that dispatches onDisconnected and clears `active`.
+                // We are holding `lock` here and that finally also takes it, but on the reader
+                // thread -- it simply waits for this dispatch to return. HA reconnects on its own.
+                Log.w(TAG, "dropping satellite connection: HA silent across " +
+                    "${SatelliteSession.SILENT_ABANDONS_BEFORE_DROP} abandoned runs")
+                conn?.let { runCatching { it.socket.close() } }
+            }
             SatelliteAction.ResetDetector -> {
                 detectorQueue.clear()
                 detectorQueue.offer(RESET_MARKER)

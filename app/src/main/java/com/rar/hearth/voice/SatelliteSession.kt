@@ -40,6 +40,18 @@ sealed interface SatelliteAction {
 
     /** Reset the on-device wake detector back to warm-up (localWake only). */
     data object ResetDetector : SatelliteAction
+
+    /**
+     * Close the satellite connection so HA rebuilds its pipeline handler from scratch.
+     *
+     * Last resort for the permanent wedge: once HA's handler is poisoned (an orphaned run's late
+     * RUN_END clears the flag the next run set), HA silently drops every mic chunk. Its no-speech
+     * timeout is audio-clocked off consumed chunks, so a handler that consumes nothing can never
+     * time out, and no event we send is read either -- `audio-stop` included. Tearing down the TCP
+     * connection is the only thing that has ever cleared it (2026-07-29 app restart, 2026-08-14
+     * `reload_config_entry`); HA reconnects within a few seconds.
+     */
+    data object DropConnection : SatelliteAction
 }
 
 /**
@@ -100,6 +112,14 @@ class SatelliteSession(
     // quietly instead of flashing FAILED (bare "OK Ember" already did what the user wanted).
     private var alarmSilencedThisRun = false
 
+    // Wedge detection. A healthy HA always answers a streaming run: its VAD closes the stream at
+    // 15 s of *audio* (`voice-stopped`), well inside our 30 s wall-clock watchdog. So a run that
+    // streamed and hit the watchdog without HA saying anything at all is the poisoned-handler
+    // signature, not a slow reply. One can be a fluke (a reload landing mid-run); two in a row
+    // cannot -- on 2026-08-14 the Kitchen ran 16 consecutive silent abandons over three hours.
+    private var haSpokeThisRun = false
+    private var silentAbandons = 0
+
     fun onConnected(): List<SatelliteAction> {
         reset()
         return emptyList()
@@ -110,7 +130,19 @@ class SatelliteSession(
         return listOf(SatelliteAction.StopMic, overlayAction(VoiceOverlayState()))
     }
 
-    fun onEvent(event: WyomingEvent, nowMs: Long = 0L): List<SatelliteAction> = when (event.type) {
+    fun onEvent(event: WyomingEvent, nowMs: Long = 0L): List<SatelliteAction> {
+        // Any pipeline-stage event proves HA is still consuming this run's audio, so the handler
+        // is healthy: clear the wedge counter. describe/ping are excluded deliberately -- they are
+        // answered by HA's *config-flow probe* on a separate connection and keep arriving from a
+        // wholly poisoned instance, so counting them would mask the exact fault we are detecting.
+        if (event.type in PIPELINE_PROGRESS) {
+            haSpokeThisRun = true
+            silentAbandons = 0
+        }
+        return handleEvent(event, nowMs)
+    }
+
+    private fun handleEvent(event: WyomingEvent, nowMs: Long = 0L): List<SatelliteAction> = when (event.type) {
         "describe" -> listOf(SatelliteAction.Send(infoEvent()))
         "ping" -> listOf(SatelliteAction.Send(pongEvent((event.data["text"] as? JsonPrimitive)?.contentOrNull)))
         "run-satellite" -> if (overlay.phase == VoiceOverlayPhase.LISTENING || overlay.phase == VoiceOverlayPhase.THINKING) {
@@ -296,6 +328,7 @@ class SatelliteSession(
         // on its `else` branch and leave the device deaf until restart.
         dismissAtMs = null
         lastResponseText = ""
+        haSpokeThisRun = false
         watchdogAtMs = nowMs + WATCHDOG_MS
         val actions = mutableListOf<SatelliteAction>(
             SatelliteAction.Send(detectionEvent(name)),
@@ -537,6 +570,14 @@ class SatelliteSession(
                 if (wasStreaming) add(SatelliteAction.Send(audioStopEvent()))
                 add(SatelliteAction.Send(WyomingEvent("streaming-stopped")))
                 add(SatelliteAction.ResetDetector)
+                // Poisoned-handler escape hatch. `audio-stop` above is the correct fix for a
+                // healthy HA, but a wedged one never reads it, so a device that only ever sends
+                // it stays deaf forever. Drop the connection last, after the cleanup frames have
+                // been queued, so a merely-slow HA still receives a well-formed end-of-stream.
+                if (wasStreaming && !haSpokeThisRun && ++silentAbandons >= SILENT_ABANDONS_BEFORE_DROP) {
+                    silentAbandons = 0
+                    add(SatelliteAction.DropConnection)
+                }
             }
         } else {
             emptyList()
@@ -677,6 +718,19 @@ class SatelliteSession(
         const val FAILED_TEXT = "No response — try again"
         const val MAX_FOLLOW_UP_ROUNDS = 3
         const val FOLLOW_UP_LISTEN_MS = 10_000L
+
+        /** Consecutive silent watchdog abandons that mean HA's handler is poisoned, not slow. */
+        const val SILENT_ABANDONS_BEFORE_DROP = 2
+
+        /**
+         * Events that prove HA is still driving this run's pipeline. `describe`/`ping` are
+         * excluded on purpose: HA's config-flow probe answers those on its own connection even
+         * while the pipeline handler is dead, so they say nothing about the run's health.
+         */
+        val PIPELINE_PROGRESS = setOf(
+            "voice-started", "voice-stopped", "transcript", "error",
+            "synthesize", "audio-start", "audio-chunk", "audio-stop",
+        )
 
         /** Utterances that mean "shut the alarm up" and nothing more, matched against a
          *  normalized transcript (lowercased, punctuation stripped, whitespace collapsed).

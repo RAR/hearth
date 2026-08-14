@@ -940,4 +940,85 @@ class SatelliteSessionTest {
         val a = s.onPlaybackFinished(nowMs = 2_000)
         assertEquals(listOf("played"), sends(a).map { it.type })
     }
+
+    // ---- poisoned-handler escape hatch: drop the connection after N silent abandons ----
+
+    /** Wake, then let the watchdog abandon the run with HA never saying a word. */
+    private fun silentAbandon(s: SatelliteSession, at: Long): List<SatelliteAction> {
+        s.onWakeDetected("ok_ember", nowMs = at)
+        return s.onTick(nowMs = at + SatelliteSession.WATCHDOG_MS)
+    }
+
+    @Test
+    fun oneSilentAbandonDoesNotDropTheConnection() {
+        // A single stalled run can be a reload landing mid-run. Never drop on the first.
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        val first = silentAbandon(s, at = 1_000)
+        assertTrue("dropped on the first abandon", !first.contains(SatelliteAction.DropConnection))
+        assertTrue("must still terminate HA's stream", sends(first).map { it.type }.contains("audio-stop"))
+    }
+
+    @Test
+    fun secondConsecutiveSilentAbandonDropsTheConnection() {
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        silentAbandon(s, at = 1_000)
+        val second = silentAbandon(s, at = 100_000)
+        assertTrue("did not drop after two silent abandons",
+            second.contains(SatelliteAction.DropConnection))
+        // The cleanup frames are still queued, and ahead of the drop, so a merely-slow HA gets a
+        // well-formed end-of-stream before the socket goes away.
+        val types = sends(second).map { it.type }
+        assertTrue("audio-stop missing", types.contains("audio-stop"))
+        assertTrue("streaming-stopped missing", types.contains("streaming-stopped"))
+        assertTrue("drop must come after the cleanup sends",
+            second.indexOf(SatelliteAction.DropConnection) >
+                second.indexOfLast { it is SatelliteAction.Send })
+    }
+
+    @Test
+    fun anyPipelineEventResetsTheSilentAbandonCounter() {
+        // The wedge is "HA said nothing at all". A run HA actually drove is not evidence of it,
+        // even if that run later stalls -- otherwise a slow LLM would cost us the connection.
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        silentAbandon(s, at = 1_000)                                   // strike one
+        s.onWakeDetected("ok_ember", nowMs = 100_000)
+        s.onEvent(event("voice-stopped"), nowMs = 105_000)             // HA spoke -> counter clears
+        val stalled = s.onTick(nowMs = 100_000 + SatelliteSession.WATCHDOG_MS)
+        assertTrue("HA responded, must not drop", !stalled.contains(SatelliteAction.DropConnection))
+        // And the next silent run is only strike one again, not strike two.
+        val next = silentAbandon(s, at = 200_000)
+        assertTrue("counter did not reset", !next.contains(SatelliteAction.DropConnection))
+    }
+
+    @Test
+    fun describeDoesNotCountAsHaSpeaking() {
+        // HA's config-flow probe keeps answering describe on its own connection even when the
+        // pipeline handler is dead -- counting it would mask the exact fault we detect.
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        silentAbandon(s, at = 1_000)
+        s.onWakeDetected("ok_ember", nowMs = 100_000)
+        s.onEvent(event("describe"), nowMs = 105_000)
+        s.onEvent(event("ping"), nowMs = 106_000)
+        val second = s.onTick(nowMs = 100_000 + SatelliteSession.WATCHDOG_MS)
+        assertTrue("describe/ping masked the wedge",
+            second.contains(SatelliteAction.DropConnection))
+    }
+
+    @Test
+    fun thinkingPhaseStallNeverDropsTheConnection() {
+        // A THINKING-phase watchdog means HA answered (transcript arrived) and then stalled in the
+        // LLM. HA's VAD already closed the audio stream, so there is no wedge and nothing to drop.
+        val s = wakeSession()
+        s.onEvent(event("run-satellite"), nowMs = 0)
+        silentAbandon(s, at = 1_000)                                   // strike one
+        s.onWakeDetected("ok_ember", nowMs = 100_000)
+        s.onEvent(event("transcript", """{"text":"turn on the lights"}"""), nowMs = 101_000)
+        val stalled = s.onTick(nowMs = 101_000 + SatelliteSession.WATCHDOG_MS)
+        assertTrue("a slow LLM must never cost the connection",
+            !stalled.contains(SatelliteAction.DropConnection))
+    }
 }

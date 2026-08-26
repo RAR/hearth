@@ -21,6 +21,7 @@ data class TakeoverTimer(
  */
 class TimerTakeoverModel {
     private val renames = HashMap<String, String>()
+    private val defaults = HashMap<String, String>()
     private val dismissedIds = HashSet<String>()
     private var currentIds: List<String> = emptyList()
 
@@ -31,6 +32,7 @@ class TimerTakeoverModel {
     fun update(timers: List<TimerChip>): List<TakeoverTimer> {
         if (timers.isEmpty()) {
             renames.clear()
+            defaults.clear()
             dismissedIds.clear()
             currentIds = emptyList()
             return emptyList()
@@ -38,6 +40,7 @@ class TimerTakeoverModel {
         val ids = timers.map { it.id }
         val idSet = ids.toSet()
         renames.keys.retainAll(idSet)
+        defaults.keys.retainAll(idSet)
         dismissedIds.retainAll(idSet)
         currentIds = ids
         return timers.map { chip ->
@@ -60,8 +63,11 @@ class TimerTakeoverModel {
     val visible: Boolean
         get() = currentIds.any { it !in dismissedIds }
 
+    // The duration fallback is frozen the first time an id is seen: derived fresh from the live
+    // remaining time it renamed the row as it counted down ("5 min timer" -> "4 min timer" -> ...).
     private fun labelFor(chip: TimerChip): String =
-        renames[chip.id] ?: chip.name.trim().ifBlank { defaultTimerLabel(chip.remainingSec) }
+        renames[chip.id]
+            ?: chip.name.trim().ifBlank { defaults.getOrPut(chip.id) { defaultTimerLabel(chip.remainingSec) } }
 }
 
 /** Human fallback name for an unnamed timer, from its remaining time (e.g. 600 -> "10 min timer"). */

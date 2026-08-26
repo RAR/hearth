@@ -32,6 +32,17 @@ class TimerTakeoverModelTest {
         assertEquals("10 min timer", m.update(listOf(chip("a", remainingSec = 600))).single().label)
     }
 
+    // 2b. the duration fallback is frozen at first sight -- it must not follow the countdown.
+    @Test
+    fun fallbackLabelDoesNotFollowCountdown() {
+        val m = TimerTakeoverModel()
+        assertEquals("5 min timer", m.update(listOf(chip("a", remainingSec = 300))).single().label)
+        assertEquals("5 min timer", m.update(listOf(chip("a", remainingSec = 240))).single().label)
+        assertEquals("5 min timer", m.update(listOf(chip("a", remainingSec = 1))).single().label)
+        m.update(emptyList())  // every timer gone -> frozen labels reset with the rest
+        assertEquals("2 min timer", m.update(listOf(chip("a", remainingSec = 120))).single().label)
+    }
+
     // 3. dismiss hides; same timers stay hidden; a NEW id re-shows (old ids stay marked).
     @Test
     fun dismissHidesUntilNewId() {

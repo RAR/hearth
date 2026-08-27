@@ -522,12 +522,36 @@ class AppDeps(context: Context) {
     }
 
     /**
+     * Sound the timer alarm from satellite state rather than from the composition.
+     *
+     * The dashboard reads timers with collectAsStateWithLifecycle, which stops collecting below
+     * STARTED -- so once the screen had blanked (screen_off_timeout, 30 min on the Echos) a
+     * finishing timer set its alert to nobody, made no sound, and auto-silenced 60 s later. The
+     * user found the timer simply gone, having never rung. Driving the chime here makes it
+     * independent of the display; waking the screen brings the "Timer done" overlay up with it.
+     */
+    private fun startTimerAlarm() {
+        scope.launch {
+            timersUi.map { it.alert != null }.distinctUntilChanged().collect { alerting ->
+                if (alerting) {
+                    mainScope.launch { kiosk.onUserInteraction() }
+                    val voice = configStore.config.value.voice
+                    timerChime.start(voice.timerTone, voice.timerVolume)
+                } else {
+                    timerChime.stop()
+                }
+            }
+        }
+    }
+
+    /**
      * Reactively (re)run the voice satellite. Restarts on any change to voice.enabled,
      * voice.wakeWord, or voice.wakeThreshold: it rebuilds the TFLite graphs + WakeDetector and
      * starts the satellite in local-wake mode. If the models fail to load, it logs one warning
      * and falls back to localWake=false (HA-side wake, the original always-streaming behavior).
      */
     fun startVoice() {
+        startTimerAlarm()
         scope.launch {
             val voiceSettings = configStore.config
                 .map {

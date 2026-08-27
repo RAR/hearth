@@ -482,24 +482,21 @@ fun HearthApp(deps: AppDeps) {
                             idleTimer.onInteraction()
                         }
                     }
-                    // Timer-finished: hold the screen awake + chime for the alert's whole lifetime; stop the
-                    // chime when the alert clears (dismiss or auto-silence). One-shot wake is not enough: a
-                    // screen_timeout shorter than the 60 s alert would blank mid-alert (same fix as the
-                    // doorbell popup's re-arm loop).
+                    // Timer-finished: hold the screen awake for the alert's whole lifetime. One-shot
+                    // wake is not enough: a screen_timeout shorter than the 60 s alert would blank
+                    // mid-alert (same fix as the doorbell popup's re-arm loop). The chime itself is
+                    // NOT driven from here -- this collector stops when the screen blanks, which is
+                    // exactly when the alarm is needed. See AppDeps.startTimerAlarm.
                     val alerting = timersState.alert != null
                     LaunchedEffect(alerting) {
                         if (alerting) {
-                            deps.timerChime.start(config.voice.timerTone, config.voice.timerVolume)
                             while (true) {
                                 deps.kiosk.onUserInteraction()
                                 idleTimer.onInteraction()
                                 delay(5_000)
                             }
-                        } else {
-                            deps.timerChime.stop()
                         }
                     }
-                    DisposableEffect(Unit) { onDispose { deps.timerChime.stop() } }
                     if (timerTakeoverVisible) {
                         TimersTakeoverView(
                             timers = takeoverTimers,

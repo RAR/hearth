@@ -44,38 +44,41 @@ fun RegistryIndex.displayName(entityId: String, state: EntityState?): String =
     registryNames[entityId] ?: state?.attr("friendly_name") ?: entityId
 
 @Serializable
-private data class RegistryFrame(val result: List<RegistryRow>? = null)
+private data class RegistryFrame(val result: RegistryDisplay? = null)
 
 @Serializable
-private data class RegistryRow(
-    @SerialName("entity_id") val entityId: String? = null,
-    val name: String? = null,
-    @SerialName("original_name") val originalName: String? = null,
-)
+private data class RegistryDisplay(val entities: List<RegistryRow> = emptyList())
+
+/** One config/entity_registry/list_for_display row: `ei` entity id, `en` display name. */
+@Serializable
+private data class RegistryRow(val ei: String? = null, val en: String? = null)
 
 private val registryJson = Json { ignoreUnknownKeys = true }
 
 /**
- * Build the index from a raw config/entity_registry/list result frame ([HaClient.requestRaw]),
- * decoding only the three fields used. Null when the frame is malformed or carries no result.
+ * Build the index from a raw config/entity_registry/list_for_display result frame
+ * ([HaClient.requestRaw]). Null when the frame is malformed or carries no result.
  *
- * Typed rather than via a JsonElement tree: a 14k-entity registry is a 10 MB frame, and its tree
- * on an 80 MB Echo Show 5 heap was enough on its own to push the app into a GC-thrash crash.
+ * The display list rather than config/entity_registry/list, and typed rather than a JsonElement
+ * tree: on this 14k-entity install the full list is a 10 MB frame (the display list 1.9 MB), and
+ * parsing the full one as a tree on an 80 MB Echo Show 5 heap was enough on its own to crash the
+ * app. `en` is HA's resolved name (registry name, else original_name) -- the same fallback this
+ * used to compute -- and the display list omits disabled entities, which have no state to show.
  */
 fun parseEntityRegistryFrame(text: String): RegistryIndex? {
-    val rows = runCatching { registryJson.decodeFromString<RegistryFrame>(text) }.getOrNull()?.result
+    val rows = runCatching { registryJson.decodeFromString<RegistryFrame>(text) }.getOrNull()?.result?.entities
         ?: return null
     val names = LinkedHashMap<String, String>()
     val all = ArrayList<RegistryEntity>(rows.size)
     for (row in rows) {
-        val id = row.entityId ?: continue
-        val name = row.name?.takeIf { it.isNotBlank() } ?: row.originalName?.takeIf { it.isNotBlank() }
+        val id = row.ei ?: continue
+        val name = row.en?.takeIf { it.isNotBlank() }
         if (name != null) names[id] = name
         all += RegistryEntity(id = id, name = name, domain = id.substringBefore('.'))
     }
     return RegistryIndex(names, all)
 }
 
-/** Build the index from an already-parsed config/entity_registry/list result array. */
+/** Build the index from an already-parsed config/entity_registry/list_for_display result. */
 fun parseEntityRegistry(result: JsonElement): RegistryIndex =
     parseEntityRegistryFrame(buildJsonObject { put("result", result) }.toString()) ?: RegistryIndex(emptyMap())

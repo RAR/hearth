@@ -14,10 +14,7 @@ class EntityListTest {
     @Test
     fun rendersIdNameDomainAndStateForEveryEntity() {
         val reg = parseEntityRegistry(Json.parseToJsonElement(
-            """[
-              {"entity_id":"light.kitchen","labels":[],"name":"Kitchen","original_name":"Kitchen"},
-              {"entity_id":"climate.hall","labels":[],"name":null,"original_name":null}
-            ]"""
+            """{"entities":[{"ei":"light.kitchen","en":"Kitchen"},{"ei":"climate.hall"}]}"""
         ))
         val states = mapOf(
             "light.kitchen" to EntityState("light.kitchen", "on",

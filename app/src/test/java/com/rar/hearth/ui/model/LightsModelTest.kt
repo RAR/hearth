@@ -13,11 +13,7 @@ class LightsModelTest {
     private fun st(id: String, state: String, a: String = "{}") = EntityState(id, state, attrs(a), 0L)
 
     private val reg = parseEntityRegistry(Json.parseToJsonElement(
-        """[
-          {"entity_id":"light.hall","labels":[],"original_name":"Hall"},
-          {"entity_id":"light.sofa","labels":[],"original_name":"Sofa"},
-          {"entity_id":"switch.fan","labels":[],"original_name":"Fan"}
-        ]"""
+        """{"entities":[{"ei":"light.hall","en":"Hall"},{"ei":"light.sofa","en":"Sofa"},{"ei":"switch.fan","en":"Fan"}]}"""
     ))
 
     @Test

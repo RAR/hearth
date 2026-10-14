@@ -18,7 +18,7 @@ class ClimateModelTest {
     @Test
     fun derivesThermostatFromAttributesWithConfiguredStep() {
         val reg = parseEntityRegistry(Json.parseToJsonElement(
-            """[{"entity_id":"climate.hall","labels":[],"original_name":"Hall"}]"""
+            """{"entities":[{"ei":"climate.hall","en":"Hall"}]}"""
         ))
         val entities = mapOf("climate.hall" to EntityState("climate.hall", "heat",
             attrs("""{"current_temperature":19.5,"temperature":21.0,"min_temp":7.0,"max_temp":30.0,

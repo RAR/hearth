@@ -61,8 +61,7 @@ class EntityHubTest {
     }
 
     private val registryJson =
-        """[{"entity_id":"light.kitchen","labels":[],"name":null,"original_name":"Kitchen"},
-            {"entity_id":"climate.hall","labels":[],"name":null,"original_name":"Hall"}]"""
+        """{"entities":[{"ei":"light.kitchen","en":"Kitchen"},{"ei":"climate.hall","en":"Hall"}]}"""
 
     private fun config(vararg ids: String) =
         MutableStateFlow(DashConfig(entities = Entities(lightGroups = listOf(LightGroup("G", ids.toList())))))
@@ -75,7 +74,7 @@ class EntityHubTest {
         hub.start()
         fake.state.value = ConnState.CONNECTED
         runCurrent()
-        assertEquals("config/entity_registry/list", fake.requests[0].first)
+        assertEquals("config/entity_registry/list_for_display", fake.requests[0].first)
         assertEquals(listOf("light.kitchen"), fake.entityIdsOf(0))   // from config, not registry labels
     }
 
@@ -105,7 +104,7 @@ class EntityHubTest {
         hub.start()
         fake.state.value = ConnState.CONNECTED
         runCurrent()
-        val listsAfterConnect = fake.requests.count { it.first == "config/entity_registry/list" }
+        val listsAfterConnect = fake.requests.count { it.first == "config/entity_registry/list_for_display" }
 
         val regSub = fake.handlers.keys.sorted()[1]
         repeat(50) {
@@ -116,7 +115,7 @@ class EntityHubTest {
         advanceTimeBy(2_001)
         runCurrent()
 
-        assertEquals(listsAfterConnect + 1, fake.requests.count { it.first == "config/entity_registry/list" })
+        assertEquals(listsAfterConnect + 1, fake.requests.count { it.first == "config/entity_registry/list_for_display" })
     }
 
     @Test
@@ -131,7 +130,7 @@ class EntityHubTest {
 
         // a registry_updated event re-lists (refreshing the picker names) but does NOT touch the sub
         fake.results.add(Json.parseToJsonElement(
-            """[{"entity_id":"light.kitchen","labels":[],"name":"Kitchen Light","original_name":"Kitchen"}]"""
+            """{"entities":[{"ei":"light.kitchen","en":"Kitchen Light"}]}"""
         ))
         val regSub = fake.handlers.keys.sorted()[1] // index 0 = entities, index 1 = registry-updated
         fake.handlers.getValue(regSub)(Json.parseToJsonElement(
@@ -212,7 +211,7 @@ class EntityHubTest {
         advanceTimeBy(20_000) // drive virtual time through the backoff delays
         runCurrent()
 
-        assertTrue(fake.requests.count { it.first == "config/entity_registry/list" } >= 3)
+        assertTrue(fake.requests.count { it.first == "config/entity_registry/list_for_display" } >= 3)
         assertEquals(1, fake.subscribed.count { it.first == "subscribe_entities" })
         assertTrue(hub.registry.value.registryNames.containsKey("light.kitchen"))
     }
@@ -231,7 +230,7 @@ class EntityHubTest {
         // Entity data path still comes up despite the registry never loading (best-effort degrade).
         assertEquals(1, fake.subscribed.count { it.first == "subscribe_entities" })
         // Initial try + RESYNC_MAX_RETRIES (5) retries == 6 total registry-list requests.
-        assertEquals(6, fake.requests.count { it.first == "config/entity_registry/list" })
+        assertEquals(6, fake.requests.count { it.first == "config/entity_registry/list_for_display" })
     }
 
     @Test

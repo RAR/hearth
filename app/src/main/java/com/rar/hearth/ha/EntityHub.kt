@@ -51,7 +51,7 @@ class EntityHub(
 
     private companion object {
         // Registry-list retries on a CONNECTED transition. The device can connect before HA is fully
-        // ready (co-restart), and the first config/entity_registry/list then errors; retrying with
+        // ready (co-restart), and the first registry list then errors; retrying with
         // backoff lets it self-heal in seconds instead of sitting CONNECTED-but-empty until a manual
         // restart. Bounded, then we open the entity subscription anyway (best-effort) -- entity data
         // must not depend on the registry, which only supplies names/the web picker.
@@ -158,7 +158,7 @@ class EntityHub(
     }
 
     private suspend fun listRegistry(): RegistryIndex? =
-        runCatching { client.requestRaw("config/entity_registry/list") }
+        runCatching { client.requestRaw("config/entity_registry/list_for_display") }
             .getOrNull()
             ?.let { parseEntityRegistryFrame(it) }
 

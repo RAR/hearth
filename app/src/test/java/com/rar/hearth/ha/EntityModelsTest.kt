@@ -10,11 +10,7 @@ class EntityModelsTest {
     @Test
     fun displayNamePrefersRegistryNameThenFriendlyThenId() {
         val reg = parseEntityRegistry(json(
-            """[
-              {"entity_id":"light.lamp","name":"Reading Lamp","original_name":"Lamp"},
-              {"entity_id":"light.kitchen","name":null,"original_name":"Kitchen"},
-              {"entity_id":"light.plain","name":null,"original_name":null}
-            ]"""
+            """{"entities":[{"ei":"light.lamp","en":"Reading Lamp"},{"ei":"light.kitchen","en":"Kitchen"},{"ei":"light.plain"}]}"""
         ))
         val friendly = EntityState("light.plain", "on",
             Json.parseToJsonElement("""{"friendly_name":"Plain Light"}""").let { it as kotlinx.serialization.json.JsonObject }, 0L)
@@ -27,11 +23,7 @@ class EntityModelsTest {
     @Test
     fun capturesEveryRegistryEntityForThePicker() {
         val reg = parseEntityRegistry(json(
-            """[
-              {"entity_id":"light.kitchen","name":null,"original_name":"Kitchen"},
-              {"entity_id":"switch.fan","name":"Desk Fan","original_name":"Fan"},
-              {"entity_id":"climate.hall","name":null,"original_name":null}
-            ]"""
+            """{"entities":[{"ei":"light.kitchen","en":"Kitchen"},{"ei":"switch.fan","en":"Desk Fan"},{"ei":"climate.hall"}]}"""
         ))
         assertEquals(listOf("light.kitchen", "switch.fan", "climate.hall"), reg.allEntities.map { it.id })
         assertEquals(listOf("light", "switch", "climate"), reg.allEntities.map { it.domain })

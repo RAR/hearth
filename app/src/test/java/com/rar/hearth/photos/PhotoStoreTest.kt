@@ -117,6 +117,48 @@ class PhotoStoreTest {
     }
 
     @Test
+    fun advanceTopsUpFromTheCachedListingWithoutReBrowsing() = runTest {
+        // A large folder's browse response is MBs of JSON; re-fetching it on every slideshow tick
+        // crashed the Echo Show 5s, so advancing must refill from the listing already in hand.
+        val cacheDir = tempDir("phototopup")
+        val ledgerDir = tempDir("photoledger7")
+        val client = FakeHaClient(photoJson("a.jpg", "b.jpg", "c.jpg", "d.jpg", "e.jpg", "f.jpg"))
+        val downloaded = mutableListOf<String>()
+        val store = PhotoStore(
+            client, writingDownloader(cacheDir, downloaded), cacheDir, this,
+            MutableStateFlow(cfg(depth = 2)), ledgerIn(ledgerDir),
+        )
+
+        store.refresh()
+        val afterRefresh = downloaded.size
+        store.advance()
+        runCurrent()
+        store.advance()
+        runCurrent()
+
+        assertEquals(1, client.browseContentIds.size)
+        assertTrue(downloaded.size > afterRefresh) // refilled, from the cached listing
+        cacheDir.deleteRecursively(); ledgerDir.deleteRecursively()
+    }
+
+    @Test
+    fun topUpBrowsesWhenNothingHasBeenListedYet() = runTest {
+        val cacheDir = tempDir("phototopup2")
+        val ledgerDir = tempDir("photoledger8")
+        val client = FakeHaClient(browseJson)
+        val store = PhotoStore(
+            client, writingDownloader(cacheDir), cacheDir, this,
+            MutableStateFlow(cfg()), ledgerIn(ledgerDir),
+        )
+
+        store.topUp()
+
+        assertEquals(1, client.browseContentIds.size)
+        assertTrue(store.current.value != null)
+        cacheDir.deleteRecursively(); ledgerDir.deleteRecursively()
+    }
+
+    @Test
     fun historyIsBoundedAndPastPhotosAreDeleted() = runTest {
         val cacheDir = tempDir("photohist")
         val ledgerDir = tempDir("photoledger3")

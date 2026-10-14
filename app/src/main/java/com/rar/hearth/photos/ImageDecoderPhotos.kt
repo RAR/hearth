@@ -4,7 +4,7 @@ import android.annotation.TargetApi
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.os.Build
-import java.nio.ByteBuffer
+import java.io.File
 import kotlin.math.roundToInt
 
 /**
@@ -19,11 +19,11 @@ import kotlin.math.roundToInt
 @TargetApi(Build.VERSION_CODES.P)
 internal object ImageDecoderPhotos {
     /**
-     * Decode [bytes] with EXIF/HEIF orientation applied, fill-scaled to cover [target]. Returns null
+     * Decode [file] with EXIF/HEIF orientation applied, fill-scaled to cover [target]. Returns null
      * if ImageDecoder rejects the bytes (caller falls back to the BitmapFactory path).
      */
-    fun decode(bytes: ByteArray, target: PhotoTarget): Bitmap? = runCatching {
-        ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { decoder, info, _ ->
+    fun decode(file: File, target: PhotoTarget): Bitmap? = runCatching {
+        ImageDecoder.decodeBitmap(ImageDecoder.createSource(file)) { decoder, info, _ ->
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE // hardware bitmaps can't be compressed
             val w = info.size.width
             val h = info.size.height

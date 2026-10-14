@@ -6,7 +6,6 @@ import android.graphics.Matrix
 import android.media.ExifInterface
 import android.os.Build
 import com.rar.hearth.ha.HaClient
-import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.roundToInt
@@ -18,6 +17,8 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okio.buffer
+import okio.sink
 
 /**
  * Resolves a media content id to a signed URL, downloads it (no auth header — the authSig query
@@ -26,6 +27,11 @@ import okhttp3.Request
  * draws with ContentScale.Crop, so a fit-scaled portrait would be upscaled at display time and
  * look pixelated. Writes to a temp file first and renames on success, so an interrupted compress
  * never leaves a corrupt file under the final cache name.
+ *
+ * The original is streamed to disk and decoded from the file, never held as a ByteArray: phone
+ * originals run to tens of MB, and on the Echo Show 5's 80 MB Java heap a whole-body `bytes()`
+ * (plus OkHttp's own buffer copy) was enough to push the app into a GC-thrash crash. Bitmap pixels
+ * live in native memory on API 26+, so decoding from a file keeps the Java heap flat.
  */
 class AndroidPhotoDownloader(
     private val client: HaClient,
@@ -44,11 +50,23 @@ class AndroidPhotoDownloader(
         val rel = (resolved["url"] as? JsonPrimitive)?.contentOrNull ?: return@withContext null
         // Signed relative URLs authenticate via the authSig query param — no Authorization header.
         val url = if (rel.startsWith("/")) base.trimEnd('/') + rel else rel
-        val bytes = http.newCall(Request.Builder().url(url).build()).execute().use { resp ->
-            if (!resp.isSuccessful) return@withContext null
-            resp.body?.bytes() ?: return@withContext null
-        }
-        val bmp = decodeOriented(bytes) ?: return@withContext null
+        // Outside [cacheDir]: that listing IS the buffer inventory, so an original stranded there
+        // by a crash mid-download would be adopted as a photo. One fixed name suffices because
+        // PhotoStore serializes downloads, and it bounds what a crash can leave behind.
+        val original = File(cacheDir.parentFile ?: cacheDir, ORIGINAL_SCRATCH_NAME)
+        val fetched = runCatching {
+            http.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+                val body = resp.body
+                if (!resp.isSuccessful || body == null || body.contentLength() > MAX_ORIGINAL_BYTES) {
+                    return@use false
+                }
+                original.sink().buffer().use { it.writeAll(body.source()) }
+                true
+            }
+        }.getOrDefault(false)
+        val bmp = if (fetched) decodeOriented(original) else null
+        original.delete()
+        if (bmp == null) return@withContext null
         val tmp = File(cacheDir, "$cacheKey.tmp")
         val out = File(cacheDir, cacheKey)
         val wrote = runCatching {
@@ -72,26 +90,26 @@ class AndroidPhotoDownloader(
      * ImageDecoder is API 28+, so its usage lives in [ImageDecoderPhotos] (isolated so it never
      * loads on API 27, e.g. the Shelly Wall Display); pre-P devices use the BitmapFactory path.
      */
-    private fun decodeOriented(bytes: ByteArray): Bitmap? =
+    private fun decodeOriented(file: File): Bitmap? =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
-            ImageDecoderPhotos.decode(bytes, target)?.let(::centerCropToScreen) ?: decodeDownsampled(bytes)
-        else decodeDownsampled(bytes)
+            ImageDecoderPhotos.decode(file, target)?.let(::centerCropToScreen) ?: decodeDownsampled(file)
+        else decodeDownsampled(file)
 
-    /** Decode [bytes] downsampled by a power-of-2 inSampleSize, fill-scaled to cover [target], cropped. */
-    private fun decodeDownsampled(bytes: ByteArray): Bitmap? {
+    /** Decode [file] downsampled by a power-of-2 inSampleSize, fill-scaled to cover [target], cropped. */
+    private fun decodeDownsampled(file: File): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        BitmapFactory.decodeFile(file.path, bounds)
         var sample = 1
         // Halve only while BOTH dims stay >= the screen, so the crop never needs to upscale.
         while (bounds.outWidth / (sample * 2) >= target.width &&
             bounds.outHeight / (sample * 2) >= target.height
         ) sample *= 2
         val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+        val decoded = BitmapFactory.decodeFile(file.path, opts) ?: return null
         // BitmapFactory ignores EXIF orientation. On API < 28 (no ImageDecoder path) apply it here,
         // BEFORE scaling/cropping, so phone-origin JPEGs on the Shelly Wall Display aren't sideways.
         val oriented =
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) applyExifRotation(bytes, decoded)
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) applyExifRotation(file, decoded)
             else decoded
         val scale = maxOf(
             target.width.toFloat() / oriented.width,
@@ -106,13 +124,13 @@ class AndroidPhotoDownloader(
     }
 
     /**
-     * Rotate [bmp] upright per [bytes]' EXIF orientation tag (JPEG). No-op when the tag is normal,
+     * Rotate [bmp] upright per [file]'s EXIF orientation tag (JPEG). No-op when the tag is normal,
      * absent, or unreadable. Only used on the API < 28 fallback path (ImageDecoder handles this on
      * API 28+), so it can't change decode output on the Echos.
      */
-    private fun applyExifRotation(bytes: ByteArray, bmp: Bitmap): Bitmap {
+    private fun applyExifRotation(file: File, bmp: Bitmap): Bitmap {
         val degrees = runCatching {
-            val orientation = ExifInterface(ByteArrayInputStream(bytes))
+            val orientation = ExifInterface(file.path)
                 .getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
             exifRotationDegrees(orientation)
         }.getOrDefault(0)
@@ -133,5 +151,11 @@ class AndroidPhotoDownloader(
         val cropped = Bitmap.createBitmap(bmp, (bmp.width - w) / 2, (bmp.height - h) / 2, w, h)
         if (cropped !== bmp) bmp.recycle()
         return cropped
+    }
+
+    private companion object {
+        /** Skip absurd originals (panoramas, RAW exports) rather than spend disk and decode time. */
+        const val MAX_ORIGINAL_BYTES = 50L * 1024 * 1024
+        const val ORIGINAL_SCRATCH_NAME = "photo-original.download"
     }
 }

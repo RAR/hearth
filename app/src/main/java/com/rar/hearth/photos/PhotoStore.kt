@@ -68,9 +68,13 @@ interface PhotoDownloader {
  * the display: a Compose-side `remember(photos)` over a changing list would reset its index on
  * every refill and jump the slideshow.
  *
- * Refill is driven by consumption ([advance]); the periodic timer, the CONNECTED transition and
- * config changes only re-browse the listing to pick up newly uploaded photos. [refresh] is
- * serialized with a mutex so a reconnect can't race the timer over the same cache dir.
+ * Refill is driven by consumption ([advance]), which tops up from the cached [listing]; only the
+ * periodic timer, the CONNECTED transition and config changes re-browse the folder to pick up
+ * newly uploaded photos. Re-browsing on every advance was what crashed the Echo Show 5s: an
+ * 11k-photo folder is a 3.5 MB browse response, parsed into a ~20 MB JSON tree every slideshow
+ * tick, and on an 80 MB heap one of those landing beside a download tipped ART into GC thrash
+ * until the FinalizerWatchdog killed the process. [refresh] and [topUp] are serialized with a
+ * mutex so a reconnect can't race the timer over the same cache dir.
  *
  * Open for a test subclass that overrides [refresh].
  */
@@ -93,6 +97,9 @@ open class PhotoStore(
 
     /** Most recently displayed first; retained so a back-swipe has somewhere to go. */
     private val history = ArrayDeque<File>()
+
+    /** Image children of the last folder browse; null until the first successful one. */
+    private var listing: List<RemotePhoto>? = null
 
     private val mutex = Mutex()
     private var started = false
@@ -157,7 +164,7 @@ open class PhotoStore(
             }
         }
         promote(next)
-        scope.launch { refresh() }
+        scope.launch { topUp() }
     }
 
     /** Step back to the previously shown photo. No-op when nothing is retained. */
@@ -201,7 +208,26 @@ open class PhotoStore(
             })
         }.getOrNull() ?: return@withLock
         val remote = parseBrowseChildren(browse)
+        listing = remote
+        fill(remote)
+    }
 
+    /**
+     * Top the prefetch buffer back up from the cached [listing] without re-browsing. Falls back to
+     * a full [refresh] when nothing has been browsed yet.
+     */
+    suspend fun topUp() {
+        val cached = mutex.withLock {
+            val remote = listing ?: return@withLock null
+            if (config.value.home.slideshowEnabled) fill(remote)
+            remote
+        }
+        if (cached == null) refresh()
+    }
+
+    /** Draw from [remote] and download until the buffer is back at depth; caller holds [mutex]. */
+    private suspend fun fill(remote: List<RemotePhoto>) {
+        val home = config.value.home
         // Everything currently on disk is excluded from the draw so nothing is fetched twice.
         // The current photo and the back-swipe history are on disk but are NOT buffer capacity --
         // they have been shown -- so the depth is raised by their count to keep the number of

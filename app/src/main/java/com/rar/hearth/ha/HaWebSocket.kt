@@ -50,6 +50,16 @@ fun nextBackoffMs(attempt: Int, random: Random = Random): Long {
 interface HaClient {
     val connectionState: StateFlow<ConnState>
     suspend fun request(type: String, fields: JsonObject = JsonObject(emptyMap())): JsonElement?
+
+    /**
+     * Like [request], but returns the whole result frame as text for the caller to decode with
+     * its own typed serializer. For very large results (a photo folder listing runs to MBs):
+     * parsing those into a JsonElement tree costs ~20x the payload, which on an 80 MB Echo heap
+     * was enough to crash the app. The frame carries the payload under `"result"` (absent when
+     * the command failed). The default re-encodes [request]'s result, for test fakes.
+     */
+    suspend fun requestRaw(type: String, fields: JsonObject = JsonObject(emptyMap())): String? =
+        request(type, fields)?.let { buildJsonObject { put("result", it) }.toString() }
     suspend fun subscribe(
         type: String,
         fields: JsonObject = JsonObject(emptyMap()),
@@ -71,6 +81,8 @@ class HaWebSocket(
     @Volatile private var socket: WebSocket? = null
     private val idCounter = AtomicInteger(1)
     private val pending = ConcurrentHashMap<Int, CompletableDeferred<JsonElement?>>()
+    /** [requestRaw] commands awaiting their result frame as unparsed text. */
+    private val rawPending = ConcurrentHashMap<Int, CompletableDeferred<String>>()
     private val subscriptions = ConcurrentHashMap<Int, (JsonObject) -> Unit>()
 
     fun start() {
@@ -97,6 +109,19 @@ class HaWebSocket(
             deferred.await()
         } finally {
             pending.remove(id)
+        }
+    }
+
+    override suspend fun requestRaw(type: String, fields: JsonObject): String? {
+        connectionState.first { it == ConnState.CONNECTED }
+        val id = idCounter.getAndIncrement()
+        val deferred = CompletableDeferred<String>()
+        rawPending[id] = deferred
+        socket?.send(command(id, type, fields)) ?: run { rawPending.remove(id); throw IOException("websocket closed") }
+        return try {
+            deferred.await()
+        } finally {
+            rawPending.remove(id)
         }
     }
 
@@ -164,6 +189,12 @@ class HaWebSocket(
             it.remove()
             entry.value.completeExceptionally(IOException("websocket closed"))
         }
+        val raw = rawPending.entries.iterator()
+        while (raw.hasNext()) {
+            val entry = raw.next()
+            raw.remove()
+            entry.value.completeExceptionally(IOException("websocket closed"))
+        }
     }
 
     private class Session {
@@ -177,6 +208,11 @@ class HaWebSocket(
         return client.newWebSocket(request, object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
+                    // Route raw results before the full parse -- skipping that parse is the point.
+                    if (rawPending.isNotEmpty()) {
+                        val id = WsParser.peekResultId(text)
+                        if (id != null) rawPending.remove(id)?.let { it.complete(text); return }
+                    }
                     when (val msg = WsParser.parse(text)) {
                         is WsIncoming.AuthRequired ->
                             webSocket.send("""{"type":"auth","access_token":"$token"}""")

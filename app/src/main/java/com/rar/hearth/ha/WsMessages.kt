@@ -1,5 +1,6 @@
 package com.rar.hearth.ha
 
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -21,6 +22,18 @@ sealed interface WsIncoming {
 
 object WsParser {
     private val json = Json { ignoreUnknownKeys = true }
+
+    /** Just the routing fields; decoding into this skips the body without building a tree. */
+    @Serializable
+    private data class FrameHead(val id: Int = -1, val type: String = "")
+
+    /**
+     * The command id if [text] is a `result` frame, else null -- read without materializing the
+     * frame as a JsonElement, so a multi-MB result can be routed raw (see HaClient.requestRaw).
+     */
+    fun peekResultId(text: String): Int? =
+        runCatching { json.decodeFromString<FrameHead>(text) }.getOrNull()
+            ?.takeIf { it.type == "result" }?.id
 
     fun parse(text: String): WsIncoming {
         val obj = json.parseToJsonElement(text).jsonObject

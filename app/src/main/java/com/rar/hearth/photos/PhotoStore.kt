@@ -16,6 +16,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -33,15 +36,32 @@ object PhotoConfig {
 
 data class RemotePhoto(val contentId: String, val title: String)
 
-/** Keep only image children of a media_source/browse_media result. */
-fun parseBrowseChildren(result: JsonElement?): List<RemotePhoto> {
-    val children = (result as? JsonObject)?.get("children") as? JsonArray ?: return emptyList()
-    return children.mapNotNull { el ->
-        val o = el as? JsonObject ?: return@mapNotNull null
-        if ((o["media_class"] as? JsonPrimitive)?.contentOrNull != "image") return@mapNotNull null
-        val id = (o["media_content_id"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
-        val title = (o["title"] as? JsonPrimitive)?.contentOrNull ?: id.substringAfterLast('/')
-        RemotePhoto(id, title)
+@Serializable
+private data class BrowseFrame(val result: BrowseResult? = null)
+
+@Serializable
+private data class BrowseResult(val children: List<BrowseChild> = emptyList())
+
+@Serializable
+private data class BrowseChild(
+    @SerialName("media_class") val mediaClass: String? = null,
+    @SerialName("media_content_id") val mediaContentId: String? = null,
+    val title: String? = null,
+)
+
+private val browseJson = Json { ignoreUnknownKeys = true }
+
+/**
+ * Image children of a raw browse_media result frame ([HaClient.requestRaw]), decoded straight into
+ * small typed objects; empty on malformed input.
+ */
+fun parseBrowseFrame(text: String): List<RemotePhoto> {
+    val result = runCatching { browseJson.decodeFromString<BrowseFrame>(text) }.getOrNull()?.result
+        ?: return emptyList()
+    return result.children.mapNotNull { c ->
+        if (c.mediaClass != "image") return@mapNotNull null
+        val id = c.mediaContentId ?: return@mapNotNull null
+        RemotePhoto(id, c.title ?: id.substringAfterLast('/'))
     }
 }
 
@@ -202,12 +222,14 @@ open class PhotoStore(
     open suspend fun refresh() = mutex.withLock {
         val home = config.value.home
         if (!home.slideshowEnabled) return@withLock
+        // Raw + typed decode: the listing for a large folder is MBs, and a JsonElement tree of it
+        // alone nearly filled the Echo Show 5's heap.
         val browse = runCatching {
-            client.request("media_source/browse_media", buildJsonObject {
+            client.requestRaw("media_source/browse_media", buildJsonObject {
                 put("media_content_id", JsonPrimitive(PhotoConfig.contentId(home.photoFolder)))
             })
         }.getOrNull() ?: return@withLock
-        val remote = parseBrowseChildren(browse)
+        val remote = parseBrowseFrame(browse)
         listing = remote
         fill(remote)
     }

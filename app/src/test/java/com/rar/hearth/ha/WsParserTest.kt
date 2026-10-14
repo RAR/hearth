@@ -29,4 +29,12 @@ class WsParserTest {
         assertEquals(7, msg.id)
         assertTrue(msg.success)
     }
+
+    @Test
+    fun peekResultIdRoutesOnlyResultFrames() {
+        assertEquals(12, WsParser.peekResultId("""{"id":12,"type":"result","success":true,"result":{"children":[{"a":1}]}}"""))
+        assertEquals(null, WsParser.peekResultId("""{"id":3,"type":"event","event":{}}"""))
+        assertEquals(null, WsParser.peekResultId("""{"type":"auth_ok"}"""))
+        assertEquals(null, WsParser.peekResultId("garbage"))
+    }
 }

@@ -117,6 +117,26 @@ class PhotoStoreTest {
     }
 
     @Test
+    fun parseBrowseFrameKeepsOnlyImagesWithIds() {
+        val frame = """{"id":7,"type":"result","success":true,"result":{"title":"x","children":[
+            {"title":"a.heic","media_class":"image","media_content_id":"m/a.heic","thumbnail":null},
+            {"title":"clip.mov","media_class":"video","media_content_id":"m/clip.mov"},
+            {"media_class":"image","media_content_id":"m/untitled.jpg"},
+            {"title":"noid.jpg","media_class":"image"}]}}"""
+
+        assertEquals(
+            listOf(RemotePhoto("m/a.heic", "a.heic"), RemotePhoto("m/untitled.jpg", "untitled.jpg")),
+            parseBrowseFrame(frame),
+        )
+    }
+
+    @Test
+    fun parseBrowseFrameIsEmptyForFailedOrMalformedFrames() {
+        assertTrue(parseBrowseFrame("""{"id":7,"type":"result","success":false,"error":{}}""").isEmpty())
+        assertTrue(parseBrowseFrame("not json").isEmpty())
+    }
+
+    @Test
     fun advanceTopsUpFromTheCachedListingWithoutReBrowsing() = runTest {
         // A large folder's browse response is MBs of JSON; re-fetching it on every slideshow tick
         // crashed the Echo Show 5s, so advancing must refill from the listing already in hand.

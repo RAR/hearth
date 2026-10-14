@@ -98,6 +98,28 @@ class EntityHubTest {
     }
 
     @Test
+    fun aBurstOfRegistryEventsReListsOnce() = runTest {
+        val fake = FakeHaClient()
+        fake.results.add(Json.parseToJsonElement(registryJson))
+        val hub = EntityHub(fake, backgroundScope, config("light.kitchen")) { 0L }
+        hub.start()
+        fake.state.value = ConnState.CONNECTED
+        runCurrent()
+        val listsAfterConnect = fake.requests.count { it.first == "config/entity_registry/list" }
+
+        val regSub = fake.handlers.keys.sorted()[1]
+        repeat(50) {
+            fake.handlers.getValue(regSub)(Json.parseToJsonElement(
+                """{"event_type":"entity_registry_updated","data":{"action":"update","entity_id":"light.x$it"}}"""
+            ) as JsonObject)
+        }
+        advanceTimeBy(2_001)
+        runCurrent()
+
+        assertEquals(listsAfterConnect + 1, fake.requests.count { it.first == "config/entity_registry/list" })
+    }
+
+    @Test
     fun registryUpdatedRefreshesNamesWithoutReSubscribingEntities() = runTest {
         val fake = FakeHaClient()
         fake.results.add(Json.parseToJsonElement(registryJson))
@@ -115,6 +137,7 @@ class EntityHubTest {
         fake.handlers.getValue(regSub)(Json.parseToJsonElement(
             """{"event_type":"entity_registry_updated","data":{"action":"update","entity_id":"light.kitchen"}}"""
         ) as JsonObject)
+        advanceTimeBy(2_001)
         runCurrent()
         assertEquals(1, fake.subscribed.count { it.first == "subscribe_entities" }) // unchanged
         assertEquals("Kitchen Light", hub.registry.value.registryNames["light.kitchen"])

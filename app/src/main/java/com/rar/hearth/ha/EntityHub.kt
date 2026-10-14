@@ -6,6 +6,7 @@ import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,7 +56,16 @@ class EntityHub(
         // restart. Bounded, then we open the entity subscription anyway (best-effort) -- entity data
         // must not depend on the registry, which only supplies names/the web picker.
         const val RESYNC_MAX_RETRIES = 5
+
+        // entity_registry_updated arrives in bursts (an integration reload touches hundreds of
+        // entities) and every re-list is a multi-MB frame. Coalesce: wait this long after the
+        // first event, then re-list once for everything that arrived meanwhile.
+        const val REGISTRY_REFRESH_DEBOUNCE_MS = 2_000L
     }
+
+    // CONFLATED: any number of registry events while a re-list is pending or running collapse
+    // into one follow-up re-list, so at most one multi-MB registry frame is in flight.
+    private val registryRefreshes = Channel<Unit>(Channel.CONFLATED)
 
     // 500, 1000, 2000, 4000, 8000 ms, capped.
     private fun resyncBackoffMs(retry: Int): Long = (500L * (1L shl retry.coerceAtMost(4))).coerceAtMost(8_000L)
@@ -73,6 +83,13 @@ class EntityHub(
                     ConnState.OFFLINE -> entitiesSubId = null
                     else -> {}
                 }
+            }
+        }
+        scope.launch {
+            while (true) {
+                registryRefreshes.receive()
+                delay(REGISTRY_REFRESH_DEBOUNCE_MS)
+                onRegistryUpdated()
             }
         }
         scope.launch {
@@ -108,7 +125,7 @@ class EntityHub(
         try {
             openEntitiesSubscription()
             client.subscribe("subscribe_events", buildJsonObject { put("event_type", "entity_registry_updated") }) {
-                scope.launch { onRegistryUpdated() }
+                registryRefreshes.trySend(Unit)
             }
         } catch (e: IOException) {
             // socket dropped mid-subscribe; the next CONNECTED transition retries from scratch
@@ -141,9 +158,9 @@ class EntityHub(
     }
 
     private suspend fun listRegistry(): RegistryIndex? =
-        runCatching { client.request("config/entity_registry/list") }
+        runCatching { client.requestRaw("config/entity_registry/list") }
             .getOrNull()
-            ?.let { parseEntityRegistry(it) }
+            ?.let { parseEntityRegistryFrame(it) }
 
     private suspend fun openEntitiesSubscription() {
         entitiesSubId = client.subscribe(
